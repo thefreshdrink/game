@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+**/.DS_Store
+*.log
+.vite/
+vite.config.js.timestamp-*.mjs

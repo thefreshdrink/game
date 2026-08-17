@@ -1,0 +1,94 @@
+// Экран 3 — Вытягивание. Одна карта рубашкой вверх, тап переворачивает.
+// Референс: docs/interfaces/Tap to see.png
+
+import { CARDS } from '../data/cards.js';
+import { session } from '../core/session.js';
+import { setFont } from '../core/text.js';
+import { drawCardBack, drawCardFace } from '../core/cardRender.js';
+
+const FLIP_DURATION = 0.8; // сек — «не быстрее ~0.8 сек», это ритуал (BUILD-SPEC)
+
+export function createDrawScreen({ input, images, goto }) {
+  let offTap = null;
+  let state = 'waiting'; // waiting | flipping
+  let t = 0;
+  let box = { x: 0, y: 0, w: 0, h: 0 };
+
+  function layout(w, h) {
+    const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+    const cardW = Math.round(w * 0.5);
+    const cardH = Math.round(cardW * (384 / 224));
+    box = {
+      x: Math.round((w - cardW) / 2),
+      y: Math.round(h * 0.364),
+      w: cardW,
+      h: cardH,
+      scale,
+    };
+  }
+
+  return {
+    enter() {
+      state = 'waiting';
+      t = 0;
+      offTap = input.on('tap', () => {
+        if (state !== 'waiting') return;
+        state = 'flipping';
+        t = 0;
+      });
+    },
+
+    exit() {
+      offTap?.();
+    },
+
+    update(dt) {
+      if (state !== 'flipping') return;
+      t += dt;
+      if (t >= FLIP_DURATION) {
+        goto('reveal');
+      }
+    },
+
+    draw(ctx, w, h) {
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(0, 0, w, h);
+
+      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const marginX = Math.round(53 * scale);
+
+      const titleLH = setFont(ctx, 'title', scale);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#FFFFFF';
+      let ty = Math.round(160 * scale);
+      ctx.fillText('The deck', marginX, ty);
+      ty += titleLH;
+      ctx.fillText('offers itself…', marginX, ty);
+
+      if (state === 'waiting') {
+        setFont(ctx, 'body', scale);
+        ctx.fillStyle = '#EBA331';
+        ctx.fillText('CLICK TO DRAW', marginX, Math.round(255 * scale));
+      }
+
+      layout(w, h);
+      const progress = state === 'flipping' ? Math.min(t / FLIP_DURATION, 1) : 0;
+      const scaleX = state === 'flipping' ? Math.abs(Math.cos(progress * Math.PI)) : 1;
+      const cx = box.x + box.w / 2;
+      const cy = box.y + box.h / 2;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(Math.max(scaleX, 0.02), 1);
+      ctx.translate(-cx, -cy);
+
+      if (progress < 0.5) {
+        drawCardBack(ctx, images, box.x, box.y, box.w, box.h);
+      } else {
+        const card = CARDS[session.cardId];
+        drawCardFace(ctx, images, box.x, box.y, box.w, box.h, card.name, scale);
+      }
+      ctx.restore();
+    },
+  };
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tarot Journey</title>
+
+<!-- Portrait phone first. viewport-fit=cover so the void can reach the edges;
+     user-scalable=no so a swipe never turns into a pinch-zoom. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<meta name="theme-color" content="#111111">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* Alagard is the display face (headings, card names). Latin only — the game
+     is EN-only, see GDD §12. Pixelify Sans is the text face. */
+  @font-face {
+    font-family: 'Alagard';
+    src: url('/assets/alagard.ttf') format('truetype');
+    font-display: block;
+  }
+
+  :root {
+    --air:    #111111;   /* background */
+    --body:   #000000;   /* object body — darker than the air */
+    --line-1: #FFFFFF;   /* foreground contour */
+    --line-2: #B8B8B8;   /* second line of the double contour */
+    --accent: #EBA331;   /* ONLY means "you can touch this" */
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--air);
+    color: var(--line-1);
+    font-family: 'Pixelify Sans', monospace;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;          /* swipes belong to the game, not the browser */
+  }
+
+  #app { position: fixed; inset: 0; display: grid; place-items: center; }
+
+  canvas {
+    display: block;
+    image-rendering: pixelated;  /* never smooth pixel art */
+    image-rendering: crisp-edges;
+  }
+</style>
+</head>
+<body>
+  <div id="app"><canvas id="game"></canvas></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
