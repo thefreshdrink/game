@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 
 // GitHub Pages serves the site from /<repo-name>/, so assets need that prefix
 // in production. Rename this if the repository is named something else.
-const REPO = 'tarot-journey';
+const REPO = 'game';
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? `/${REPO}/` : '/',
