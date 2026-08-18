@@ -14,7 +14,8 @@
 import { CATEGORIES } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
-import { drawDitherReveal } from '../core/ditherReveal.js';
+import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
+import { computeOracleLayout, drawOracleBody, drawOracleEyes } from '../core/oracle.js';
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
@@ -23,12 +24,6 @@ const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 // (тот же стиль, что и у точек — «плавно» не понравилось). Палец поверх
 // автоцикла — pressedIndex всегда важнее.
 const MENU_ITEM_ON = 0.8;
-
-// Три отдельных чистых слоя от художника (2026-08-17, в чате): тело без
-// глаз и без точек (oracle_body.png), глаза отдельно (oracle_eyes.png),
-// точки отдельно (oracle_sparks.png) — все на одном холсте 430×678,
-// выровнены пиксель-в-пиксель. Больше не инпейнтим ничего сами.
-const EYES_SRC = { sx: 172, sy: 277, sw: 86, sh: 18 };
 
 // Точки свечения у рук — 10 отдельных кластеров (найдены разбором связных
 // областей в oracle_sparks.png), а не один кусок: нужны порознь, чтобы
@@ -62,39 +57,42 @@ function twinkleAlpha(localT) {
 // Тайминги интро, секунды.
 //
 // Реплики не fade-in целиком — каждое слово выскакивает сразу на 100%
-// яркости, слово за словом. Первая реплика гаснет плавно и полностью
-// ПРЕЖДЕ, чем начинает появляться вторая — раньше они шли внахлёст,
-// читалось грязно (правка в чате: «накладываются друг на друга»).
-// Вторая реплика никуда не исчезает — остаётся заголовком экрана.
-const WORD_INTERVAL = 0.16; // пауза между появлением слов
-
+// яркости, слово за словом (core/textReveal.js). Первая реплика гаснет
+// плавно и полностью ПРЕЖДЕ, чем начинает появляться вторая — раньше
+// они шли внахлёст, читалось грязно (правка в чате: «накладываются
+// друг на друга»). Вторая реплика никуда не исчезает — остаётся
+// заголовком экрана.
 const EYES_FADE = 0.5;
 const EYES_HOLD = 0.4; // одни глаза в темноте, до первой реплики
 
 const TEXT1 = 'Do you want to see the future?';
 const TEXT2 = 'What is your question about?';
-const TEXT1_WORDS = TEXT1.split(' ').length;
-const TEXT2_WORDS = TEXT2.split(' ').length;
 
-const TEXT1_REVEAL = (TEXT1_WORDS - 1) * WORD_INTERVAL; // время появления всех слов
+const TEXT1_REVEAL = revealDuration(TEXT1.split(' ').length);
 const TEXT1_READ_HOLD = 1.4; // держим прочитанной, прежде чем гасить
 const TEXT1_FADE_OUT = 0.5; // единственный плавный переход у текста
 
-const TEXT2_REVEAL = (TEXT2_WORDS - 1) * WORD_INTERVAL;
+const TEXT2_REVEAL = revealDuration(TEXT2.split(' ').length);
 const TEXT2_READ_HOLD = 1.6;
 
-// Силуэт проступает несколько секунд случайным шумом (не Bayer — тот
-// давал упорядоченный «крестовый орнамент», не понравилось). Размер
-// ячейки шума подбирали в чате: 6 (крупно) → 2 (мелко) → 4.
+// Силуэт проступает пикселями, расходящимися от глаз волной наружу
+// (core/pixelReveal.js) — перебирали в чате Bayer-узор, чересстрочные
+// жалюзи, равномерный случайный шум; в итоге важны обе вещи разом:
+// пиксельная фактура И направление от головы.
 const BODY_REVEAL = 3.2;
-const BODY_DITHER_CELL = 4; // экранных px на ячейку шума
-const OPTIONS_FADE = 0.4;
+const BODY_CELL_SIZE = 4; // экранных px на ячейку
+
+// Пункты меню появляются по одному, сразу на 100% (без общего fade на
+// всю группу) — тот же стиль резкого появления, что у слов реплик и у
+// точек свечения (правка в чате).
+const OPTION_ITEM_STAGGER = 0.18;
 
 const TEXT1_START = EYES_FADE + EYES_HOLD;
 // Первая реплика начинает гаснуть здесь же — тогда же проступает силуэт.
 const BODY_START = TEXT1_START + TEXT1_REVEAL + TEXT1_READ_HOLD;
-// Вторая реплика ждёт, пока первая ПОЛНОСТЬЮ погаснет — без нахлёста.
-const TEXT2_START = BODY_START + TEXT1_FADE_OUT;
+// Вторая реплика ждёт, пока силуэт проступит ПОЛНОСТЬЮ — не раньше
+// (правка в чате), не просто пока погаснет первая реплика.
+const TEXT2_START = BODY_START + BODY_REVEAL;
 const OPTIONS_START = TEXT2_START + TEXT2_REVEAL + TEXT2_READ_HOLD;
 
 // Моргание — процедурное, кадра нет (ASSETS.md): просто не рисуем слой
@@ -106,28 +104,6 @@ const BLINK_DURATION = 0.12;
 
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
-}
-
-// Раскладывает уже перенесённые по ширине строки на отдельные слова с
-// их экранными координатами — нужно для раскрытия «слово за словом».
-// ctx.font должен быть уже выставлен (используется measureText).
-function layoutWords(ctx, lines, x, yStart, lineHeight) {
-  const words = [];
-  lines.forEach((line, li) => {
-    let cx = x;
-    for (const w of line.split(' ')) {
-      words.push({ text: w, x: cx, y: yStart + li * lineHeight });
-      cx += ctx.measureText(`${w} `).width;
-    }
-  });
-  return words;
-}
-
-// Сколько слов уже должно быть видно при данном elapsed — каждое слово
-// выскакивает сразу на 100%, без fade (правка в чате).
-function visibleWordCount(elapsed, total) {
-  if (elapsed < 0) return 0;
-  return Math.min(total, Math.floor(elapsed / WORD_INTERVAL) + 1);
 }
 
 export function createQuestionScreen({ input, images, goto }) {
@@ -168,7 +144,7 @@ export function createQuestionScreen({ input, images, goto }) {
       blinkTimer = BLINK_MIN + Math.random() * (BLINK_MAX - BLINK_MIN);
       pressedIndex = null;
 
-      const optionsReady = () => t >= OPTIONS_START + OPTIONS_FADE;
+      const optionsReady = () => t >= OPTIONS_START + (CATEGORIES.length - 1) * OPTION_ITEM_STAGGER;
 
       offHandlers = [
         input.on('pressstart', (e) => {
@@ -241,32 +217,15 @@ export function createQuestionScreen({ input, images, goto }) {
       // понравилась (правка в чате), а низ уходит за край экрана и
       // обрезается канвасом — это явно разрешено («ничего страшного, если
       // фигура уйдёт вниз»), скролл не заводим (запрещён в CLAUDE.md).
-      const ORACLE_TOP_GAP = 18; // от меню до макушки, на референсном холсте 430 — «чуть-чуть ещё выше»
-      const oracleW = w;
-      const oracleH = oracleW * (images.futureTellerBody.height / images.futureTellerBody.width);
-      const oracleX = (w - oracleW) / 2;
-      const oracleY = optionsY + Math.round(ORACLE_TOP_GAP * scale);
-      const oracleScale = oracleW / images.futureTellerBody.width;
+      const oracle = computeOracleLayout(w, optionsY, scale, images.futureTellerBody);
 
       const eyesAlpha = clamp01(t / EYES_FADE) * (blinking ? 0 : 1);
       const bodyProgress = clamp01((t - BODY_START) / BODY_REVEAL);
 
-      // Тело — дизерингом из темноты; глаза — отдельным слоем поверх, они
-      // проступают раньше и не зависят от прогресса тела.
-      drawDitherReveal(ctx, images.futureTellerBody, oracleX, oracleY, oracleW, oracleH, bodyProgress, BODY_DITHER_CELL);
-
-      if (eyesAlpha > 0) {
-        ctx.globalAlpha = eyesAlpha;
-        ctx.drawImage(
-          images.futureTellerEyes,
-          EYES_SRC.sx, EYES_SRC.sy, EYES_SRC.sw, EYES_SRC.sh,
-          Math.round(oracleX + EYES_SRC.sx * oracleScale),
-          Math.round(oracleY + EYES_SRC.sy * oracleScale),
-          Math.round(EYES_SRC.sw * oracleScale),
-          Math.round(EYES_SRC.sh * oracleScale),
-        );
-        ctx.globalAlpha = 1;
-      }
+      // Тело — пикселями от глаз из темноты; глаза — отдельным слоем
+      // поверх, они проступают раньше и не зависят от прогресса тела.
+      drawOracleBody(ctx, images, oracle, bodyProgress, BODY_CELL_SIZE);
+      drawOracleEyes(ctx, images, oracle, eyesAlpha);
 
       if (t >= OPTIONS_START) {
         const dotPhaseStep = DOT_CYCLE / DOTS_SRC.length;
@@ -278,10 +237,10 @@ export function createQuestionScreen({ input, images, goto }) {
           ctx.drawImage(
             images.futureTellerSparks,
             dot.sx, dot.sy, dot.sw, dot.sh,
-            Math.round(oracleX + dot.sx * oracleScale),
-            Math.round(oracleY + dot.sy * oracleScale),
-            Math.round(dot.sw * oracleScale),
-            Math.round(dot.sh * oracleScale),
+            Math.round(oracle.oracleX + dot.sx * oracle.oracleScale),
+            Math.round(oracle.oracleY + dot.sy * oracle.oracleScale),
+            Math.round(dot.sw * oracle.oracleScale),
+            Math.round(dot.sh * oracle.oracleScale),
           );
         });
         ctx.globalAlpha = 1;
@@ -310,19 +269,21 @@ export function createQuestionScreen({ input, images, goto }) {
         for (let i = 0; i < shown; i++) ctx.fillText(words2[i].text, words2[i].x, words2[i].y);
       }
 
-      // Меню категорий — проявляется вместе со свечением у рук.
-      const optionsAlpha = clamp01((t - OPTIONS_START) / OPTIONS_FADE);
-      if (optionsAlpha > 0) {
+      // Меню категорий — появляются по одному пункту, сразу на 100%
+      // (правка в чате: «по словам по очереди, не всё сразу»).
+      if (t >= OPTIONS_START) {
         layout(ctx, w, scale, optionsY);
         setFont(ctx, 'menuOption', scale);
-        ctx.globalAlpha = optionsAlpha;
-        const autoIndex = Math.floor((t - OPTIONS_START) / MENU_ITEM_ON) % items.length;
+        const allShownT = OPTIONS_START + (items.length - 1) * OPTION_ITEM_STAGGER;
+        const autoIndex = t >= allShownT
+          ? Math.floor((t - allShownT) / MENU_ITEM_ON) % items.length
+          : null;
         const highlighted = pressedIndex !== null ? pressedIndex : autoIndex;
         items.forEach((it, i) => {
+          if (t < OPTIONS_START + i * OPTION_ITEM_STAGGER) return;
           ctx.fillStyle = i === highlighted ? '#EBA331' : '#FFFFFF';
           ctx.fillText(it.label, it.x0, it.y);
         });
-        ctx.globalAlpha = 1;
       }
     },
   };
