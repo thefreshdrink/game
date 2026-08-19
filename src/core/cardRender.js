@@ -49,7 +49,8 @@ export function drawCardFace(
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 
   if (numeral !== null) {
-    setFont(ctx, 'cardName', scale * 0.6);
+    // Тот же кегль, что у имени (Figma: Alagard Medium 30, обоим).
+    setFont(ctx, 'cardName', scale);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#FFFFFF';

@@ -16,9 +16,9 @@ export const PLATE_H = 24; // 12 арт-px × 2
 // нельзя» (BUILD-SPEC) — это гарантия физики и подбора чисел, а не отдельный
 // код-костыль. Проверено расчётом под константы core/leapPhysics.js, потом
 // точно подогнано вживую.
-const GAP_JUMP = 64; // перепрыгивается даже при минимальной силе свайпа
-const GAP_JUMP_FAR = 80; // «дальше» — щель побольше, но всё ещё безопасна
-const GAP_STEP = 36; // «сходит с края» — переносится ходьбой без прыжка
+const GAP_JUMP = 52; // перепрыгивается даже при минимальной силе свайпа
+const GAP_JUMP_FAR = 64; // «дальше» — щель побольше, но всё ещё безопасна
+const GAP_STEP = 32; // «сходит с края» — переносится ходьбой без прыжка
 
 const DATA = [
   { dy: 0, w: 176 }, // P1 — старт
@@ -49,7 +49,26 @@ export function platformAt(platforms, x, yMin, yMax) {
   return null;
 }
 
-/** Рисует плиту: чёрная подложка (design-system) + брус попиксельно + скобы по краям. */
+// Концевая зона блока (скоба + зазор, ASSETS.md: «скоба 7 · зазор 2») —
+// остаётся нерастянутой при 3-slice; середина — однородный повторяющийся
+// брус, поэтому её можно смело растягивать под любую ширину плиты вместо
+// тайлинга по колонкам — визуально неотличимо, а кода меньше.
+const CAP_SLICE = 16;
+
+function drawBlock(ctx, img, x, y, w, h) {
+  const capW = Math.min(Math.round(w / 2), Math.round(CAP_SLICE * (h / img.height)));
+  const midW = Math.max(0, w - capW * 2);
+  const srcMidW = img.width - CAP_SLICE * 2;
+
+  ctx.drawImage(img, 0, 0, CAP_SLICE, img.height, x, y, capW, h);
+  if (midW > 0) {
+    ctx.drawImage(img, CAP_SLICE, 0, srcMidW, img.height, x + capW, y, midW, h);
+  }
+  ctx.drawImage(img, img.width - CAP_SLICE, 0, CAP_SLICE, img.height, x + w - capW, y, capW, h);
+}
+
+/** Рисует плиту: чёрная подложка (design-system) + эталонный блок целиком,
+ * 3-slice под фактическую ширину плиты. */
 export function drawPlatform(ctx, images, p, camX, camY, scale) {
   const x = Math.round(p.x - camX);
   const y = Math.round(p.y - camY);
@@ -59,30 +78,19 @@ export function drawPlatform(ctx, images, p, camX, camY, scale) {
 
   ctx.fillStyle = '#000000';
   ctx.fillRect(x, y, w, h);
-
-  const bar = images.roadBarMid;
-  const colW = Math.max(1, Math.round(bar.width * scale));
-  for (let cx = x; cx < x + w; cx += colW) {
-    const cw = Math.min(colW, x + w - cx);
-    ctx.drawImage(bar, 0, 0, Math.round(cw / scale), bar.height, cx, y, cw, h);
-  }
-
-  const capW = Math.round(images.roadCapLeft.width * scale);
-  const capInset = Math.round(4 * scale); // 2 арт-px от торцов
-  ctx.drawImage(images.roadCapLeft, x + capInset, y, capW, h);
-  ctx.drawImage(images.roadCapRight, x + w - capInset - capW, y, capW, h);
+  drawBlock(ctx, images.roadBlock, x, y, w, h);
 }
 
-/** Полупрозрачная, тусклая дорога за пропастью — видна, но недостижима (BUILD-SPEC). */
-export function drawGhostRoad(ctx, x, y, w, camX, camY, scale) {
+/** Тусклая дорога за пропастью — видна, недостижима, не интерактивна
+ * (BUILD-SPEC «решение B») — тот же блок, приглушённый прозрачностью. */
+export function drawGhostRoad(ctx, images, x, y, w, camX, camY, scale) {
   const rx = Math.round(x - camX);
   const ry = Math.round(y - camY);
   const rw = Math.round(w * scale);
   const rh = Math.round(PLATE_H * scale);
   ctx.fillStyle = '#000000';
   ctx.fillRect(rx, ry, rw, rh);
-  ctx.strokeStyle = '#4A4A4A';
-  ctx.setLineDash([Math.round(3 * scale), Math.round(3 * scale)]);
-  ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
-  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.4;
+  drawBlock(ctx, images.roadBlock, rx, ry, rw, rh);
+  ctx.globalAlpha = 1;
 }

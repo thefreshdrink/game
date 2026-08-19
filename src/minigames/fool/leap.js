@@ -27,6 +27,12 @@ const FALL_G = 900;
 const FALL_VMAX = 760;
 const FALL_DEPTH = 900; // экранных px падения до касания земли
 
+// Насколько можно провалиться ниже плиты, с которой прыгнул, прежде чем
+// это считается промахом и включается респавн — заметно больше любой
+// реальной дуги прыжка (макс. дельта дороги −128), чтобы не сработать
+// ложно на обычном спуске.
+const RESPAWN_DROP = 260;
+
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
@@ -88,6 +94,25 @@ export function createLeapScreen({ input, images, goto }) {
     state = 'walk';
     stateT = 0;
     spawnDust(player.x, player.y, 5);
+  }
+
+  /** Провалился мимо всех плит — редкий случай при слабом реальном свайпе
+   * на телефоне (см. RESPAWN_DROP). Возвращаем на плиту, с которой
+   * прыгнул, чуть отступив от края, и снова пускаем ходьбой — так и
+   * прыжковая, и шаговая щель обработаются той же логикой, что и обычно,
+   * без риска зависнуть в ожидании свайпа там, где он не нужен. */
+  function respawnOnOrigin() {
+    const p = platforms[idx];
+    player.x = Math.max(p.x, p.x + p.w - 24);
+    player.y = p.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.sqx = 1;
+    player.sqy = 1;
+    state = 'walk';
+    stateT = 0;
+    hintAlpha = 1;
+    spawnDust(player.x, player.y, 6);
   }
 
   function beginJump(upPow, sidePow) {
@@ -220,6 +245,14 @@ export function createLeapScreen({ input, images, goto }) {
           const p = platformAt(platforms, player.x, prevY - 2, player.y + 2);
           if (p) land(p);
         }
+        // Промахнуться нельзя (BUILD-SPEC) — щели подобраны так, чтобы
+        // этого не случалось, но живой палец на телефоне не гарантия
+        // расчёта. Если всё же провалился мимо всех плит — не подвешиваем
+        // молча в пропасти, а мягко возвращаем на ту плиту, с которой
+        // прыгнул (правка в чате: «нету респавна персонажа после падения»).
+        if (state === 'air' && player.y - platforms[idx].y > RESPAWN_DROP) {
+          respawnOnOrigin();
+        }
       } else if (state === 'wait_jump' || state === 'wait_leap') {
         player.sqx += (1 - player.sqx) * Math.min(1, dt * 8);
         player.sqy += (1 - player.sqy) * Math.min(1, dt * 8);
@@ -277,7 +310,7 @@ export function createLeapScreen({ input, images, goto }) {
       const last = platforms[platforms.length - 1];
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY, scale));
       // Дорога за пропастью — видна, не интерактивна (BUILD-SPEC «решение B»).
-      drawGhostRoad(ctx, last.x + last.w + 40, last.y, 140, camX, camY, scale);
+      drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 140, camX, camY, scale);
 
       // Пустота — чем глубже забрались, тем больше съедает низ кадра.
       const voidFrac = clamp01(deepestY / (FALL_DEPTH * 0.9));

@@ -14,7 +14,12 @@ const FONT_BODY = '"Pixelify Sans", monospace';
 
 const ROLES = {
   title:      { family: FONT_DISPLAY, size: 46, lineHeight: 46 },
-  cardName:   { family: FONT_DISPLAY, size: 24, lineHeight: 28 },
+  // Номер и имя на раскрытой карте — по Figma: Alagard Medium 30,
+  // letter-spacing −4% (правка в чате). У нас только один статичный файл
+  // Alagard (index.html, без отдельного начертания Medium) — вес всё
+  // равно выставляем для точности, браузер отрисует единственным
+  // доступным начертанием, если синтеза нет.
+  cardName:   { family: FONT_DISPLAY, size: 30, lineHeight: 34, weight: 500, letterSpacing: -0.04 },
   body:       { family: FONT_BODY,    size: 16, lineHeight: 26 },
   caption:    { family: FONT_BODY,    size: 12, lineHeight: 18 },
   // Пункты меню категорий — отдельная роль от body: крупнее (22 —
@@ -28,7 +33,9 @@ const ROLES = {
 export function setFont(ctx, role, scale) {
   const t = ROLES[role];
   const weight = t.weight ?? 400;
-  ctx.font = `${weight} ${Math.round(t.size * scale)}px ${t.family}`;
+  const px = Math.round(t.size * scale);
+  ctx.font = `${weight} ${px}px ${t.family}`;
+  ctx.letterSpacing = t.letterSpacing ? `${(px * t.letterSpacing).toFixed(2)}px` : '0px';
   return Math.round(t.lineHeight * scale);
 }
 
