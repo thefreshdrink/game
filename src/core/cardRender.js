@@ -29,7 +29,7 @@ export function drawCardBlank(ctx, images, x, y, w, h) {
   const ry = Math.round(y);
   const rw = Math.round(w);
   const rh = Math.round(h);
-  ctx.fillStyle = '#000000';
+  ctx.fillStyle = '#111111';
   ctx.fillRect(rx, ry, rw, rh);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 }
@@ -44,7 +44,7 @@ export function drawCardFace(
   const rw = Math.round(w);
   const rh = Math.round(h);
 
-  ctx.fillStyle = '#000000';
+  ctx.fillStyle = '#111111';
   ctx.fillRect(rx, ry, rw, rh);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 
@@ -69,6 +69,8 @@ export function drawCardFace(
 
   setFont(ctx, 'cardName', scale);
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillStyle = '#EBA331';
   ctx.fillText(name, Math.round(x + w / 2), Math.round(y + 338 * s));
+  ctx.textBaseline = 'alphabetic';
 }

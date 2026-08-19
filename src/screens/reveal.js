@@ -41,7 +41,7 @@ export function createRevealScreen({ input, images, goto }) {
     // меню (правка в чате).
     const marginX = Math.round(53 * scale);
     const titleLH = setFont(ctx, 'title', scale);
-    const ty = Math.round(160 * scale);
+    const ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
     const continueY = ty + 2 * titleLH + Math.round(9 * scale);
     setFont(ctx, 'menuOption', scale);
     const label = '›CONTINUE';
@@ -82,7 +82,7 @@ export function createRevealScreen({ input, images, goto }) {
       const titleLH = setFont(ctx, 'title', scale);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
-      let ty = Math.round(160 * scale);
+      let ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
       ctx.fillText('The deck', marginX, ty);
       ty += titleLH;
       ctx.fillText('offers itself…', marginX, ty);

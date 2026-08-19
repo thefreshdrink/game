@@ -13,10 +13,14 @@ import { setFont } from '../../core/text.js';
 import { PHYS, TAP_UP_POW, TAP_SIDE_POW, gravityFor, jumpVelocity } from './physics.js';
 import { buildPlatforms, platformAt, drawPlatform, drawGhostRoad, PLATE_H } from './platforms.js';
 
-const PLAYER_W = 42;
-const PLAYER_H = 50;
-const DOG_W = 18;
-const DOG_H = 14;
+// Спрайты — 42×50 и 18×14 арт-px (ASSETS.md), но правило сетки
+// CLAUDE.md — 1 арт-пиксель = 2 экранных, как и у PLATE_H в platforms.js.
+// Значения ниже уже удвоены, чтобы * scale дальше по коду работал как
+// везде (баг был пойман по правке в чате: «спрайты очень маленькие»).
+const PLAYER_W = 84;
+const PLAYER_H = 100;
+const DOG_W = 36;
+const DOG_H = 28;
 const DOG_LAG = 46; // насколько пёс отстаёт по x в обычной ходьбе
 
 const HOLD_T1 = 1.6; // первые 75% полоски

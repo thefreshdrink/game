@@ -67,6 +67,11 @@ export function createPredictionScreen({ input, goto }) {
       const titleLH = setFont(ctx, 'title', scale);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
+      // Экран 6 — не часть связки «The deck offers itself…» с экранов
+      // 2–5, а отдельный, самостоятельный момент (само предсказание) —
+      // держит собственный, более низкий уровень заголовка (правка в
+      // чате: «сделай как было по расположению текста»), а не общий
+      // уровень 70 экранов 1–5.
       const titleY = Math.round(230 * scale);
       ctx.fillText(card.name, marginX, titleY);
 

@@ -58,15 +58,19 @@ export function createDrawScreen({ input, images, goto }) {
       const titleLH = setFont(ctx, 'title', scale);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
-      let ty = Math.round(160 * scale);
+      const ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
       ctx.fillText('The deck', marginX, ty);
-      ty += titleLH;
-      ctx.fillText('offers itself…', marginX, ty);
+      ctx.fillText('offers itself…', marginX, ty + titleLH);
 
       if (state === 'waiting') {
-        setFont(ctx, 'body', scale);
+        // Тот же стиль/размер, что у вспомогательного текста на экране 1
+        // (правка в чате: «вспомогательный текст по размеру как на первом»).
+        // Отступ считаем от ПЕРВОЙ строки заголовка на всю высоту двух
+        // строк — иначе подпись налезает на вторую строку (баг, пойман
+        // вживую при проверке).
+        setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
-        ctx.fillText('CLICK TO DRAW', marginX, Math.round(255 * scale));
+        ctx.fillText('CLICK TO DRAW', marginX, ty + 2 * titleLH + Math.round(9 * scale));
       }
 
       layout(w, h);
