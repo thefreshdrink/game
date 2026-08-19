@@ -50,21 +50,25 @@ const CASCADE_DURATION = 0.5;
 const CASCADE_DROP_HEIGHT = 200;
 
 const CARD_W_FRAC = 0.5; // как на экранах 3–4 — тот же размер карты насквозь
-// Зазор между центрами карт в вере. При таком количестве карт крайние
-// заведомо уходят за края экрана — это нормально для полной колоды
-// (веер длиннее видимой области, как у настоящей колоды в руке),
-// непрозрачная подложка карты (ниже) не даёт им путаться друг с другом.
-const FAN_OFFSET = 40;
-const FAN_ARC = 4; // px понижения на шаг от центра — едва заметная дуга веера
-const FAN_BOTTOM_MARGIN = 20;
 
-// Наведённая карта только чуть-чуть приподнимается — расстояние между
-// соседними картами не меняется вообще (правка в чате, 2026-08-19):
-// пробовали и полный гарантированный зазор (100%+ высоты, потом 55%), и
-// сдвиг только двух соседей — оба варианта читались «странно». Осталась
-// только вертикальная подсказка: карта всё равно может быть частично
-// закрыта той, что лежит спереди в естественном порядке вера — это
-// нормально и ожидаемо.
+// Веер полукругом вместо плоского ряда (правка в чате, 2026-08-19:
+// «колода не использует пространство экрана... закрутить полукругом и
+// повернуть немного вбок»). Геометрия — полярная, вокруг точки-оси ниже
+// экрана: центральная карта смотрит точно вверх (angle=0, самая высокая
+// точка дуги), крайние расходятся в стороны на FAN_ANGLE_TOTAL/2 каждая
+// и поворачиваются на свой угол — как раскрытая веером колода в руке.
+// При таком числе карт крайние всё равно уходят за края экрана — это
+// нормально для полной колоды (веер длиннее видимой области), непрозрачная
+// подложка карты (ниже) не даёт им путаться друг с другом.
+const FAN_RADIUS = 780;
+const FAN_ANGLE_TOTAL = (62 * Math.PI) / 180;
+const FAN_BOTTOM_MARGIN = 8; // от низа экрана до низа центральной (самой верхней) карты
+
+// Наведённая карта чуть выходит из дуги наружу — вдоль своего же радиуса,
+// а не просто вверх по Y, иначе на повёрнутых крайних картах подъём
+// выглядел бы перекошенным (правка в чате: раньше пробовали и полный
+// гарантированный зазор, и сдвиг соседей — оба читались «странно»;
+// осталась только лёгкая радиальная подсказка, соседи не двигаются).
 const LIFT_FRAC = 0.12;
 const SPREAD_RATE = 14; // скорость лерпа подъёма
 
@@ -93,44 +97,52 @@ function easeOutBack(x) {
 export function createDeckScreen({ input, images, goto }) {
   let offHandlers = [];
   let t = 0;
-  let cards = []; // {rest:{x,y}, spread:{x,y}, hovered}
+  let cards = []; // {angle, w, h, spreadR, delay}
+  let pivotX = 0;
+  let pivotY = 0;
   let hoveredIndex = null;
   let cardsSettled = false;
   let selected = false; // выбор сделан, дальше не реагируем на ввод
   let flying = false;
   let flyStartT = 0;
-  let flyFrom = null; // {x, y} — позиция карты в момент выбора
+  let flyFrom = null; // {x, y, rotation} — позиция и угол карты в момент выбора
 
   function layoutCards(w, h) {
     const cardW = Math.round(w * CARD_W_FRAC);
     const cardH = Math.round(cardW * (384 / 224));
-    const centerX = w / 2;
-    const restY = h - FAN_BOTTOM_MARGIN - cardH;
-    const firstOffset = -((CARD_COUNT - 1) / 2) * FAN_OFFSET;
+    const centerY = h - FAN_BOTTOM_MARGIN - cardH / 2;
+    pivotX = w / 2;
+    pivotY = centerY + FAN_RADIUS;
 
+    const angleStep = FAN_ANGLE_TOTAL / (CARD_COUNT - 1);
     const centerIndex = (CARD_COUNT - 1) / 2;
     for (let i = 0; i < CARD_COUNT; i++) {
-      const restX = Math.round(centerX + firstOffset + i * FAN_OFFSET - cardW / 2);
-      const restYArc = Math.round(restY + Math.abs(i - centerIndex) * FAN_ARC);
-      if (!cards[i]) {
-        cards[i] = { spread: { x: 0, y: 0 } };
-      }
-      cards[i].rest = { x: restX, y: restYArc };
+      if (!cards[i]) cards[i] = { spreadR: 0 };
+      cards[i].angle = (i - centerIndex) * angleStep;
       cards[i].w = cardW;
       cards[i].h = cardH;
       cards[i].delay = CARDS_START + i * CASCADE_STAGGER;
     }
   }
 
-  function cardIndexAt(x) {
-    // Ближайшая по X карта среди «домашних» слотов вера — не зависит от
-    // текущего анимированного расступания, иначе слоты гуляли бы под
-    // пальцем.
+  /** Центр карты на дуге радиуса r при её угле — полярные → экранные. */
+  function cardCenterAt(c, r) {
+    return {
+      x: pivotX + r * Math.sin(c.angle),
+      y: pivotY - r * Math.cos(c.angle),
+    };
+  }
+
+  function cardIndexAt(x, y) {
+    // Ближайшая по 2D-расстоянию карта среди «домашних» слотов веера (при
+    // radius=FAN_RADIUS, без подъёма) — не зависит от текущего
+    // анимированного расступания, иначе слоты гуляли бы под пальцем.
+    // Дуга повёрнутая, поэтому просто по X уже недостаточно точно.
     let best = null;
     let bestDist = Infinity;
     cards.forEach((c, i) => {
-      const cx = c.rest.x + c.w / 2;
-      const d = Math.abs(x - cx);
+      const p = cardCenterAt(c, FAN_RADIUS);
+      const d = Math.hypot(x - p.x, y - p.y);
       if (d < bestDist) {
         bestDist = d;
         best = i;
@@ -152,11 +164,11 @@ export function createDeckScreen({ input, images, goto }) {
       offHandlers = [
         input.on('pressstart', (e) => {
           if (!cardsSettled || selected) return;
-          hoveredIndex = cardIndexAt(e.x);
+          hoveredIndex = cardIndexAt(e.x, e.y);
         }),
         input.on('pressmove', (e) => {
           if (!cardsSettled || selected) return;
-          hoveredIndex = cardIndexAt(e.x);
+          hoveredIndex = cardIndexAt(e.x, e.y);
         }),
         input.on('pressend', () => {
           if (!cardsSettled || selected || hoveredIndex === null) return;
@@ -164,7 +176,10 @@ export function createDeckScreen({ input, images, goto }) {
           flying = true;
           flyStartT = t;
           const c = cards[hoveredIndex];
-          flyFrom = { x: c.rest.x + c.spread.x, y: c.rest.y + c.spread.y, w: c.w, h: c.h };
+          const p = cardCenterAt(c, FAN_RADIUS + c.spreadR);
+          flyFrom = {
+            x: p.x - c.w / 2, y: p.y - c.h / 2, w: c.w, h: c.h, rotation: c.angle,
+          };
           session.cardId = 'fool'; // любая карта в этой сборке — Шут (BUILD-SPEC)
         }),
       ];
@@ -188,11 +203,11 @@ export function createDeckScreen({ input, images, goto }) {
       if (allLanded) cardsSettled = true;
 
       cards.forEach((c, i) => {
-        // Только вертикальный подъём наведённой карты — горизонтальное
-        // расстояние между соседями не трогаем (правка в чате).
-        const targetY = i === hoveredIndex ? -c.h * LIFT_FRAC : 0;
+        // Только радиальный подъём наведённой карты (вдоль её же угла на
+        // дуге) — соседей не трогаем (правка в чате).
+        const targetR = i === hoveredIndex ? c.h * LIFT_FRAC : 0;
         const rate = 1 - Math.exp(-SPREAD_RATE * dt);
-        c.spread.y += (targetY - c.spread.y) * rate;
+        c.spreadR += (targetR - c.spreadR) * rate;
       });
     },
 
@@ -248,70 +263,76 @@ export function createDeckScreen({ input, images, goto }) {
 
       layoutCards(w, h);
 
+      // Рисует рубашку карты с центром в (cx,cy), повёрнутую на rotation
+      // (радианы) — чёрная подложка тем же приёмом, что и раньше: у
+      // рубашки прозрачный фон (только линии), без подложки карты в вере
+      // просвечивали бы друг сквозь друга вместо того, чтобы перекрывать.
+      function drawCard(cx, cy, cw, ch, rotation, accent) {
+        ctx.save();
+        ctx.translate(Math.round(cx), Math.round(cy));
+        ctx.rotate(rotation);
+        const dx = Math.round(-cw / 2);
+        const dy = Math.round(-ch / 2);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(dx, dy, cw, ch);
+        ctx.drawImage(images.cardBack, dx, dy, cw, ch);
+        if (accent) {
+          ctx.strokeStyle = '#EBA331';
+          ctx.lineWidth = Math.max(2, Math.round(2 * scale));
+          ctx.strokeRect(dx + 1, dy + 1, cw - 2, ch - 2);
+        }
+        ctx.restore();
+      }
+
       if (flying && flyFrom) {
         // Выбранная карта плавно летит к позиции экрана 3 (draw.js) —
         // тот же размер и та же формула центрирования, чтобы при смене
-        // сцены не было скачка (правка в чате).
+        // сцены не было скачка (правка в чате) — и выпрямляется по пути
+        // из своего угла на веере обратно в 0, к обычной ориентации карты.
         const flyP = easeInOutQuad(clamp01((t - flyStartT) / FLY_DURATION));
         const targetX = Math.round((w - flyFrom.w) / 2);
         const targetY = Math.round(h * 0.364);
         const x = flyFrom.x + (targetX - flyFrom.x) * flyP;
         const y = flyFrom.y + (targetY - flyFrom.y) * flyP;
+        const rotation = flyFrom.rotation * (1 - flyP);
 
         ctx.globalAlpha = clamp01(1 - (t - flyStartT) / FLY_FADE_OTHERS);
         cards.forEach((c, i) => {
           if (i === hoveredIndex) return;
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(Math.round(c.rest.x), Math.round(c.rest.y), c.w, c.h);
-          ctx.drawImage(images.cardBack, Math.round(c.rest.x), Math.round(c.rest.y), c.w, c.h);
+          const p = cardCenterAt(c, FAN_RADIUS);
+          drawCard(p.x, p.y, c.w, c.h, c.angle, false);
         });
         ctx.globalAlpha = 1;
 
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(Math.round(x), Math.round(y), flyFrom.w, flyFrom.h);
-        ctx.drawImage(images.cardBack, Math.round(x), Math.round(y), flyFrom.w, flyFrom.h);
-        ctx.strokeStyle = '#EBA331';
-        ctx.lineWidth = Math.max(2, Math.round(2 * scale));
-        ctx.strokeRect(Math.round(x) + 1, Math.round(y) + 1, flyFrom.w - 2, flyFrom.h - 2);
+        drawCard(x + flyFrom.w / 2, y + flyFrom.h / 2, flyFrom.w, flyFrom.h, rotation, true);
         return;
       }
 
-      // Карты — каскадом влетают, потом лежат вером внизу. Рисуем строго в
-      // порядке индекса (естественный порядок стопки): карта справа лежит
+      // Карты — каскадом влетают (разворачиваясь из центра в свой угол на
+      // дуге), потом лежат веером полукругом внизу. Рисуем строго в
+      // порядке индекса (естественный порядок стопки): карта правее лежит
       // «спереди» и рисуется позже, поэтому продолжает частично перекрывать
       // наведённую, если та приподнята недостаточно, чтобы выйти из-под
       // неё — так и должно быть (правка в чате: «она должна быть закрыта
-      // всё равно спереди лежащей картой»). Раньше наведённая карта
-      // принудительно рисовалась последней (поверх всех) — убрали.
+      // всё равно спереди лежащей картой»).
       cards.forEach((c, i) => {
         const elapsed = t - c.delay;
-        let x = c.rest.x + c.spread.x;
-        let y = c.rest.y + c.spread.y;
         let alpha = 1;
+        let radius = FAN_RADIUS + c.spreadR;
+        let rotation = c.angle;
 
         if (elapsed < 0) {
           alpha = 0;
         } else if (elapsed < CASCADE_DURATION) {
           const p = easeOutBack(clamp01(elapsed / CASCADE_DURATION));
-          const startX = w / 2 - c.w / 2;
-          const startY = c.rest.y - CASCADE_DROP_HEIGHT;
-          x = startX + (c.rest.x - startX) * p;
-          y = startY + (c.rest.y - startY) * p;
+          radius = (FAN_RADIUS - CASCADE_DROP_HEIGHT) + CASCADE_DROP_HEIGHT * p;
+          rotation = c.angle * p;
         }
 
         if (alpha <= 0) return;
+        const pos = cardCenterAt(c, radius);
         ctx.globalAlpha = alpha;
-        // У рубашки прозрачный фон (только линии) — без непрозрачной
-        // подложки карты в вере просвечивают друг сквозь друга вместо
-        // того, чтобы перекрывать (правка в чате).
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(Math.round(x), Math.round(y), c.w, c.h);
-        ctx.drawImage(images.cardBack, Math.round(x), Math.round(y), c.w, c.h);
-        if (i === hoveredIndex) {
-          ctx.strokeStyle = '#EBA331';
-          ctx.lineWidth = Math.max(2, Math.round(2 * scale));
-          ctx.strokeRect(Math.round(x) + 1, Math.round(y) + 1, c.w - 2, c.h - 2);
-        }
+        drawCard(pos.x, pos.y, c.w, c.h, rotation, i === hoveredIndex);
         ctx.globalAlpha = 1;
       });
     },
