@@ -6,12 +6,14 @@
 
 import { createCanvas } from './core/canvas.js';
 import { createInput } from './core/input.js';
-import { loadSprites } from './core/sprites.js';
+import { loadSprites, sliceStrip } from './core/sprites.js';
 import { CARDS } from './data/cards.js';
 import { createQuestionScreen } from './screens/question.js';
 import { createDeckScreen } from './screens/deck.js';
 import { createDrawScreen } from './screens/draw.js';
 import { createRevealScreen } from './screens/reveal.js';
+import { createLeapScreen } from './minigames/fool/leap.js';
+import { createPredictionScreen } from './screens/prediction.js';
 
 const canvasEl = document.getElementById('game');
 const screen = createCanvas(canvasEl);
@@ -139,17 +141,31 @@ const IMAGE_MANIFEST = {
   futureTellerEyes: 'assets/future_teller/oracle_eyes.png',
   futureTellerSparks: 'assets/future_teller/oracle_sparks.png',
   cardBack: 'assets/card/back_side_card_final.png',
-  cardFront: 'assets/card/front_side_card.png',
-  cardFace: 'assets/card/card_the_fool.png',
+  cardFront: 'assets/card/card_frame_fool.png',
+  foolOnCard: 'assets/card/fool_on_the_card.png',
   foolArt: 'assets/fool/the_fool_x3.png',
+  foolIdle: 'assets/fool/strips/fool_idle_1f_42x50.png',
+  foolFall: 'assets/fool/strips/fool_fall_1f_42x50.png',
+  roadBarMid: 'assets/road/bar_mid.png',
+  roadCapLeft: 'assets/road/cap_left.png',
+  roadCapRight: 'assets/road/cap_right.png',
+  dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
+  dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
+  dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
+  dogJump: 'assets/dog/strips/dog_jump_1f_18x14.png',
 };
 
 loadSprites(IMAGE_MANIFEST).then((images) => {
+  images.dogWalkFrames = sliceStrip(images.dogWalkStrip, 18, 14);
+  images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
+
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
   registerScene('deck', createDeckScreen(deps));
   registerScene('draw', createDrawScreen(deps));
   registerScene('reveal', createRevealScreen(deps));
+  registerScene('leap', createLeapScreen(deps));
+  registerScene('prediction', createPredictionScreen(deps));
   goto('question');
 }).catch((err) => {
   scenes.loading.failed = err.message;
@@ -162,7 +178,7 @@ let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
-  current?.update?.(dt);
+  current?.update?.(dt, screen.width, screen.height);
   current?.draw?.(screen.ctx, screen.width, screen.height);
   requestAnimationFrame(loop);
 }

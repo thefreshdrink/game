@@ -5,11 +5,10 @@
 // экране 1 были пункты меню (сразу под заголовком, не под картой — тоже
 // правка в чате), появляется CONTINUE.
 //
-// BUILD-SPEC, шаг 2: мини-игру пока не строим — CONTINUE сбрасывает сессию
-// и возвращает на экран 1, чтобы весь цикл экранов 1–4 можно было прогнать
-// руками до конца. Как только появится мини-игра — CONTINUE поведёт туда.
+// CONTINUE ведёт в мини-игру «Leap» (экран 5).
 
-import { resetSession } from '../core/session.js';
+import { CARDS } from '../data/cards.js';
+import { session } from '../core/session.js';
 import { setFont } from '../core/text.js';
 import { drawCardFace } from '../core/cardRender.js';
 
@@ -61,8 +60,7 @@ export function createRevealScreen({ input, images, goto }) {
         if (!continueReady()) return;
         const l = continueLabel;
         if (e.x < l.x0 - 12 || e.x > l.x1 + 12 || Math.abs(e.y - l.y) > 22) return;
-        resetSession();
-        goto('question');
+        goto('leap');
       });
     },
 
@@ -90,8 +88,11 @@ export function createRevealScreen({ input, images, goto }) {
       ctx.fillText('offers itself…', marginX, ty);
 
       layout(w, h, scale, ctx);
+      const card = CARDS[session.cardId] ?? CARDS.fool;
       const revealProgress = clamp01(t / REVEAL_DURATION);
-      drawCardFace(ctx, images, box.x, box.y, box.w, box.h, revealProgress, REVEAL_CELL_SIZE);
+      drawCardFace(ctx, images, box.x, box.y, box.w, box.h, card.name, scale, {
+        numeral: card.numeral, revealProgress, cellSize: REVEAL_CELL_SIZE,
+      });
 
       if (continueReady()) {
         setFont(ctx, 'menuOption', scale);
