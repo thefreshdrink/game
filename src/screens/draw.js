@@ -1,10 +1,8 @@
 // Экран 3 — Вытягивание. Одна карта рубашкой вверх, тап переворачивает.
 // Референс: docs/interfaces/Tap to see.png
 
-import { CARDS } from '../data/cards.js';
-import { session } from '../core/session.js';
 import { setFont } from '../core/text.js';
-import { drawCardBack, drawCardFace } from '../core/cardRender.js';
+import { drawCardBack, drawCardBlank } from '../core/cardRender.js';
 
 const FLIP_DURATION = 0.8; // сек — «не быстрее ~0.8 сек», это ритуал (BUILD-SPEC)
 
@@ -85,8 +83,10 @@ export function createDrawScreen({ input, images, goto }) {
       if (progress < 0.5) {
         drawCardBack(ctx, images, box.x, box.y, box.w, box.h);
       } else {
-        const card = CARDS[session.cardId];
-        drawCardFace(ctx, images, box.x, box.y, box.w, box.h, card.name, scale);
+        // Лик ещё не проступает здесь — он материализуется отдельным
+        // тактом на экране 4 (revealProgress 0→1), флип только открывает
+        // пустую (без портрета) сторону карты.
+        drawCardBlank(ctx, images, box.x, box.y, box.w, box.h);
       }
       ctx.restore();
     },

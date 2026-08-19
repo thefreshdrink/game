@@ -140,7 +140,7 @@ const IMAGE_MANIFEST = {
   futureTellerSparks: 'assets/future_teller/oracle_sparks.png',
   cardBack: 'assets/card/back_side_card_final.png',
   cardFront: 'assets/card/front_side_card.png',
-  cardFrame: 'assets/card/card_frame.png',
+  cardFace: 'assets/card/card_the_fool.png',
   foolArt: 'assets/fool/the_fool_x3.png',
 };
 
