@@ -32,6 +32,23 @@ export function createInput(target) {
   let startX = 0, startY = 0, startTime = 0;
   let holdTimer = null;
 
+  // Координаты сцен — CSS-px стейджа (core/canvas.js), не окна. Раньше
+  // канвас всегда совпадал с окном, e.clientX/Y годились как есть; с
+  // портретным стейджем ≤480px на широких экранах это больше не так —
+  // хит-зоны съезжали (BUILD-SPEC-02, задача 1). Переводим через
+  // getBoundingClientRect(), пересчитываем на resize/orientationchange.
+  let rect = { left: 0, top: 0 };
+  function updateRect() {
+    rect = target.getBoundingClientRect();
+  }
+  updateRect();
+  window.addEventListener('resize', updateRect);
+  window.addEventListener('orientationchange', updateRect);
+
+  function toLocal(e) {
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
   function on(type, handler) {
     handlers[type].push(handler);
     return () => {
@@ -46,8 +63,9 @@ export function createInput(target) {
   function onDown(e) {
     pointerActive = true;
     holdActive = false;
-    startX = e.clientX;
-    startY = e.clientY;
+    const p = toLocal(e);
+    startX = p.x;
+    startY = p.y;
     startTime = performance.now();
     try { target.setPointerCapture?.(e.pointerId); } catch { /* платформа отказала — не критично */ }
     emit('pressstart', { x: startX, y: startY });
@@ -62,13 +80,14 @@ export function createInput(target) {
 
   function onMove(e) {
     if (!pointerActive) return;
-    emit('pressmove', { x: e.clientX, y: e.clientY });
+    const p = toLocal(e);
+    emit('pressmove', { x: p.x, y: p.y });
     if (!holdActive) return;
     emit('holdmove', {
-      x: e.clientX,
-      y: e.clientY,
-      dx: e.clientX - startX,
-      dy: e.clientY - startY,
+      x: p.x,
+      y: p.y,
+      dx: p.x - startX,
+      dy: p.y - startY,
       duration: performance.now() - startTime,
     });
   }
@@ -77,16 +96,17 @@ export function createInput(target) {
     if (!pointerActive) return;
     pointerActive = false;
     clearTimeout(holdTimer);
-    emit('pressend', { x: e.clientX, y: e.clientY });
+    const p = toLocal(e);
+    emit('pressend', { x: p.x, y: p.y });
 
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    const dx = p.x - startX;
+    const dy = p.y - startY;
     const dist = Math.hypot(dx, dy);
     const duration = performance.now() - startTime;
 
     if (holdActive) {
       holdActive = false;
-      emit('holdend', { x: e.clientX, y: e.clientY, dx, dy, duration });
+      emit('holdend', { x: p.x, y: p.y, dx, dy, duration });
       return;
     }
 
@@ -103,7 +123,7 @@ export function createInput(target) {
     }
 
     if (duration <= TAP_MAX_DURATION && dist <= TAP_MAX_DISTANCE) {
-      emit('tap', { x: e.clientX, y: e.clientY });
+      emit('tap', { x: p.x, y: p.y });
     }
   }
 

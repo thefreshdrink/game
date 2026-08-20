@@ -95,6 +95,15 @@ const BODY_START = TEXT1_START + TEXT1_REVEAL + TEXT1_READ_HOLD;
 const TEXT2_START = BODY_START + BODY_REVEAL;
 const OPTIONS_START = TEXT2_START + TEXT2_REVEAL + TEXT2_READ_HOLD;
 
+// Короткий вход на возврате (BUILD-SPEC-02, задача 2): полное интро — ~9с
+// до первого тапа, на втором круге это уже не ритуал, а пошлина. Фигура
+// сразу проявлена (без пиксельного прохода), первой реплики нет, вторая
+// стартует с нулевой задержки, пункты — через 0.3с после последнего слова.
+// Только первый вход за сессию (перезагрузка = снова первый) играет
+// полное интро — session.seenIntro, в памяти, не в сторадже.
+const RETURN_TEXT2_START = 0;
+const RETURN_OPTIONS_GAP = 0.3;
+
 // Моргание — процедурное, кадра нет (ASSETS.md): просто не рисуем слой
 // глаз на пару кадров. Фиксированный ритм, попросили ровно 2.5 сек
 // (правка в чате) — раньше был случайный разброс 2.6–5.5.
@@ -114,6 +123,10 @@ export function createQuestionScreen({ input, images, goto }) {
   let blinking = false;
   let blinkT = 0;
   let pressedIndex = null; // подсветка «пальцем сейчас здесь», не финальный выбор
+  let shortMode = false; // короткий вход на возврате — session.seenIntro на момент enter()
+  let introMarked = false; // session.seenIntro уже выставлен в этом заходе
+  let text2Start = TEXT2_START;
+  let optionsStart = OPTIONS_START;
 
   function itemAt(x, y) {
     const idx = items.findIndex(
@@ -143,8 +156,16 @@ export function createQuestionScreen({ input, images, goto }) {
       blinking = false;
       blinkTimer = BLINK_MIN + Math.random() * (BLINK_MAX - BLINK_MIN);
       pressedIndex = null;
+      introMarked = false;
 
-      const optionsReady = () => t >= OPTIONS_START + (CATEGORIES.length - 1) * OPTION_ITEM_STAGGER;
+      // Короткий вход — только если полное интро уже отыграло в этой
+      // сессии (перезагрузка страницы сбрасывает session.seenIntro,
+      // это ожидаемо — «снова первый вход»).
+      shortMode = session.seenIntro;
+      text2Start = shortMode ? RETURN_TEXT2_START : TEXT2_START;
+      optionsStart = shortMode ? text2Start + TEXT2_REVEAL + RETURN_OPTIONS_GAP : OPTIONS_START;
+
+      const optionsReady = () => t >= optionsStart + (CATEGORIES.length - 1) * OPTION_ITEM_STAGGER;
 
       offHandlers = [
         input.on('pressstart', (e) => {
@@ -174,6 +195,14 @@ export function createQuestionScreen({ input, images, goto }) {
 
     update(dt) {
       t += dt;
+
+      // Флаг ставится, когда интро доиграло до появления пунктов — что в
+      // полном, что в коротком заходе (BUILD-SPEC-02, задача 2). Дальше
+      // именно он решает, каким будет вход в следующий раз.
+      if (!introMarked && t >= optionsStart) {
+        session.seenIntro = true;
+        introMarked = true;
+      }
 
       // Моргание идёт всё время, уже во время проявления глаз (правка в
       // чате: «глаза появляются, которые уже моргают») — при малой
@@ -219,18 +248,21 @@ export function createQuestionScreen({ input, images, goto }) {
       // фигура уйдёт вниз»), скролл не заводим (запрещён в CLAUDE.md).
       const oracle = computeOracleLayout(w, optionsY, scale, images.futureTellerBody);
 
-      const eyesAlpha = clamp01(t / EYES_FADE) * (blinking ? 0 : 1);
-      const bodyProgress = clamp01((t - BODY_START) / BODY_REVEAL);
+      // Короткий вход: фигура уже проявлена целиком, без пиксельного
+      // прохода — глаза без нарастания альфы, только моргание как обычно
+      // (правка в чате, BUILD-SPEC-02 задача 2).
+      const eyesAlpha = (shortMode ? 1 : clamp01(t / EYES_FADE)) * (blinking ? 0 : 1);
+      const bodyProgress = shortMode ? 1 : clamp01((t - BODY_START) / BODY_REVEAL);
 
       // Тело — пикселями от глаз из темноты; глаза — отдельным слоем
       // поверх, они проступают раньше и не зависят от прогресса тела.
       drawOracleBody(ctx, images, oracle, bodyProgress, BODY_CELL_SIZE);
       drawOracleEyes(ctx, images, oracle, eyesAlpha);
 
-      if (t >= OPTIONS_START) {
+      if (t >= optionsStart) {
         const dotPhaseStep = DOT_CYCLE / DOTS_SRC.length;
         DOTS_SRC.forEach((dot, i) => {
-          const localT = ((t - OPTIONS_START + i * dotPhaseStep) % DOT_CYCLE + DOT_CYCLE) % DOT_CYCLE;
+          const localT = ((t - optionsStart + i * dotPhaseStep) % DOT_CYCLE + DOT_CYCLE) % DOT_CYCLE;
           const alpha = twinkleAlpha(localT);
           if (alpha <= 0) return;
           ctx.globalAlpha = alpha;
@@ -252,8 +284,9 @@ export function createQuestionScreen({ input, images, goto }) {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
 
+      // Короткий вход: первой реплики нет вообще (BUILD-SPEC-02 задача 2).
       const elapsed1 = t - TEXT1_START;
-      if (elapsed1 >= 0 && elapsed1 < TEXT1_REVEAL + TEXT1_READ_HOLD + TEXT1_FADE_OUT) {
+      if (!shortMode && elapsed1 >= 0 && elapsed1 < TEXT1_REVEAL + TEXT1_READ_HOLD + TEXT1_FADE_OUT) {
         const words1 = layoutWords(ctx, lines1, marginX, ty, titleLH);
         const fadeT = elapsed1 - (TEXT1_REVEAL + TEXT1_READ_HOLD);
         ctx.globalAlpha = fadeT > 0 ? clamp01(1 - fadeT / TEXT1_FADE_OUT) : 1;
@@ -262,7 +295,7 @@ export function createQuestionScreen({ input, images, goto }) {
         ctx.globalAlpha = 1;
       }
 
-      const elapsed2 = t - TEXT2_START;
+      const elapsed2 = t - text2Start;
       if (elapsed2 >= 0) {
         const words2 = layoutWords(ctx, lines2, marginX, ty, titleLH);
         const shown = visibleWordCount(elapsed2, words2.length);
@@ -271,16 +304,16 @@ export function createQuestionScreen({ input, images, goto }) {
 
       // Меню категорий — появляются по одному пункту, сразу на 100%
       // (правка в чате: «по словам по очереди, не всё сразу»).
-      if (t >= OPTIONS_START) {
+      if (t >= optionsStart) {
         layout(ctx, w, scale, optionsY);
         setFont(ctx, 'menuOption', scale);
-        const allShownT = OPTIONS_START + (items.length - 1) * OPTION_ITEM_STAGGER;
+        const allShownT = optionsStart + (items.length - 1) * OPTION_ITEM_STAGGER;
         const autoIndex = t >= allShownT
           ? Math.floor((t - allShownT) / MENU_ITEM_ON) % items.length
           : null;
         const highlighted = pressedIndex !== null ? pressedIndex : autoIndex;
         items.forEach((it, i) => {
-          if (t < OPTIONS_START + i * OPTION_ITEM_STAGGER) return;
+          if (t < optionsStart + i * OPTION_ITEM_STAGGER) return;
           ctx.fillStyle = i === highlighted ? '#EBA331' : '#FFFFFF';
           ctx.fillText(it.label, it.x0, it.y);
         });
