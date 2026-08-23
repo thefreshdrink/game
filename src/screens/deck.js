@@ -12,13 +12,15 @@
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
-import { computeOracleLayout, drawOracleBody, drawOracleEyes } from '../core/oracle.js';
+import {
+  computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
+} from '../core/oracle.js';
 
 // Число карт в вере — чисто визуальное (правка в чате: сначала 5
 // читалось «мало для колоды», подняли до 9, потом ещё раз попросили
 // больше), с реальным банком карт не связано: какую ни коснись, в этой
 // сборке всегда падает Шут (BUILD-SPEC).
-const CARD_COUNT = 14;
+const CARD_COUNT = 20;
 
 // Текст, с которым игрок пришёл с экрана 1 (должен быть слово-в-слово
 // тем же — это финальная реплика question.js) — гаснет тут же, на той
@@ -49,7 +51,22 @@ const CASCADE_STAGGER = 0.09;
 const CASCADE_DURATION = 0.5;
 const CASCADE_DROP_HEIGHT = 200;
 
-const CARD_W_FRAC = 0.5; // как на экранах 3–4 — тот же размер карты насквозь
+// Карта — 0.42 ширины экрана вместо 0.5 (BUILD-SPEC-02, задача 3): при
+// половине ширины и радиусе дуги 780 крайние карты уходили полностью за
+// края, а сама карта заслоняла собой слишком много ширины веера.
+const CARD_W_FRAC = 0.42;
+
+// Два ряда, не один (правка в чате, 2026-08-23: «карты нарисованы как-то
+// не так... сделай два ряда, ничего страшного, если будут накладываться
+// друг на друга»). CARD_COUNT делится ровно пополам: задний ряд — первая
+// половина индексов, передний — вторая, поэтому естественный порядок
+// отрисовки (по индексу) сам кладёт передний ряд поверх заднего, без
+// отдельной сортировки по слоям. Оба ряда стоят на ОДНИХ И ТЕХ ЖЕ углах
+// (не в шахматном порядке): задний ряд — тот же веер, но на большем
+// радиусе от той же точки-оси, поэтому просто выглядывает из-за
+// переднего сверху, а не путается с ним по горизонтали.
+const ROWS = 2;
+const ROW_COUNT = CARD_COUNT / ROWS;
 
 // Веер полукругом вместо плоского ряда (правка в чате, 2026-08-19:
 // «колода не использует пространство экрана... закрутить полукругом и
@@ -57,12 +74,36 @@ const CARD_W_FRAC = 0.5; // как на экранах 3–4 — тот же р�
 // экрана: центральная карта смотрит точно вверх (angle=0, самая высокая
 // точка дуги), крайние расходятся в стороны на FAN_ANGLE_TOTAL/2 каждая
 // и поворачиваются на свой угол — как раскрытая веером колода в руке.
-// При таком числе карт крайние всё равно уходят за края экрана — это
-// нормально для полной колоды (веер длиннее видимой области), непрозрачная
-// подложка карты (ниже) не даёт им путаться друг с другом.
-const FAN_RADIUS = 780;
-const FAN_ANGLE_TOTAL = (62 * Math.PI) / 180;
-const FAN_BOTTOM_MARGIN = 8; // от низа экрана до низа центральной (самой верхней) карты
+//
+// Угол убавлен вдвое с лишним против прошлой правки (правка в чате:
+// «оставляй лёгким полукругом, но не слишком сильно» — 76° уже читалось
+// как перебор, особенно с двумя рядами сразу). FAN_RADIUS — радиус
+// ПЕРЕДНЕГО (главного, интерактивного) ряда; задний — на ROW_GAP дальше
+// от той же оси, то есть выше на экране (см. cardCenterAt).
+const FAN_RADIUS = 620;
+const FAN_ANGLE_TOTAL = (38 * Math.PI) / 180;
+const ROW_GAP = 150;
+
+// Верх центральной (самой верхней) карты ПЕРЕДНЕГО ряда — доля высоты
+// экрана, не фиксированный пиксельный отступ от низа: после того как
+// оракул уходит в темноту, веер должен занять освободившуюся пустоту
+// (BUILD-SPEC-02, задача 3), а фиксированный отступ от низа не следил бы
+// за этим на экранах разной высоты.
+//
+// Расхождение внутри самой задачи 3, зафиксировано вслух (правило
+// CLAUDE.md): текст говорит «верх центральной карты на ~0.40h», а
+// приёмка тут же требует «между подписью и верхом карты не больше
+// ~0.12h пустоты» на 390×844. При 0.40h разрыв на этом вьюпорте выходит
+// ~0.21h — вдвое больше цели приёмки, с текущей высотой шапки (заголовок
+// + подпись) 0.40h просто слишком низко. Взята приёмка как измеримая —
+// 0.30h держит разрыв ≈0.12h на 390×844, «около 0.40» не в счёт.
+//
+// Поднято до 0.58 (правка в чате, 2026-08-23: «опусти карты прям все
+// вниз, можно даже срезать концы нижних карт») — после перехода на два
+// ряда веер опустили вниз намеренно, вплоть до обрезки нижним краем
+// экрана крайних карт дуги (они ниже центральной — cos(angle)<1 в
+// cardCenterAt), это и есть «концы нижних карт», о которых речь.
+const CENTER_CARD_TOP_FRAC = 0.58;
 
 // Наведённая карта чуть выходит из дуги наружу — вдоль своего же радиуса,
 // а не просто вверх по Y, иначе на повёрнутых крайних картах подъём
@@ -81,6 +122,24 @@ const FLY_FADE_OTHERS = 0.4; // остальные карты гаснут, чт
 
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
+}
+
+// Авто-фит текстовой подписи (BUILD-SPEC-02, задача 3): пробуем базовый
+// кегль, потом уменьшаем шагами до 0.8 от базового; если и на 0.8 не
+// влезло в maxWidth — переносим на две строки на этом же (0.8) кегле.
+// ctx.font после вызова остаётся выставленным на menuOption/scale
+// результата — вызывающему коду setFont звать заново не нужно.
+function fitLabel(ctx, text, maxWidth, baseScale) {
+  const steps = [1, 0.93, 0.86, 0.8];
+  for (const step of steps) {
+    const lineHeight = setFont(ctx, 'menuOption', baseScale * step);
+    if (ctx.measureText(text).width <= maxWidth) {
+      return { scale: baseScale * step, lines: [text], lineHeight };
+    }
+  }
+  const scale = baseScale * 0.8;
+  const lineHeight = setFont(ctx, 'menuOption', scale);
+  return { scale, lines: wrapLines(ctx, text, maxWidth), lineHeight };
 }
 
 function easeInOutQuad(x) {
@@ -110,15 +169,22 @@ export function createDeckScreen({ input, images, goto }) {
   function layoutCards(w, h) {
     const cardW = Math.round(w * CARD_W_FRAC);
     const cardH = Math.round(cardW * (384 / 224));
-    const centerY = h - FAN_BOTTOM_MARGIN - cardH / 2;
+    const centerY = h * CENTER_CARD_TOP_FRAC + cardH / 2;
     pivotX = w / 2;
     pivotY = centerY + FAN_RADIUS;
 
-    const angleStep = FAN_ANGLE_TOTAL / (CARD_COUNT - 1);
-    const centerIndex = (CARD_COUNT - 1) / 2;
+    // Оба ряда — один и тот же веер углов, слот = индекс внутри ряда
+    // (i % ROW_COUNT); ряд = i < ROW_COUNT ? задний : передний. Задний
+    // рисуется первым по естественному порядку индекса — передний ложится
+    // поверх сам, без сортировки по слоям.
+    const angleStep = FAN_ANGLE_TOTAL / (ROW_COUNT - 1);
+    const centerIndex = (ROW_COUNT - 1) / 2;
     for (let i = 0; i < CARD_COUNT; i++) {
       if (!cards[i]) cards[i] = { spreadR: 0 };
-      cards[i].angle = (i - centerIndex) * angleStep;
+      const slot = i % ROW_COUNT;
+      const row = Math.floor(i / ROW_COUNT); // 0 — задний, 1 — передний
+      cards[i].angle = (slot - centerIndex) * angleStep;
+      cards[i].radius = FAN_RADIUS + (ROWS - 1 - row) * ROW_GAP;
       cards[i].w = cardW;
       cards[i].h = cardH;
       cards[i].delay = CARDS_START + i * CASCADE_STAGGER;
@@ -134,14 +200,15 @@ export function createDeckScreen({ input, images, goto }) {
   }
 
   function cardIndexAt(x, y) {
-    // Ближайшая по 2D-расстоянию карта среди «домашних» слотов веера (при
-    // radius=FAN_RADIUS, без подъёма) — не зависит от текущего
-    // анимированного расступания, иначе слоты гуляли бы под пальцем.
-    // Дуга повёрнутая, поэтому просто по X уже недостаточно точно.
+    // Ближайшая по 2D-расстоянию карта среди «домашних» слотов веера (на
+    // СВОЁМ радиусе — задний и передний ряд стоят на разных, без подъёма),
+    // не зависит от текущего анимированного расступания, иначе слоты
+    // гуляли бы под пальцем. Дуга повёрнутая, поэтому просто по X уже
+    // недостаточно точно.
     let best = null;
     let bestDist = Infinity;
     cards.forEach((c, i) => {
-      const p = cardCenterAt(c, FAN_RADIUS);
+      const p = cardCenterAt(c, c.radius);
       const d = Math.hypot(x - p.x, y - p.y);
       if (d < bestDist) {
         bestDist = d;
@@ -176,7 +243,7 @@ export function createDeckScreen({ input, images, goto }) {
           flying = true;
           flyStartT = t;
           const c = cards[hoveredIndex];
-          const p = cardCenterAt(c, FAN_RADIUS + c.spreadR);
+          const p = cardCenterAt(c, c.radius + c.spreadR);
           flyFrom = {
             x: p.x - c.w / 2, y: p.y - c.h / 2, w: c.w, h: c.h, rotation: c.angle,
           };
@@ -246,17 +313,30 @@ export function createDeckScreen({ input, images, goto }) {
         for (let i = 0; i < shown; i++) ctx.fillText(words[i].text, words[i].x, words[i].y);
       }
 
+      // Подпись — авто-фит по ширине (BUILD-SPEC-02, задача 3): на узких
+      // экранах одной строкой на базовом кегле не влезала и обрезалась.
+      // Уменьшаем кегль шагами до 0.8 от базового; если и это не помогло —
+      // переносим на две строки (wrapLines).
+      const subtitleFit = fitLabel(ctx, SUBTITLE, textMaxWidth, scale);
       const subtitleAlpha = clamp01((t - SUBTITLE_START) / SUBTITLE_FADE);
       if (subtitleAlpha > 0) {
-        setFont(ctx, 'menuOption', scale); // тот же стиль/размер, что у опций на экране 1
+        setFont(ctx, 'menuOption', subtitleFit.scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = subtitleAlpha;
-        ctx.fillText(SUBTITLE, marginX, headerBottomY);
+        subtitleFit.lines.forEach((line, i) => {
+          ctx.fillText(line, marginX, headerBottomY + i * subtitleFit.lineHeight);
+        });
         ctx.globalAlpha = 1;
       }
-
       // Оракул уходит обратно в темноту — тот же слой, что и на экране 1.
-      const oracle = computeOracleLayout(w, headerBottomY, scale, images.futureTellerBody);
+      // Якорь — ФИКСИРОВАННЫЙ (core/oracle.js: headerBottomY), не от
+      // фактического числа строк заголовка/подписи ЭТОГО экрана: на
+      // экране 1 те же реплики иногда переносятся на 3 строки, здесь
+      // заголовок всегда на 2 — от разной высоты шапки фигура «скакала»
+      // между экранами (баг, пойман в чате). Подпись по-прежнему растёт
+      // от headerBottomY (реального, не фиксированного) — ей нужно не
+      // налезать на СВОЙ заголовок, а не совпадать с экраном 1.
+      const oracle = computeOracleLayout(w, oracleHeaderBottomY(ty, titleLH, scale), scale, images.futureTellerBody);
       const concealProgress = clamp01(1 - (t - ORACLE_CONCEAL_START) / ORACLE_CONCEAL);
       drawOracleBody(ctx, images, oracle, concealProgress, ORACLE_CELL_SIZE);
       drawOracleEyes(ctx, images, oracle, concealProgress);
@@ -264,22 +344,28 @@ export function createDeckScreen({ input, images, goto }) {
       layoutCards(w, h);
 
       // Рисует рубашку карты с центром в (cx,cy), повёрнутую на rotation
-      // (радианы) — чёрная подложка тем же приёмом, что и раньше: у
-      // рубашки прозрачный фон (только линии), без подложки карты в вере
-      // просвечивали бы друг сквозь друга вместо того, чтобы перекрывать.
+      // (радианы). Подложка — воздух сцены #111111, не тело #000000
+      // (правка в чате, 2026-08-23): у рубашки прозрачный фон (только
+      // линии), нужна какая-то заливка, чтобы карты не просвечивали друг
+      // сквозь друга, но для самой карты фон должен сливаться со сценой,
+      // не выделяться отдельным тёмным телом — тот же принцип, что уже
+      // применён к лицевой стороне на экране 4. Рамка выбора — готовый
+      // ассет (select_frame.png), не нарисованный ctx.strokeRect: она
+      // чуть крупнее самой карты (228×388 против 224×384), обводка идёт
+      // СНАРУЖИ, не по кромке.
       function drawCard(cx, cy, cw, ch, rotation, accent) {
         ctx.save();
         ctx.translate(Math.round(cx), Math.round(cy));
         ctx.rotate(rotation);
         const dx = Math.round(-cw / 2);
         const dy = Math.round(-ch / 2);
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = '#111111';
         ctx.fillRect(dx, dy, cw, ch);
         ctx.drawImage(images.cardBack, dx, dy, cw, ch);
         if (accent) {
-          ctx.strokeStyle = '#EBA331';
-          ctx.lineWidth = Math.max(2, Math.round(2 * scale));
-          ctx.strokeRect(dx + 1, dy + 1, cw - 2, ch - 2);
+          const fw = Math.round(cw * (228 / 224));
+          const fh = Math.round(ch * (388 / 384));
+          ctx.drawImage(images.cardSelectFrame, Math.round(-fw / 2), Math.round(-fh / 2), fw, fh);
         }
         ctx.restore();
       }
@@ -299,7 +385,7 @@ export function createDeckScreen({ input, images, goto }) {
         ctx.globalAlpha = clamp01(1 - (t - flyStartT) / FLY_FADE_OTHERS);
         cards.forEach((c, i) => {
           if (i === hoveredIndex) return;
-          const p = cardCenterAt(c, FAN_RADIUS);
+          const p = cardCenterAt(c, c.radius);
           drawCard(p.x, p.y, c.w, c.h, c.angle, false);
         });
         ctx.globalAlpha = 1;
@@ -318,14 +404,14 @@ export function createDeckScreen({ input, images, goto }) {
       cards.forEach((c, i) => {
         const elapsed = t - c.delay;
         let alpha = 1;
-        let radius = FAN_RADIUS + c.spreadR;
+        let radius = c.radius + c.spreadR;
         let rotation = c.angle;
 
         if (elapsed < 0) {
           alpha = 0;
         } else if (elapsed < CASCADE_DURATION) {
           const p = easeOutBack(clamp01(elapsed / CASCADE_DURATION));
-          radius = (FAN_RADIUS - CASCADE_DROP_HEIGHT) + CASCADE_DROP_HEIGHT * p;
+          radius = (c.radius - CASCADE_DROP_HEIGHT) + CASCADE_DROP_HEIGHT * p;
           rotation = c.angle * p;
         }
 

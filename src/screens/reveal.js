@@ -1,20 +1,23 @@
 // Экран 4 — Раскрытие. Карта уже открыта (флип прошёл на экране 3), портрет
 // проступает на ней пиксельным эффектом — тем же самым, что и силуэт
 // оракула на экранах 1–2 (правка в чате 2026-08-19: «появляй дурака так же,
-// как силуэт»). После того как портрет проступил полностью, там, где на
-// экране 1 были пункты меню (сразу под заголовком, не под картой — тоже
-// правка в чате), появляется CONTINUE.
+// как силуэт»). Заголовок — своя реплика оракула про пришедшую карту
+// (`card.arrival`, BUILD-SPEC-02 задача 4), не унаследованное с экрана 2
+// «The deck offers itself…»: у момента «тебе выпал Шут» не было своей
+// строки. `›CONTINUE` — под картой, а не в шапке: раньше сидел на месте
+// пунктов меню экрана 1, примерно на 400px выше карты, к которой относится.
 //
 // CONTINUE ведёт в мини-игру «Leap» (экран 5).
 
 import { CARDS } from '../data/cards.js';
 import { session } from '../core/session.js';
-import { setFont } from '../core/text.js';
+import { setFont, wrapLines } from '../core/text.js';
+import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
 import { drawCardFace } from '../core/cardRender.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
 const REVEAL_CELL_SIZE = 4;
-const CONTINUE_DELAY = 0.3; // короткая пауза после полного проявления
+const CONTINUE_DELAY = 0.3; // короткая пауза после того, как всё проступило
 
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
@@ -25,8 +28,9 @@ export function createRevealScreen({ input, images, goto }) {
   let t = 0;
   let box = { x: 0, y: 0, w: 0, h: 0 };
   let continueLabel = { x0: 0, x1: 0, y: 0 };
+  let titleRevealDuration = 0;
 
-  function layout(w, h, scale, ctx) {
+  function layout(w, h, scale) {
     const cardW = Math.round(w * 0.5);
     const cardH = Math.round(cardW * (384 / 224));
     box = {
@@ -35,22 +39,14 @@ export function createRevealScreen({ input, images, goto }) {
       w: cardW,
       h: cardH,
     };
-
-    // Та же формула, что у optionsY на экране 1 (question.js): сразу под
-    // заголовком, не привязано к карте — по месту, где раньше были пункты
-    // меню (правка в чате).
-    const marginX = Math.round(53 * scale);
-    const titleLH = setFont(ctx, 'title', scale);
-    const ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
-    const continueY = ty + 2 * titleLH + Math.round(9 * scale);
-    setFont(ctx, 'menuOption', scale);
-    const label = '›CONTINUE';
-    const width = ctx.measureText(label).width;
-    continueLabel = { x0: marginX, x1: marginX + width, y: continueY, label };
+    // Под картой (BUILD-SPEC-02, задача 4) — раньше сидел в шапке, у
+    // пунктов меню экрана 1, примерно на 400px выше карты, к которой
+    // относится: взгляд шёл реплика → CTA → только потом карта.
+    continueLabel.y = box.y + box.h + Math.round(36 * scale);
   }
 
   function continueReady() {
-    return t >= REVEAL_DURATION + CONTINUE_DELAY;
+    return t >= Math.max(REVEAL_DURATION, titleRevealDuration) + CONTINUE_DELAY;
   }
 
   return {
@@ -78,17 +74,23 @@ export function createRevealScreen({ input, images, goto }) {
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
+      const textMaxWidth = w - marginX * 2;
+      const card = CARDS[session.cardId] ?? CARDS.fool;
 
+      // Реплика оракула про пришедшую карту — слово за словом, тем же
+      // способом, что и на экране 1 (core/textReveal.js).
       const titleLH = setFont(ctx, 'title', scale);
+      const ty = Math.round(70 * scale); // тот же уровень, что и на экране 1
+      const lines = wrapLines(ctx, card.arrival, textMaxWidth);
+      const words = layoutWords(ctx, lines, marginX, ty, titleLH);
+      titleRevealDuration = revealDuration(words.length);
+
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
-      let ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
-      ctx.fillText('The deck', marginX, ty);
-      ty += titleLH;
-      ctx.fillText('offers itself…', marginX, ty);
+      const shown = visibleWordCount(t, words.length);
+      for (let i = 0; i < shown; i++) ctx.fillText(words[i].text, words[i].x, words[i].y);
 
-      layout(w, h, scale, ctx);
-      const card = CARDS[session.cardId] ?? CARDS.fool;
+      layout(w, h, scale);
       const revealProgress = clamp01(t / REVEAL_DURATION);
       drawCardFace(ctx, images, box.x, box.y, box.w, box.h, card.name, scale, {
         numeral: card.numeral, revealProgress, cellSize: REVEAL_CELL_SIZE,
@@ -98,7 +100,11 @@ export function createRevealScreen({ input, images, goto }) {
         setFont(ctx, 'menuOption', scale);
         ctx.textAlign = 'left';
         ctx.fillStyle = '#EBA331';
-        ctx.fillText(continueLabel.label, continueLabel.x0, continueLabel.y);
+        const label = '›CONTINUE';
+        const width = ctx.measureText(label).width;
+        continueLabel.x0 = Math.round(w / 2 - width / 2);
+        continueLabel.x1 = continueLabel.x0 + width;
+        ctx.fillText(label, continueLabel.x0, continueLabel.y);
       }
     },
   };

@@ -15,7 +15,7 @@ import { CATEGORIES } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
-import { computeOracleLayout, drawOracleBody, drawOracleEyes } from '../core/oracle.js';
+import { computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY } from '../core/oracle.js';
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
@@ -246,7 +246,14 @@ export function createQuestionScreen({ input, images, goto }) {
       // понравилась (правка в чате), а низ уходит за край экрана и
       // обрезается канвасом — это явно разрешено («ничего страшного, если
       // фигура уйдёт вниз»), скролл не заводим (запрещён в CLAUDE.md).
-      const oracle = computeOracleLayout(w, optionsY, scale, images.futureTellerBody);
+      //
+      // Якорь оракула — ФИКСИРОВАННЫЙ (core/oracle.js: headerBottomY), не
+      // optionsY: тот считается по фактическому числу строк ЭТОГО экрана
+      // (иногда 3 у длинной реплики), а на экране 2 заголовок всегда
+      // 2 строки — оракул «скакал» между экранами на высоту строки
+      // (баг, пойман в чате). Меню по-прежнему на optionsY — ему нужно
+      // реальное число строк, чтобы не налезать на текст.
+      const oracle = computeOracleLayout(w, headerBottomY(ty, titleLH, scale), scale, images.futureTellerBody);
 
       // Короткий вход: фигура уже проявлена целиком, без пиксельного
       // прохода — глаза без нарастания альфы, только моргание как обычно

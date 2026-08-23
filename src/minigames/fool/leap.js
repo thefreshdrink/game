@@ -11,7 +11,9 @@
 
 import { setFont } from '../../core/text.js';
 import { PHYS, TAP_UP_POW, TAP_SIDE_POW, gravityFor, jumpVelocity } from './physics.js';
-import { buildPlatforms, platformAt, drawPlatform, drawGhostRoad, PLATE_H } from './platforms.js';
+import {
+  buildPlatforms, platformAt, drawPlatform, drawGhostRoad, drawFarRoad, START_WALK,
+} from './platforms.js';
 
 // Спрайты — 42×50 и 18×14 арт-px (ASSETS.md), но правило сетки
 // CLAUDE.md — 1 арт-пиксель = 2 экранных, как и у PLATE_H в platforms.js.
@@ -154,7 +156,11 @@ export function createLeapScreen({ input, images, goto }) {
       const startY = 0;
       platforms = buildPlatforms(startY);
       const p0 = startPlatform();
-      player.x = p0.x + 40;
+      // P1 продолжается на 224px левее старого края, за кадр (BUILD-SPEC-02,
+      // задача 5) — старт отсчитываем от ПРАВОГО края на исходную дистанцию
+      // ходьбы (START_WALK), а не от левого, чтобы длина первого отрезка
+      // до первого прыжка не менялась и левый край плиты не был виден.
+      player.x = p0.x + p0.w - START_WALK;
       player.y = p0.y;
       player.vx = 0;
       player.vy = 0;
@@ -200,10 +206,12 @@ export function createLeapScreen({ input, images, goto }) {
       stateT += dt;
       updateDust(dt);
 
-      // Камера: портрет, фигура держится на трети сверху; по x с лёгким
-      // упреждением вправо (BUILD-SPEC: «камера портрет»).
+      // Камера: портрет, фигура держится ниже середины кадра (0.45, не
+      // 0.33 — BUILD-SPEC-02, задача 5: было слишком высоко, нижние ~55%
+      // кадра пустовали); по x с лёгким упреждением вправо (BUILD-SPEC:
+      // «камера портрет»).
       const targetCamX = player.x - w * 0.38;
-      const targetCamY = player.y - h * 0.33;
+      const targetCamY = player.y - h * 0.45;
       const camRate = Math.min(1, 6 * dt);
       camX += (targetCamX - camX) * camRate;
       camY += (targetCamY - camY) * camRate;
@@ -312,6 +320,10 @@ export function createLeapScreen({ input, images, goto }) {
       ctx.fillRect(0, 0, w, h);
 
       const last = platforms[platforms.length - 1];
+      // Дальний слой — за настоящими плитами, самым первым (BUILD-SPEC-02,
+      // задача 5: «плиты читаются как отдельные бруски в пустоте», нужна
+      // глубина без новых ассетов).
+      drawFarRoad(ctx, w, h, camX, player.y, scale, 0);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY, scale));
       // Дорога за пропастью — видна, не интерактивна (BUILD-SPEC «решение B»).
       drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 140, camX, camY, scale);
@@ -354,14 +366,20 @@ export function createLeapScreen({ input, images, goto }) {
 
       // Подсказка — тот же стиль, что и на других экранах.
       setFont(ctx, 'menuOption', scale);
-      ctx.textAlign = 'center';
       ctx.fillStyle = '#EBA331';
       const marginTop = Math.round(48 * scale);
       if (state === 'wait_jump' || state === 'walk') {
+        // Инлайн у фигуры, не HUD-баннером по центру сверху (BUILD-SPEC-02,
+        // задача 5) — на уровне головы, со сдвигом вправо. Гаснет после
+        // первого удавшегося прыжка (hintAlpha уже обнуляется в beginJump).
+        ctx.textAlign = 'left';
+        const headX = player.x - camX + Math.round(90 * scale);
+        const headY = player.y - camY - Math.round(PLAYER_H * scale);
         ctx.globalAlpha = hintAlpha;
-        ctx.fillText('SWIPE TO JUMP', w / 2, marginTop);
+        ctx.fillText('SWIPE TO JUMP', headX, headY);
         ctx.globalAlpha = 1;
       } else if (state === 'wait_leap' || state === 'charge') {
+        ctx.textAlign = 'center';
         ctx.fillText('HOLD', w / 2, marginTop);
       }
 

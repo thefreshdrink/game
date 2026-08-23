@@ -20,8 +20,15 @@ const GAP_JUMP = 52; // перепрыгивается даже при мини�
 const GAP_JUMP_FAR = 64; // «дальше» — щель побольше, но всё ещё безопасна
 const GAP_STEP = 32; // «сходит с края» — переносится ходьбой без прыжка
 
+// P1 — старт. Ширина 400, не 176 (BUILD-SPEC-02, задача 5): игрок стартует
+// не у самого левого края плиты, а с отступом на исходные 176px от правого
+// края — сама плита продолжается ещё на 224px влево, за кадр, чтобы левый
+// край не «обрывался» в кадре с первого мгновения (см. leap.js, START_WALK).
+export const P1_WIDTH = 400;
+export const START_WALK = 176;
+
 const DATA = [
-  { dy: 0, w: 176 }, // P1 — старт
+  { dy: 0, w: P1_WIDTH }, // P1 — старт
   { dy: -64, w: 108, gap: GAP_JUMP, jump: true },
   { dy: 32, w: 108, gap: GAP_STEP, jump: false },
   { dy: -32, w: 108, gap: GAP_JUMP, jump: true },
@@ -93,4 +100,49 @@ export function drawGhostRoad(ctx, images, x, y, w, camX, camY, scale) {
   ctx.globalAlpha = 0.4;
   drawBlock(ctx, images.roadBlock, rx, ry, rw, rh);
   ctx.globalAlpha = 1;
+}
+
+// Дальний слой — не реальная плита, а штрих намёка на то, что мир шире
+// кадра (BUILD-SPEC-02, задача 5: «плиты читаются как отдельные бруски в
+// пустоте», без глубины). Пунктир, не сплошная полоса — со сплошной
+// заливкой параллакс (плита едет медленнее переднего плана) было бы не
+// увидеть: у однотонной полосы нет ориентиров, по которым заметно
+// движение. Свой ассет не нужен — просто два цвета из палитры пустоты.
+const FAR_PARALLAX = 0.4;
+const FAR_DASH = 5;
+const FAR_GAP = 7;
+const FAR_Y_OFFSET = 150; // мировых px ниже стартовой плиты — «дальняя дорога» глубже в кадре
+// 0.45 — та же доля h, что и у камеры в leap.js (targetCamY = player.y −
+// h×0.45): нужна здесь, чтобы дальний слой стартовал на осмысленной
+// высоте кадра, а не считалась заново из camY (см. комментарий ниже).
+// Если поменяется камера — поменять и здесь.
+const CAM_Y_FRAC = 0.45;
+
+export function drawFarRoad(ctx, w, h, camX, playerY, scale, startY) {
+  // По Y — не от camY напрямую: camY уже несёт постоянное смещение
+  // кадрирования (игрок держится на 0.45h от верха, BUILD-SPEC-02 задача
+  // 5), и это смещение — не «прокрутка мира», а просто композиция кадра,
+  // общая у переднего и дальнего плана. Если параллаксить весь camY, эта
+  // постоянная часть тоже домножается на 0.4 и слой уезжает на сотни px
+  // не туда (баг, пойман вживую при проверке). Параллаксим только
+  // РАЗНИЦУ — насколько игрок реально прошёл от старта.
+  const traveledY = playerY - startY;
+  const y = Math.round(FAR_Y_OFFSET + h * CAM_Y_FRAC - traveledY * FAR_PARALLAX);
+  if (y < -20 || y > h + 20) return;
+
+  const parX = camX * FAR_PARALLAX;
+
+  const period = Math.round((FAR_DASH + FAR_GAP) * scale);
+  const dashLen = Math.max(1, Math.round(FAR_DASH * scale));
+  const barH = Math.max(1, Math.round(2 * scale));
+  const offset = ((parX % period) + period) % period;
+
+  ctx.fillStyle = '#2A2A2A';
+  for (let x = -offset - period; x < w + period; x += period) {
+    ctx.fillRect(Math.round(x), y, dashLen, barH);
+  }
+  // Ближняя кромка — на полутон светлее, тем же приёмом, что и у настоящих
+  // плит (двойная линия дизайн-системы, просто без второй, тёмной нити).
+  ctx.fillStyle = '#4A4A4A';
+  ctx.fillRect(0, y - barH, w, Math.max(1, Math.round(scale)));
 }

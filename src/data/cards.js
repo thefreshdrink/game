@@ -20,6 +20,11 @@ export const CARDS = {
     // проступает на сцене карты. Опциональна.
     intro: 'He does not look down. That is not courage. His attention is simply elsewhere.',
 
+    // Заголовок экрана 4 (BUILD-SPEC-02, задача 4) — момент «тебе выпал
+    // Шут» получает свою реплику вместо унаследованного с экрана 2
+    // «The deck offers itself…». Текст банка, не выдумывать на ходу.
+    arrival: 'The Fool answers you.',
+
     reading: {
       work:
         'You are standing at the edge of your working life with empty pockets and ' +
