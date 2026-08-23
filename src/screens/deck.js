@@ -11,7 +11,9 @@
 
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
-import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
+import {
+  layoutWords, visibleWordCount, revealDuration, blinkAlpha,
+} from '../core/textReveal.js';
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
 } from '../core/oracle.js';
@@ -41,20 +43,32 @@ const ORACLE_CONCEAL_START = 0;
 const ORACLE_CONCEAL = 1.2;
 const ORACLE_CELL_SIZE = 4;
 
-// Каскад карт — «как в Виндовс-Косынке при победе» (правка в чате):
-// вылетают из центра пачкой, с нахлёстом по времени, и ложатся веером.
-// Высота вылета — небольшая (не с верха экрана): иначе все пять карт
-// одновременно летят через весь экран и наслаиваются друг на друга и на
-// текст — читалось грязно, а не как каскад.
+// Каскад карт — «как в Виндовс-Косынке при победе» (правка в чате). Первая
+// версия поднимала каждую карту локально, вдоль её же угла — выглядело
+// как лёгкий подскок на месте, а не тасовка. По новой правке (2026-08-23:
+// «карты пролетают через экран, своеобразная тасовка») все карты стартуют
+// из ОДНОЙ и той же точки — угол и радиус животного момента появления
+// (elapsed=0) у всех совпадают, так что визуально это одна стопка в
+// центре, которая раздаёт себя веером по одной карте (см. CASCADE_STAGGER
+// ниже и цикл отрисовки).
 const CARDS_START = SUBTITLE_START + SUBTITLE_FADE + 0.3;
 const CASCADE_STAGGER = 0.09;
-const CASCADE_DURATION = 0.5;
-const CASCADE_DROP_HEIGHT = 200;
+const CASCADE_DURATION = 0.6;
+const CASCADE_STACK_OFFSET = 260; // насколько «стопка» ближе к оси, чем FAN_RADIUS
 
-// Карта — 0.42 ширины экрана вместо 0.5 (BUILD-SPEC-02, задача 3): при
-// половине ширины и радиусе дуги 780 крайние карты уходили полностью за
-// края, а сама карта заслоняла собой слишком много ширины веера.
-const CARD_W_FRAC = 0.42;
+// Карта — 0.5 ширины экрана, ТОЧНО как на экранах 3–4 (draw.js/reveal.js).
+// Задача 3 когда-то урезала это до 0.42, чтобы крайние карты дуги влезали
+// в экран — но это разошлось с размером карты после вылета, и на смене
+// сцены 2→3 стало видно, как карта скачком меняет размер (баг из чата,
+// 2026-08-23: «карта из колоды всё равно меняет свой размер... самое
+// главное сохраняй текущие размеры из оригинальности»). Правило теперь
+// такое: один и тот же визуальный объект (карта) держит один и тот же
+// размер во ВСЕХ сценах, где появляется — раскладка веера подстраивается
+// под размер карты, а не наоборот. Если карты от этого сильнее
+// перекрывают друг друга или срезаются краем экрана — это нормально,
+// разрешено явно в том же разговоре («можешь наложить больше карты друг
+// на друга, ничего страшного»).
+const CARD_W_FRAC = 0.5;
 
 // Два ряда, не один (правка в чате, 2026-08-23: «карты нарисованы как-то
 // не так... сделай два ряда, ничего страшного, если будут накладываться
@@ -82,7 +96,17 @@ const ROW_COUNT = CARD_COUNT / ROWS;
 // от той же оси, то есть выше на экране (см. cardCenterAt).
 const FAN_RADIUS = 620;
 const FAN_ANGLE_TOTAL = (38 * Math.PI) / 180;
-const ROW_GAP = 150;
+
+// Доля высоты экрана, не константный пиксельный разнос (правка в чате,
+// 2026-08-24: «верхний уровень карты колоды можно чуть поднять, чтобы
+// заполнить пространство» — между подписью и задним рядом было слишком
+// пусто на 390×844). Задний ряд стоит на FAN_RADIUS + ROW_GAP — его верх
+// не зависит от размера карты (см. cardCenterAt: при angle=0 верх заднего
+// ряда = h×CENTER_CARD_TOP_FRAC − ROW_GAP), только от этой доли и от
+// высоты шапки, поэтому доля даёт одинаковый визуальный запас на всех
+// вьюпортах — фиксированный пиксельный разнос заполнял пространство
+// хорошо на 390×844, но на 320×568 упирался в шапку.
+const ROW_GAP_FRAC = 0.225;
 
 // Верх центральной (самой верхней) карты ПЕРЕДНЕГО ряда — доля высоты
 // экрана, не фиксированный пиксельный отступ от низа: после того как
@@ -114,9 +138,11 @@ const LIFT_FRAC = 0.12;
 const SPREAD_RATE = 14; // скорость лерпа подъёма
 
 // Вылет выбранной карты к позиции экрана 3 (то же место, что и в
-// draw.js: половина ширины экрана, y ≈ 0.364h) — правка в чате: «плавно
-// вылететь и встать в позицию третьего интерфейса», а не резким
-// переключением сцены. Была 0.45 — попросили медленнее и плавнее.
+// draw.js: половина ширины экрана, по центру по вертикали) — правка в
+// чате: «плавно вылететь и встать в позицию третьего интерфейса», а не
+// резким переключением сцены. Была 0.45h, потом 0.364h — попросили
+// медленнее и плавнее, а затем (2026-08-23) — «карту чётко посередине
+// экрана», формула здесь и в draw.js/reveal.js обновлены синхронно.
 const FLY_DURATION = 0.9;
 const FLY_FADE_OTHERS = 0.4; // остальные карты гаснут, чтобы не мешать
 
@@ -172,6 +198,7 @@ export function createDeckScreen({ input, images, goto }) {
     const centerY = h * CENTER_CARD_TOP_FRAC + cardH / 2;
     pivotX = w / 2;
     pivotY = centerY + FAN_RADIUS;
+    const rowGap = h * ROW_GAP_FRAC;
 
     // Оба ряда — один и тот же веер углов, слот = индекс внутри ряда
     // (i % ROW_COUNT); ряд = i < ROW_COUNT ? задний : передний. Задний
@@ -184,18 +211,21 @@ export function createDeckScreen({ input, images, goto }) {
       const slot = i % ROW_COUNT;
       const row = Math.floor(i / ROW_COUNT); // 0 — задний, 1 — передний
       cards[i].angle = (slot - centerIndex) * angleStep;
-      cards[i].radius = FAN_RADIUS + (ROWS - 1 - row) * ROW_GAP;
+      cards[i].radius = FAN_RADIUS + (ROWS - 1 - row) * rowGap;
       cards[i].w = cardW;
       cards[i].h = cardH;
       cards[i].delay = CARDS_START + i * CASCADE_STAGGER;
     }
   }
 
-  /** Центр карты на дуге радиуса r при её угле — полярные → экранные. */
-  function cardCenterAt(c, r) {
+  /** Точка на дуге радиуса r при угле angle — полярные → экранные. Угол
+   * передаётся отдельно (не читается с самой карты), чтобы во время
+   * каскада можно было анимировать его независимо от финального угла
+   * карты — см. вход веера ниже. */
+  function cardCenterAt(angle, r) {
     return {
-      x: pivotX + r * Math.sin(c.angle),
-      y: pivotY - r * Math.cos(c.angle),
+      x: pivotX + r * Math.sin(angle),
+      y: pivotY - r * Math.cos(angle),
     };
   }
 
@@ -208,7 +238,7 @@ export function createDeckScreen({ input, images, goto }) {
     let best = null;
     let bestDist = Infinity;
     cards.forEach((c, i) => {
-      const p = cardCenterAt(c, c.radius);
+      const p = cardCenterAt(c.angle, c.radius);
       const d = Math.hypot(x - p.x, y - p.y);
       if (d < bestDist) {
         bestDist = d;
@@ -243,7 +273,7 @@ export function createDeckScreen({ input, images, goto }) {
           flying = true;
           flyStartT = t;
           const c = cards[hoveredIndex];
-          const p = cardCenterAt(c, c.radius + c.spreadR);
+          const p = cardCenterAt(c.angle, c.radius + c.spreadR);
           flyFrom = {
             x: p.x - c.w / 2, y: p.y - c.h / 2, w: c.w, h: c.h, rotation: c.angle,
           };
@@ -318,8 +348,14 @@ export function createDeckScreen({ input, images, goto }) {
       // Уменьшаем кегль шагами до 0.8 от базового; если и это не помогло —
       // переносим на две строки (wrapLines).
       const subtitleFit = fitLabel(ctx, SUBTITLE, textMaxWidth, scale);
-      const subtitleAlpha = clamp01((t - SUBTITLE_START) / SUBTITLE_FADE);
-      if (subtitleAlpha > 0) {
+      const subtitleFadeIn = clamp01((t - SUBTITLE_START) / SUBTITLE_FADE);
+      if (subtitleFadeIn > 0) {
+        // Мигать начинаем только после фейд-ина, не поверх него (правка
+        // в чате: подпись «не читается», нужно мигание, чтобы удерживать
+        // взгляд, — но не в момент, когда она и так проявляется).
+        const subtitleAlpha = subtitleFadeIn >= 1
+          ? blinkAlpha(t - (SUBTITLE_START + SUBTITLE_FADE))
+          : subtitleFadeIn;
         setFont(ctx, 'menuOption', subtitleFit.scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = subtitleAlpha;
@@ -361,6 +397,20 @@ export function createDeckScreen({ input, images, goto }) {
         const dy = Math.round(-ch / 2);
         ctx.fillStyle = '#111111';
         ctx.fillRect(dx, dy, cw, ch);
+        // Точечное исключение из «imageSmoothingEnabled = false везде,
+        // всегда» (CLAUDE.md) — сказано вслух, не втихую. Правило рассчитано
+        // на спрайты, кратные родному арт-пикселю; эта карта — растровый PNG
+        // 224×384, который здесь и повёрнут на произвольный угол, и
+        // смасштабирован в произвольную (не кратную) долю ширины экрана —
+        // ни то, ни другое пиксель-грид не выдерживает. С nearest-neighbor
+        // это давало не пиксель-арт, а шум на тонкой штриховке (жалоба в
+        // чате: «рябит, нечёткие пиксели»). Раньше тут была не PNG, а
+        // ctx.strokeRect — векторная обводка, которую canvas сглаживает сам
+        // независимо от этого флага, поэтому артефакта не было. Включаем
+        // сглаживание только на время рисования самой карты — save/restore
+        // уже оборачивают вызов, так что снаружи this функции правило
+        // остаётся в силе без изменений.
+        ctx.imageSmoothingEnabled = true;
         ctx.drawImage(images.cardBack, dx, dy, cw, ch);
         if (accent) {
           const fw = Math.round(cw * (228 / 224));
@@ -372,12 +422,13 @@ export function createDeckScreen({ input, images, goto }) {
 
       if (flying && flyFrom) {
         // Выбранная карта плавно летит к позиции экрана 3 (draw.js) —
-        // тот же размер и та же формула центрирования, чтобы при смене
-        // сцены не было скачка (правка в чате) — и выпрямляется по пути
-        // из своего угла на веере обратно в 0, к обычной ориентации карты.
+        // тот же размер (CARD_W_FRAC === 0.5 и там, и там, см. константу
+        // выше) и та же формула центрирования, чтобы при смене сцены не
+        // было скачка — и выпрямляется по пути из своего угла на веере
+        // обратно в 0, к обычной ориентации карты.
         const flyP = easeInOutQuad(clamp01((t - flyStartT) / FLY_DURATION));
         const targetX = Math.round((w - flyFrom.w) / 2);
-        const targetY = Math.round(h * 0.364);
+        const targetY = Math.round((h - flyFrom.h) / 2);
         const x = flyFrom.x + (targetX - flyFrom.x) * flyP;
         const y = flyFrom.y + (targetY - flyFrom.y) * flyP;
         const rotation = flyFrom.rotation * (1 - flyP);
@@ -385,7 +436,7 @@ export function createDeckScreen({ input, images, goto }) {
         ctx.globalAlpha = clamp01(1 - (t - flyStartT) / FLY_FADE_OTHERS);
         cards.forEach((c, i) => {
           if (i === hoveredIndex) return;
-          const p = cardCenterAt(c, c.radius);
+          const p = cardCenterAt(c.angle, c.radius);
           drawCard(p.x, p.y, c.w, c.h, c.angle, false);
         });
         ctx.globalAlpha = 1;
@@ -401,22 +452,30 @@ export function createDeckScreen({ input, images, goto }) {
       // наведённую, если та приподнята недостаточно, чтобы выйти из-под
       // неё — так и должно быть (правка в чате: «она должна быть закрыта
       // всё равно спереди лежащей картой»).
+      const stackRadius = FAN_RADIUS - CASCADE_STACK_OFFSET;
       cards.forEach((c, i) => {
         const elapsed = t - c.delay;
         let alpha = 1;
         let radius = c.radius + c.spreadR;
+        let angle = c.angle;
         let rotation = c.angle;
 
         if (elapsed < 0) {
           alpha = 0;
         } else if (elapsed < CASCADE_DURATION) {
+          // Angle и radius растут из ОБЩЕЙ точки стопки (angle=0,
+          // stackRadius) до своих финальных значений одним и тем же p —
+          // карта едет по прямой в полярных координатах, разворачиваясь
+          // ровно по ходу движения, как будто её выкладывают веером из
+          // руки, а не просто телепортируют с поворотом на месте.
           const p = easeOutBack(clamp01(elapsed / CASCADE_DURATION));
-          radius = (c.radius - CASCADE_DROP_HEIGHT) + CASCADE_DROP_HEIGHT * p;
-          rotation = c.angle * p;
+          radius = stackRadius + (c.radius - stackRadius) * p;
+          angle = c.angle * p;
+          rotation = angle;
         }
 
         if (alpha <= 0) return;
-        const pos = cardCenterAt(c, radius);
+        const pos = cardCenterAt(angle, radius);
         ctx.globalAlpha = alpha;
         drawCard(pos.x, pos.y, c.w, c.h, rotation, i === hoveredIndex);
         ctx.globalAlpha = 1;

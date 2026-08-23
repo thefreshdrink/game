@@ -3,6 +3,7 @@
 
 import { setFont } from '../core/text.js';
 import { drawCardBack, drawCardBlank } from '../core/cardRender.js';
+import { blinkAlpha } from '../core/textReveal.js';
 
 const FLIP_DURATION = 0.8; // сек — «не быстрее ~0.8 сек», это ритуал (BUILD-SPEC)
 
@@ -10,6 +11,10 @@ export function createDrawScreen({ input, images, goto }) {
   let offTap = null;
   let state = 'waiting'; // waiting | flipping
   let t = 0;
+  // Отдельный от t таймер: t стоит на 0, пока не начался флип (используется
+  // только для прогресса переворота), а мигать CLICK TO DRAW должен всё
+  // время ожидания тапа.
+  let idleT = 0;
   let box = { x: 0, y: 0, w: 0, h: 0 };
 
   function layout(w, h) {
@@ -17,8 +22,10 @@ export function createDrawScreen({ input, images, goto }) {
     const cardW = Math.round(w * 0.5);
     const cardH = Math.round(cardW * (384 / 224));
     box = {
+      // По центру экрана (правка в чате, 2026-08-23) — тот же формула, что
+      // и в reveal.js/deck.js, иначе при переходах карта прыгнет.
       x: Math.round((w - cardW) / 2),
-      y: Math.round(h * 0.364),
+      y: Math.round((h - cardH) / 2),
       w: cardW,
       h: cardH,
       scale,
@@ -29,6 +36,7 @@ export function createDrawScreen({ input, images, goto }) {
     enter() {
       state = 'waiting';
       t = 0;
+      idleT = 0;
       offTap = input.on('tap', () => {
         if (state !== 'waiting') return;
         state = 'flipping';
@@ -41,6 +49,7 @@ export function createDrawScreen({ input, images, goto }) {
     },
 
     update(dt) {
+      idleT += dt;
       if (state !== 'flipping') return;
       t += dt;
       if (t >= FLIP_DURATION) {
@@ -70,7 +79,9 @@ export function createDrawScreen({ input, images, goto }) {
         // вживую при проверке).
         setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
+        ctx.globalAlpha = blinkAlpha(idleT);
         ctx.fillText('CLICK TO DRAW', marginX, ty + 2 * titleLH + Math.round(9 * scale));
+        ctx.globalAlpha = 1;
       }
 
       layout(w, h);

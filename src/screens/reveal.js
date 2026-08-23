@@ -12,7 +12,9 @@
 import { CARDS } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
-import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
+import {
+  layoutWords, visibleWordCount, revealDuration, blinkAlpha,
+} from '../core/textReveal.js';
 import { drawCardFace } from '../core/cardRender.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
@@ -34,15 +36,20 @@ export function createRevealScreen({ input, images, goto }) {
     const cardW = Math.round(w * 0.5);
     const cardH = Math.round(cardW * (384 / 224));
     box = {
+      // По центру экрана, не 0.364h (правка в чате, 2026-08-23: «карту
+      // выбранную сделать чётко посередине экрана») — раньше карта висела
+      // ощутимо выше центра, ближе к шапке.
       x: Math.round((w - cardW) / 2),
-      y: Math.round(h * 0.364),
+      y: Math.round((h - cardH) / 2),
       w: cardW,
       h: cardH,
     };
     // Под картой (BUILD-SPEC-02, задача 4) — раньше сидел в шапке, у
     // пунктов меню экрана 1, примерно на 400px выше карты, к которой
-    // относится: взгляд шёл реплика → CTA → только потом карта.
-    continueLabel.y = box.y + box.h + Math.round(36 * scale);
+    // относится: взгляд шёл реплика → CTA → только потом карта. Отступ
+    // увеличен с 36 (правка в чате: «оч близко расположена к карте») —
+    // явный зазор, а не почти впритык к нижнему краю рамки.
+    continueLabel.y = box.y + box.h + Math.round(64 * scale);
   }
 
   function continueReady() {
@@ -100,11 +107,20 @@ export function createRevealScreen({ input, images, goto }) {
         setFont(ctx, 'menuOption', scale);
         ctx.textAlign = 'left';
         ctx.fillStyle = '#EBA331';
-        const label = '›CONTINUE';
+        // Было «›CONTINUE» — «нелогичная формулировка» (правка в чате):
+        // CONTINUE ничего не говорит о том, что дальше начнётся сама
+        // мини-игра (Шут идёт и прыгает через провалы, экран 5, «Leap»).
+        // Потом «›TAKE THE STEP» — тоже не понравилось. Выбрано из
+        // предложенных вариантов в чате.
+        const label = '›KEEP GOING';
         const width = ctx.measureText(label).width;
         continueLabel.x0 = Math.round(w / 2 - width / 2);
         continueLabel.x1 = continueLabel.x0 + width;
+        // Мигание — тем же приёмом, что у CLICK TO DRAW/подписи экрана 2
+        // (правка в чате: «она не мигает», забыли применить сюда же).
+        ctx.globalAlpha = blinkAlpha(t);
         ctx.fillText(label, continueLabel.x0, continueLabel.y);
+        ctx.globalAlpha = 1;
       }
     },
   };

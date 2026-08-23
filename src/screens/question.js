@@ -15,7 +15,9 @@ import { CATEGORIES } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
-import { computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY } from '../core/oracle.js';
+import {
+  computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY,
+} from '../core/oracle.js';
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
@@ -24,35 +26,6 @@ const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 // (тот же стиль, что и у точек — «плавно» не понравилось). Палец поверх
 // автоцикла — pressedIndex всегда важнее.
 const MENU_ITEM_ON = 0.8;
-
-// Точки свечения у рук — 10 отдельных кластеров (найдены разбором связных
-// областей в oracle_sparks.png), а не один кусок: нужны порознь, чтобы
-// мерцать по очереди, а не одним пятном.
-const DOTS_SRC = [
-  { sx: 71, sy: 420, sw: 8, sh: 8 },
-  { sx: 91, sy: 392, sw: 12, sh: 12 },
-  { sx: 107, sy: 356, sw: 12, sh: 12 },
-  { sx: 123, sy: 440, sw: 12, sh: 12 },
-  { sx: 131, sy: 400, sw: 12, sh: 12 },
-  { sx: 295, sy: 436, sw: 12, sh: 12 },
-  { sx: 303, sy: 392, sw: 12, sh: 12 },
-  { sx: 335, sy: 368, sw: 8, sh: 8 },
-  { sx: 335, sy: 412, sw: 12, sh: 12 },
-  { sx: 347, sy: 444, sw: 12, sh: 12 },
-];
-
-// Мерцание — каждая точка светится в своей фазе цикла, поэтому зажигаются
-// по очереди, а не одним пятном сразу. Без плавного fade — сразу 100% и
-// сразу 0%, как переключатель (правка в чате: «плавно» не понравилось,
-// темп и очередность — да, их не трогаем).
-const DOT_CYCLE = 2.2;
-const DOT_ON = 1.0; // суммарная длительность «горит», была fade-in+hold+fade-out
-
-function twinkleAlpha(localT) {
-  if (localT < 0) return 0;
-  if (localT < DOT_ON) return 1;
-  return 0;
-}
 
 // Тайминги интро, секунды.
 //
@@ -79,7 +52,10 @@ const TEXT2_READ_HOLD = 1.6;
 // (core/pixelReveal.js) — перебирали в чате Bayer-узор, чересстрочные
 // жалюзи, равномерный случайный шум; в итоге важны обе вещи разом:
 // пиксельная фактура И направление от головы.
-const BODY_REVEAL = 3.2;
+// Было 3.2 — «слишком долгая анимация появления» (правка в чате,
+// 2026-08-23); уход оракула на экране 2 (deck.js, ORACLE_CONCEAL) в этой
+// правке не тронут — там жалобы не было.
+const BODY_REVEAL = 1.8;
 const BODY_CELL_SIZE = 4; // экранных px на ячейку
 
 // Пункты меню появляются по одному, сразу на 100% (без общего fade на
@@ -261,29 +237,21 @@ export function createQuestionScreen({ input, images, goto }) {
       const eyesAlpha = (shortMode ? 1 : clamp01(t / EYES_FADE)) * (blinking ? 0 : 1);
       const bodyProgress = shortMode ? 1 : clamp01((t - BODY_START) / BODY_REVEAL);
 
+      // Лёгкое парение (синус по Y) пробовали и убрали — правка в чате,
+      // 2026-08-23: «двигается не плавно а пиксельно и глаза опаздывают
+      // за ним». Причина техническая, не решаемая без нарушения других
+      // правил: спрайты рисуются только по целым координатам (CLAUDE.md),
+      // а амплитуда дыхания — единицы px, поэтому непрерывный синус
+      // округлялся до соседних пиксельных шагов заметными скачками; тело
+      // и глаза считают свой Math.round от разных выражений и округлялись
+      // не в один и тот же момент — отсюда рассинхрон. Пользователь прямо
+      // разрешил «либо плавно, либо не делать» — оставлена статичная
+      // фигура.
+
       // Тело — пикселями от глаз из темноты; глаза — отдельным слоем
       // поверх, они проступают раньше и не зависят от прогресса тела.
       drawOracleBody(ctx, images, oracle, bodyProgress, BODY_CELL_SIZE);
       drawOracleEyes(ctx, images, oracle, eyesAlpha);
-
-      if (t >= optionsStart) {
-        const dotPhaseStep = DOT_CYCLE / DOTS_SRC.length;
-        DOTS_SRC.forEach((dot, i) => {
-          const localT = ((t - optionsStart + i * dotPhaseStep) % DOT_CYCLE + DOT_CYCLE) % DOT_CYCLE;
-          const alpha = twinkleAlpha(localT);
-          if (alpha <= 0) return;
-          ctx.globalAlpha = alpha;
-          ctx.drawImage(
-            images.futureTellerSparks,
-            dot.sx, dot.sy, dot.sw, dot.sh,
-            Math.round(oracle.oracleX + dot.sx * oracle.oracleScale),
-            Math.round(oracle.oracleY + dot.sy * oracle.oracleScale),
-            Math.round(dot.sw * oracle.oracleScale),
-            Math.round(dot.sh * oracle.oracleScale),
-          );
-        });
-        ctx.globalAlpha = 1;
-      }
 
       // Голос оракула — слово за словом, сразу на 100%. Первая реплика
       // гаснет плавно (единственный fade), вторая остаётся заголовком.

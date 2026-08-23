@@ -139,7 +139,6 @@ goto('loading');
 const IMAGE_MANIFEST = {
   futureTellerBody: 'assets/future_teller/oracle_body.png',
   futureTellerEyes: 'assets/future_teller/oracle_eyes.png',
-  futureTellerSparks: 'assets/future_teller/oracle_sparks.png',
   cardBack: 'assets/card/back_side_card_final.png',
   cardSelectFrame: 'assets/card/select_frame.png',
   cardFront: 'assets/card/card_frame_fool.png',
