@@ -22,8 +22,8 @@ import {
 const PLAYER_W = 88;
 const PLAYER_H = 96;
 // Парный спрайт падения (Шут+пёс, BUILD-SPEC-03 задача 3) шире соло-поз —
-// своя ширина, та же высота (46×48 арт-px → ×2 экранных, см. ASSETS.md).
-const PAIR_W = 92;
+// своя ширина, та же высота (48×48 арт-px → ×2 экранных, см. ASSETS.md).
+const PAIR_W = 96;
 const IDLE_FPS = 6; // темп смены кадров дыхания (4 кадра)
 const DOG_W = 36;
 const DOG_H = 28;
@@ -252,6 +252,12 @@ export function createLeapScreen({ input, images, goto }) {
           }
         }
       } else if (state === 'air') {
+        // Растяжение с толчка (beginJump: sqx 0.8/sqy 1.24) не отпускало
+        // всю дугу полёта — вместе с настоящими позами rise/fall это
+        // читалось как «сжато» (правка в чате, 2026-08-26). Отпускаем к 1
+        // с тем же темпом, что и в walk, пока летит.
+        player.sqx += (1 - player.sqx) * Math.min(1, dt * 8);
+        player.sqy += (1 - player.sqy) * Math.min(1, dt * 8);
         const prevY = player.y;
         player.vy += gravityFor(player.vy) * dt;
         player.x += player.vx * dt;
@@ -300,6 +306,11 @@ export function createLeapScreen({ input, images, goto }) {
         const p = platformAt(platforms, dog.x, -Infinity, Infinity) || platforms[idx];
         dog.y += (p.y - dog.y) * Math.min(1, dt * 10);
         dog.frameT += dt;
+        // Пёс тоже перепрыгивает щель следом за игроком — своей дуги
+        // прыжка у него нет (глиссирует к цели, как и всегда), но поза
+        // на время 'air' меняется, иначе бежит на месте, пока хозяин в
+        // воздухе (правка в чате, 2026-08-26: «есть jump-ассет, используй»).
+        dog.pose = state === 'air' ? 'jump' : 'walk';
         if (state === 'wait_leap' || state === 'charge') {
           dog.state = 'overtake';
         }
@@ -445,7 +456,6 @@ function drawDog(ctx, images, d, camX, camY, scale) {
   if (d.pose === 'sit') { frames = images.dogSitFrames; idx = Math.floor(d.frameT * 2) % frames.length; }
   else if (d.pose === 'lookdown') { frames = [images.dogLookDown]; idx = 0; }
   else if (d.pose === 'jump') { frames = [images.dogJump]; idx = 0; }
-  if (d.state === 'leap') { frames = [images.dogJump]; idx = 0; }
 
   const img = frames[idx];
   const w = Math.round(DOG_W * scale);

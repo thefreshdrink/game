@@ -146,7 +146,7 @@ const IMAGE_MANIFEST = {
   foolIdleStrip: 'assets/fool/strips/fool_idle_4f_44x48.png',
   foolRise: 'assets/fool/strips/fool_rise_1f_44x48.png',
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
-  foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_46x48.png',
+  foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
   roadBlock: 'assets/road/frame_block_native.png',
   dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
   dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
