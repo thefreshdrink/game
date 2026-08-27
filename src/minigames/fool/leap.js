@@ -29,6 +29,23 @@ const DOG_W = 36;
 const DOG_H = 28;
 const DOG_LAG = 46; // насколько пёс отстаёт по x в обычной ходьбе
 
+// Прыжок пса за игроком — процедурная дуга по Y, не смена спрайта саму
+// по себе (правка в чате: «не похоже, что он прыгает за ним» — раньше
+// просто менялась поза, а сам пёс продолжал ровно скользить к цели).
+// Пёс не считает щели сам — просто подпрыгивает следом с небольшой
+// задержкой реакции каждый раз, когда игрок уходит в 'air'.
+const DOG_HOP_DELAY = 0.1; // реакция чуть позже, чем прыгнул игрок
+const DOG_HOP_DURATION = 0.32;
+const DOG_HOP_HEIGHT = 34;
+
+// Стоя у края (wait_jump/wait_leap/charge) фигура центрируется на p.x, а
+// p.x — это САМ край плиты (edgeX в 'walk'), поэтому правая половина
+// спрайта нависала над пропастью (правка в чате: «выходит за край
+// платформы»). Смещаем отрисовку назад только в этих статичных позах —
+// на физику и позицию для прыжка (player.x) это не влияет, только на то,
+// где рисуется спрайт. Величина сдвига — половина реальной ширины
+// спрайта, считается прямо в drawPlayer (там уже есть w).
+
 const HOLD_T1 = 1.6; // первые 75% полоски
 const HOLD_T2 = 1.0; // последние 25% — заметно медленнее (BUILD-SPEC)
 const HOLD_TOTAL = HOLD_T1 + HOLD_T2; // «~2,6 сек»
@@ -64,7 +81,16 @@ export function createLeapScreen({ input, images, goto }) {
   let hintAlpha = 1;
 
   const player = { x: 0, y: 0, vx: 0, vy: 0, face: 1, sqx: 1, sqy: 1, pose: 'idle' };
-  const dog = { x: 0, y: 0, state: 'follow', pose: 'walk', frameT: 0 };
+  // hopDelay > 0 — отсчитывает задержку реакции; hopT >= 0 — идёт сама
+  // дуга прыжка (см. DOG_HOP_*); hopT === -1 — пёс не прыгает.
+  const dog = {
+    x: 0, y: 0, state: 'follow', pose: 'walk', frameT: 0, hopDelay: 0, hopT: -1,
+  };
+
+  function scheduleDogHop() {
+    dog.hopDelay = DOG_HOP_DELAY;
+    dog.hopT = -1;
+  }
   const dust = [];
 
   function startPlatform() {
@@ -136,6 +162,7 @@ export function createLeapScreen({ input, images, goto }) {
     stateT = 0;
     hintAlpha = 0;
     spawnDust(player.x, player.y, 4);
+    scheduleDogHop();
   }
 
   function commitLeap() {
@@ -248,6 +275,7 @@ export function createLeapScreen({ input, images, goto }) {
               player.vy = 0;
               state = 'air';
               stateT = 0;
+              scheduleDogHop();
             }
           }
         }
@@ -306,11 +334,22 @@ export function createLeapScreen({ input, images, goto }) {
         const p = platformAt(platforms, dog.x, -Infinity, Infinity) || platforms[idx];
         dog.y += (p.y - dog.y) * Math.min(1, dt * 10);
         dog.frameT += dt;
-        // Пёс тоже перепрыгивает щель следом за игроком — своей дуги
-        // прыжка у него нет (глиссирует к цели, как и всегда), но поза
-        // на время 'air' меняется, иначе бежит на месте, пока хозяин в
-        // воздухе (правка в чате, 2026-08-26: «есть jump-ассет, используй»).
-        dog.pose = state === 'air' ? 'jump' : 'walk';
+        // Настоящая дуга прыжка, не просто смена спрайта (правка в чате,
+        // 2026-08-27: «не похоже, что он прыгает за ним»). Задержка —
+        // реакция чуть позже игрока, потом синус-дуга вверх-вниз
+        // (hopOffset читает drawDog); щель под собой пёс не считает,
+        // просто подпрыгивает следом каждый раз, когда игрок в 'air'.
+        if (dog.hopDelay > 0) {
+          dog.hopDelay -= dt;
+          if (dog.hopDelay <= 0) dog.hopT = 0;
+        } else if (dog.hopT >= 0) {
+          dog.hopT += dt;
+          if (dog.hopT >= DOG_HOP_DURATION) dog.hopT = -1;
+        }
+        dog.hopOffset = dog.hopT >= 0
+          ? -Math.sin(clamp01(dog.hopT / DOG_HOP_DURATION) * Math.PI) * DOG_HOP_HEIGHT
+          : 0;
+        dog.pose = dog.hopT >= 0 ? 'jump' : 'walk';
         if (state === 'wait_leap' || state === 'charge') {
           dog.state = 'overtake';
         }
@@ -360,12 +399,15 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY - d.s), d.s, d.s);
       });
 
-      // В падении пёс — часть парного спрайта игрока (fool_dog_fall), не
-      // отдельный объект (BUILD-SPEC-03, задача 3) — отдельно не рисуем.
+      // Пёс рисуется поверх Шута, не под ним (правка в чате, 2026-08-27:
+      // «собаку на первом плане относительно Шута») — раньше порядок был
+      // обратный. В падении пёс — часть парного спрайта игрока
+      // (fool_dog_fall, BUILD-SPEC-03 задача 3), отдельно не рисуем.
+      const standEdgeX = platforms[idx] ? platforms[idx].x + platforms[idx].w : null;
+      drawPlayer(ctx, images, player, camX, camY, scale, state, t, standEdgeX);
       if (state !== 'fall' && state !== 'landed') {
         drawDog(ctx, images, dog, camX, camY, scale);
       }
-      drawPlayer(ctx, images, player, camX, camY, scale, state, t);
 
       // Белая линия земли — проступает в момент касания, не раньше.
       if (state === 'landed') {
@@ -418,7 +460,7 @@ export function createLeapScreen({ input, images, goto }) {
 // прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
 // с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
 // задача 4 не переделает его на три такта отдельно.
-function drawPlayer(ctx, images, p, camX, camY, scale, state, t) {
+function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standEdgeX) {
   let pose;
   let img;
   if (state === 'fall' || state === 'landed') {
@@ -436,7 +478,25 @@ function drawPlayer(ctx, images, p, camX, camY, scale, state, t) {
   const baseW = pose === 'fallPair' ? PAIR_W : PLAYER_W;
   const w = Math.round(baseW * scale * p.sqx);
   const h = Math.round(PLAYER_H * scale * p.sqy);
-  const x = Math.round(p.x - camX - w / 2);
+  // Спрайт центрируется на p.x, но у него есть ширина — на последнем
+  // отрезке платформы (ещё в 'walk', не только стоя у края) правая
+  // половина заходила за физический край плиты (правка в чате: «выходит
+  // за край», «на первой платформе заходит за край» — ловилось уже во
+  // время ходьбы, не только в статичных позах ожидания). Первая попытка
+  // трогала только 3 «стоячих» состояния и потому не спасала сам подход
+  // к краю. Клэмп по фактическому краю ТЕКУЩЕЙ плиты (standEdgeX) решает
+  // это на любом расстоянии сразу: пока до края далеко — сдвига нет
+  // совсем, чем ближе — тем плавнее подъезжает, у самого края спрайт
+  // просто не залезает правым краем дальше физической границы плиты.
+  // В воздухе (air/fall/landed) не клэмпим — там за пределами плиты
+  // находиться и есть смысл состояния.
+  const isGrounded = state === 'walk' || state === 'wait_jump'
+    || state === 'wait_leap' || state === 'charge';
+  let x = Math.round(p.x - camX - w / 2);
+  if (isGrounded && standEdgeX != null) {
+    const maxRight = Math.round(standEdgeX - camX);
+    if (x + w > maxRight) x = maxRight - w;
+  }
   const y = Math.round(p.y - camY - h);
 
   ctx.save();
@@ -461,6 +521,7 @@ function drawDog(ctx, images, d, camX, camY, scale) {
   const w = Math.round(DOG_W * scale);
   const h = Math.round(DOG_H * scale);
   const x = Math.round(d.x - camX - w / 2);
-  const y = Math.round(d.y - camY - h);
+  const hopY = Math.round((d.hopOffset || 0) * scale);
+  const y = Math.round(d.y - camY - h) + hopY;
   ctx.drawImage(img, x, y, w, h);
 }
