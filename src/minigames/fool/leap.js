@@ -15,12 +15,16 @@ import {
   buildPlatforms, platformAt, drawPlatform, drawGhostRoad, drawFarRoad, START_WALK,
 } from './platforms.js';
 
-// Спрайты — 42×50 и 18×14 арт-px (ASSETS.md), но правило сетки
+// Спрайты — 44×48 и 18×14 арт-px (ASSETS.md), но правило сетки
 // CLAUDE.md — 1 арт-пиксель = 2 экранных, как и у PLATE_H в platforms.js.
 // Значения ниже уже удвоены, чтобы * scale дальше по коду работал как
 // везде (баг был пойман по правке в чате: «спрайты очень маленькие»).
-const PLAYER_W = 84;
-const PLAYER_H = 100;
+const PLAYER_W = 88;
+const PLAYER_H = 96;
+// Парный спрайт падения (Шут+пёс, BUILD-SPEC-03 задача 3) шире соло-поз —
+// своя ширина, та же высота (46×48 арт-px → ×2 экранных, см. ASSETS.md).
+const PAIR_W = 92;
+const IDLE_FPS = 6; // темп смены кадров дыхания (4 кадра)
 const DOG_W = 36;
 const DOG_H = 28;
 const DOG_LAG = 46; // насколько пёс отстаёт по x в обычной ходьбе
@@ -139,8 +143,11 @@ export function createLeapScreen({ input, images, goto }) {
     stateT = 0;
     player.vx = 60;
     player.vy = -120;
-    dog.state = 'leap';
-    dog.vy = -200;
+    // Пёс больше не летит отдельным объектом — падение теперь один
+    // парный спрайт (fool_dog_fall, BUILD-SPEC-03 задача 3), не два
+    // накладывающихся друг на друга (был баг: «пёс оказался у него на
+    // голове»). Состояние 'leap' и физика пса ниже были нужны только
+    // для отдельной отрисовки — убраны вместе с ней.
   }
 
   return {
@@ -275,11 +282,6 @@ export function createLeapScreen({ input, images, goto }) {
         player.x += player.vx * dt;
         player.y += player.vy * dt;
         deepestY = Math.max(deepestY, player.y);
-        if (dog.state === 'leap') {
-          dog.vy += FALL_G * dt;
-          dog.x += 55 * dt;
-          dog.y += dog.vy * dt;
-        }
         if (player.y - last.y >= FALL_DEPTH) {
           state = 'landed';
           stateT = 0;
@@ -347,13 +349,12 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY - d.s), d.s, d.s);
       });
 
+      // В падении пёс — часть парного спрайта игрока (fool_dog_fall), не
+      // отдельный объект (BUILD-SPEC-03, задача 3) — отдельно не рисуем.
       if (state !== 'fall' && state !== 'landed') {
         drawDog(ctx, images, dog, camX, camY, scale);
-        drawPlayer(ctx, images, player, camX, camY, scale, state);
-      } else {
-        drawPlayer(ctx, images, player, camX, camY, scale, state);
-        if (dog.state === 'leap') drawDog(ctx, images, dog, camX, camY, scale);
       }
+      drawPlayer(ctx, images, player, camX, camY, scale, state, t);
 
       // Белая линия земли — проступает в момент касания, не раньше.
       if (state === 'landed') {
@@ -399,14 +400,30 @@ export function createLeapScreen({ input, images, goto }) {
   };
 }
 
-function poseImage(images, name) {
-  return name === 'fall' ? images.foolFall : images.foolIdle;
-}
-
-function drawPlayer(ctx, images, p, camX, camY, scale, state) {
-  const pose = state === 'air' || state === 'fall' ? 'fall' : 'idle';
-  const img = poseImage(images, pose);
-  const w = Math.round(PLAYER_W * scale * p.sqx);
+// Обычный прыжок (state 'air', короткая щель между плитами) теперь
+// читается по фазе дуги — вверх и вниз разными позами, не одной статичной
+// (правка в чате, 2026-08-26, после разбора ассетов): 'rise', пока
+// vy < 0 (ещё поднимается), 'fall' — как только пошёл вниз. Финальный
+// прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
+// с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
+// задача 4 не переделает его на три такта отдельно.
+function drawPlayer(ctx, images, p, camX, camY, scale, state, t) {
+  let pose;
+  let img;
+  if (state === 'fall' || state === 'landed') {
+    pose = 'fallPair';
+    img = images.foolDogFall;
+  } else if (state === 'air') {
+    pose = p.vy < 0 ? 'rise' : 'fall';
+    img = pose === 'rise' ? images.foolRise : images.foolFall;
+  } else {
+    pose = 'idle';
+    const frames = images.foolIdleFrames;
+    img = frames[Math.floor(t * IDLE_FPS) % frames.length];
+  }
+  // Парный спрайт падения шире соло-поз — своя ширина холста, не PLAYER_W.
+  const baseW = pose === 'fallPair' ? PAIR_W : PLAYER_W;
+  const w = Math.round(baseW * scale * p.sqx);
   const h = Math.round(PLAYER_H * scale * p.sqy);
   const x = Math.round(p.x - camX - w / 2);
   const y = Math.round(p.y - camY - h);

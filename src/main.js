@@ -143,9 +143,10 @@ const IMAGE_MANIFEST = {
   cardSelectFrame: 'assets/card/select_frame.png',
   cardFront: 'assets/card/card_frame_fool.png',
   foolOnCard: 'assets/card/fool_on_the_card.png',
-  foolArt: 'assets/fool/the_fool_x3.png',
-  foolIdle: 'assets/fool/strips/fool_idle_1f_42x50.png',
-  foolFall: 'assets/fool/strips/fool_fall_1f_42x50.png',
+  foolIdleStrip: 'assets/fool/strips/fool_idle_4f_44x48.png',
+  foolRise: 'assets/fool/strips/fool_rise_1f_44x48.png',
+  foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
+  foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_46x48.png',
   roadBlock: 'assets/road/frame_block_native.png',
   dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
   dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
@@ -156,6 +157,7 @@ const IMAGE_MANIFEST = {
 loadSprites(IMAGE_MANIFEST).then((images) => {
   images.dogWalkFrames = sliceStrip(images.dogWalkStrip, 18, 14);
   images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
+  images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
 
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
