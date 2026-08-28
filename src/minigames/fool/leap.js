@@ -21,10 +21,10 @@ import {
   buildPlatforms, platformAt, drawPlatform, drawGhostRoad, drawFarRoad, START_WALK,
 } from './platforms.js';
 
-// Спрайты — 44×48 и 18×14 арт-px (ASSETS.md), но правило сетки
-// CLAUDE.md — 1 арт-пиксель = 2 экранных, как и у PLATE_H в platforms.js.
-// Значения ниже уже удвоены, чтобы * scale дальше по коду работал как
-// везде (баг был пойман по правке в чате: «спрайты очень маленькие»).
+// Спрайты — 44×48 и 18×14 арт-px (ASSETS.md). Правило сетки CLAUDE.md —
+// 1 арт-пиксель = ровно 2 экранных. Значения ниже уже удвоены и рисуются
+// ФИКСИРОВАННЫМ ×2 без uiScale (BUILD-SPEC-03 задача 2) — иначе арт-пиксель
+// занимает то 1, то 2 экранных, и контур рвётся.
 const PLAYER_W = 88;
 const PLAYER_H = 96;
 // Парный спрайт падения (Шут+пёс, BUILD-SPEC-03 задача 3) шире соло-поз —
@@ -465,14 +465,14 @@ export function createLeapScreen({ input, images, goto }) {
       // соседней — берём по его x.
       const standPlat = platforms[idx] || null;
       const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
-      drawPlayer(ctx, images, player, camX, camY, scale, state, t, standPlat);
+      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat);
       if (state !== 'fall' && state !== 'landed') {
-        drawDog(ctx, images, dog, camX, camY, scale, dogPlat);
+        drawDog(ctx, images, dog, camX, camY, dogPlat);
       }
 
       // Белая линия земли — проступает в момент касания, не раньше.
       if (state === 'landed') {
-        const lineY = Math.round(player.y - camY + PLAYER_H * scale * 0.9);
+        const lineY = Math.round(player.y - camY + PLAYER_H * 0.9);
         ctx.fillStyle = '#FFFFFF';
         ctx.globalAlpha = clamp01(stateT / 0.15);
         ctx.fillRect(0, lineY, w, Math.max(2, Math.round(2 * scale)));
@@ -488,7 +488,7 @@ export function createLeapScreen({ input, images, goto }) {
       if (state === 'walk') {
         ctx.textAlign = 'left';
         const headX = player.x - camX + Math.round(90 * scale);
-        const headY = player.y - camY - Math.round(PLAYER_H * scale);
+        const headY = player.y - camY - PLAYER_H;
         const p = platforms[idx];
         const nearEdge = p !== last && (p.x + p.w - player.x) < 70;
         if (!movedEver && !walking) {
@@ -535,7 +535,7 @@ export function createLeapScreen({ input, images, goto }) {
 // прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
 // с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
 // задача 4 не переделает его на три такта отдельно.
-function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standPlat) {
+function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat) {
   let pose;
   let img;
   if (state === 'fall' || state === 'landed') {
@@ -551,8 +551,10 @@ function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standPlat) {
   }
   // Парный спрайт падения шире соло-поз — своя ширина холста, не PLAYER_W.
   const baseW = pose === 'fallPair' ? PAIR_W : PLAYER_W;
-  const w = Math.round(baseW * scale * p.sqx);
-  const h = Math.round(PLAYER_H * scale * p.sqy);
+  // Фиксированный ×2 (BUILD-SPEC-03 задача 2): PLAYER_W/H уже удвоены,
+  // никакого uiScale. sqx/sqy — намеренный squash анимации, остаются.
+  const w = Math.round(baseW * p.sqx);
+  const h = Math.round(PLAYER_H * p.sqy);
   // Спрайт центрируется на p.x, но у него есть ширина — на последнем
   // отрезке платформы (ещё в 'walk', не только стоя у края) правая
   // половина заходила за физический край плиты (правка в чате: «выходит
@@ -588,7 +590,7 @@ function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standPlat) {
   ctx.restore();
 }
 
-function drawDog(ctx, images, d, camX, camY, scale, dogPlat) {
+function drawDog(ctx, images, d, camX, camY, dogPlat) {
   let frames = images.dogWalkFrames;
   let idx = Math.floor(d.frameT * 6) % frames.length;
   if (d.pose === 'sit') { frames = images.dogSitFrames; idx = Math.floor(d.frameT * 2) % frames.length; }
@@ -596,8 +598,9 @@ function drawDog(ctx, images, d, camX, camY, scale, dogPlat) {
   else if (d.pose === 'jump') { frames = [images.dogJump]; idx = 0; }
 
   const img = frames[idx];
-  const w = Math.round(DOG_W * scale);
-  const h = Math.round(DOG_H * scale);
+  // Фиксированный ×2 (BUILD-SPEC-03 задача 2) — DOG_W/H уже удвоены.
+  const w = DOG_W;
+  const h = DOG_H;
   let x = Math.round(d.x - camX - w / 2);
   // Пёс не свисает за край плиты (правка 2026-08-28). Во время прыжка
   // (pose 'jump', над щелью) — можно, там смысл в том, что он в воздухе.
@@ -607,7 +610,7 @@ function drawDog(ctx, images, d, camX, camY, scale, dogPlat) {
     if (x + w > maxRight) x = maxRight - w;
     if (x < minLeft) x = minLeft;
   }
-  const hopY = Math.round((d.hopOffset || 0) * scale);
+  const hopY = Math.round(d.hopOffset || 0);
   const y = Math.round(d.y - camY - h) + hopY;
   ctx.drawImage(img, x, y, w, h);
 }
