@@ -18,6 +18,13 @@
 import { setFont } from './text.js';
 import { drawPixelReveal } from './pixelReveal.js';
 
+// Карта — экранные пиксели, множитель ×1, фиксированный размер во всех
+// сценах (BUILD-SPEC-03 задача 2): рамка `card_frame_fool.png` ровно
+// 224×384, никакой зависимости от ширины экрана. Экраны 3 и 4 держат
+// один и тот же размер, иначе карта прыгнет на переходе.
+export const CARD_W = 224;
+export const CARD_H = 384;
+
 export function drawCardBack(ctx, images, x, y, w, h) {
   ctx.drawImage(images.cardBack, Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
@@ -38,7 +45,8 @@ export function drawCardFace(
   ctx, images, x, y, w, h, name, scale,
   { numeral = null, revealProgress = 1, cellSize = 4 } = {},
 ) {
-  const s = w / 224; // локальный масштаб: 224 арт-px рамки → w экранных
+  const s = w / 224; // всегда 1 (карта фиксирована 224, см. CARD_W) — оставлен
+  // для читаемости смещений внутри рамки в её собственных пикселях.
   const rx = Math.round(x);
   const ry = Math.round(y);
   const rw = Math.round(w);
@@ -59,11 +67,13 @@ export function drawCardFace(
   }
 
   if (revealProgress > 0) {
+    // Портрет — тоже экранные пиксели, множитель ×1 (BUILD-SPEC-03 задача 2):
+    // рисуем в натуральном размере ассета, не 150-в-что-то.
     const art = images.foolOnCard;
-    const artW = 150 * s;
-    const artH = artW * (art.height / art.width);
-    const artX = x + (w - artW) / 2;
-    const artY = y + 96 * s;
+    const artW = art.width;
+    const artH = art.height;
+    const artX = Math.round(x + (w - artW) / 2);
+    const artY = Math.round(y + 96);
     drawPixelReveal(ctx, art, artX, artY, artW, artH, revealProgress, cellSize, 0.5, 0.3);
   }
 

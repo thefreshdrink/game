@@ -2,7 +2,7 @@
 // Референс: docs/interfaces/Tap to see.png
 
 import { setFont } from '../core/text.js';
-import { drawCardBack, drawCardBlank } from '../core/cardRender.js';
+import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
 import { blinkAlpha } from '../core/textReveal.js';
 
 const FLIP_DURATION = 0.8; // сек — «не быстрее ~0.8 сек», это ритуал (BUILD-SPEC)
@@ -19,15 +19,14 @@ export function createDrawScreen({ input, images, goto }) {
 
   function layout(w, h) {
     const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
-    const cardW = Math.round(w * 0.5);
-    const cardH = Math.round(cardW * (384 / 224));
+    // Карта — фиксированные 224×384, без uiScale (BUILD-SPEC-03 задача 2).
+    // По центру экрана (правка в чате, 2026-08-23) — та же формула, что и в
+    // reveal.js, иначе при переходе 3→4 карта прыгнет.
     box = {
-      // По центру экрана (правка в чате, 2026-08-23) — тот же формула, что
-      // и в reveal.js/deck.js, иначе при переходах карта прыгнет.
-      x: Math.round((w - cardW) / 2),
-      y: Math.round((h - cardH) / 2),
-      w: cardW,
-      h: cardH,
+      x: Math.round((w - CARD_W) / 2),
+      y: Math.round((h - CARD_H) / 2),
+      w: CARD_W,
+      h: CARD_H,
       scale,
     };
   }

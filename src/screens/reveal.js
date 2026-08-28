@@ -15,7 +15,7 @@ import { setFont, wrapLines } from '../core/text.js';
 import {
   layoutWords, visibleWordCount, revealDuration, blinkAlpha,
 } from '../core/textReveal.js';
-import { drawCardFace } from '../core/cardRender.js';
+import { drawCardFace, CARD_W, CARD_H } from '../core/cardRender.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
 const REVEAL_CELL_SIZE = 4;
@@ -33,16 +33,15 @@ export function createRevealScreen({ input, images, goto }) {
   let titleRevealDuration = 0;
 
   function layout(w, h, scale) {
-    const cardW = Math.round(w * 0.5);
-    const cardH = Math.round(cardW * (384 / 224));
+    // Карта — фиксированные 224×384, без uiScale (BUILD-SPEC-03 задача 2).
     box = {
       // По центру экрана, не 0.364h (правка в чате, 2026-08-23: «карту
       // выбранную сделать чётко посередине экрана») — раньше карта висела
       // ощутимо выше центра, ближе к шапке.
-      x: Math.round((w - cardW) / 2),
-      y: Math.round((h - cardH) / 2),
-      w: cardW,
-      h: cardH,
+      x: Math.round((w - CARD_W) / 2),
+      y: Math.round((h - CARD_H) / 2),
+      w: CARD_W,
+      h: CARD_H,
     };
     // Под картой (BUILD-SPEC-02, задача 4) — раньше сидел в шапке, у
     // пунктов меню экрана 1, примерно на 400px выше карты, к которой
