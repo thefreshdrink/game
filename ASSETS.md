@@ -11,6 +11,59 @@ Nearest Neighbor / «без сглаживания».
 
 ---
 
+## Аудит отрисовки — BUILD-SPEC-03 задача 2 (2026-08-28)
+
+Что грузится через `IMAGE_MANIFEST` (`src/main.js`) и с каким множителем
+рисуется. **После задачи 2 все спрайты — фиксированный целый множитель,
+`uiScale` в размерах не участвует** (проверено покадрово на 320/390/430/1440:
+1 арт-пиксель = ровно 2 экранных, прогоны цвета кратны 4 канвас-px при DPR 2).
+
+| файл (в `public/assets/`) | размер | единица | множ. | где рисуется |
+|---|---|---|---|---|
+| `fool/strips/fool_idle_4f_44x48.png` | 176×48 (4×44) | арт-px | **×2** | Шут idle, `leap.js drawPlayer` |
+| `fool/strips/fool_rise_1f_44x48.png` | 44×48 | арт-px | **×2** | Шут `air`, `vy<0` |
+| `fool/strips/fool_fall_1f_44x48.png` | 44×48 | арт-px | **×2** | Шут `air`, `vy≥0` |
+| `fool/strips/fool_dog_fall_1f_48x48.png` | 48×48 | арт-px | **×2** | Шут+пёс, `fall`/`landed` (`PAIR_W` 96) |
+| `dog/strips/dog_walk_3f_18x14.png` | 54×14 (3×18) | арт-px | **×2** | пёс walk, `leap.js drawDog` |
+| `dog/strips/dog_sit_2f_18x14.png` | 36×14 (2×18) | арт-px | **×2** | пёс sit |
+| `dog/strips/dog_look_down_1f_18x14.png` | 18×14 | арт-px | **×2** | пёс lookdown |
+| `dog/strips/dog_jump_1f_18x14.png` | 18×14 | арт-px | **×2** | пёс над щелью |
+| `road/plat_tiles.png` | 48×12 (3 ячейки 16×12) | арт-px | **×2** | дорога, `platforms.js drawRoad` (торец+N×серединка+торец) |
+| `card/card_frame_fool.png` | 224×384 | экранные | **×1** | лицо карты, экран 4 (`cardFront`, `CARD_W×CARD_H`) |
+| `card/back_side_card_final.png` | 224×384 | экранные | **×1** | рубашка карты, экран 2 (веер) и 3 (`cardBack`) |
+| `card/fool_on_the_card.png` | 164×182 | экранные | **×1** | портрет на карте, экран 4 (нативный размер, `pixelReveal`) |
+| `card/select_frame.png` | 228×388 | экранные | **×1** | рамка выбора на веере = карта + 2px по краю |
+| `future_teller/oracle_body.png` | 430×678 | экранные | **×1** | фигура оракула, экраны 1–2 (`computeOracleLayout`, якорь по голове) |
+| `future_teller/oracle_eyes.png` | 430×678 | экранные | **×1** | глаза оракула, слой поверх тела |
+| `alagard.ttf` | — | — | — | дисплейный шрифт |
+
+**Полупрозрачные пиксели** (правило формата «их быть не должно»):
+`oracle_body.png` — 6880, `fool_on_the_card.png` — 2720, `oracle_eyes.png` —
+304. Это мягкая кайма от генерации. На `pixelReveal` (он и так альфа-эффект)
+не мешает, но при перегенерации оракула/портрета стоит вычистить.
+
+## Не грузится манифестом — кандидаты на вынос в `art-source/`
+
+Лежат в `public/assets/`, `IMAGE_MANIFEST` на них не ссылается, значит едут
+в бандл мёртвым весом (Vite копирует `public/` целиком). **Не трогал —
+жду решения пользователя** (в отличие от дорожных, которые я заменил и
+вынес сам):
+
+| файл | размер | вес | что это |
+|---|---|---|---|
+| `future_teller/Future_Teller_Yellow.png` | 768×1024 | 35 КБ | исходник PixelLab |
+| `future_teller/Retro Diffusion Spectral.png` | 525×700 | 25 КБ | исходник |
+| `future_teller/character.png` | 192×256 | 24 КБ | исходник |
+| `future_teller/Future_Teller_Eyes.png` | 768×1024 | 19 КБ | исходник |
+| `card/card_the_fool.png` | 224×384 | 14 КБ | старая цельная карта с портретом |
+| `card/back_side_card_detailed.png` | 224×384 | 7 КБ | альт-рубашка |
+| `card/card_frame.png` | 224×384 | 4 КБ | старая рамка (заменена `card_frame_fool`) |
+| `card/front_side_card.png` | 224×384 | 4 КБ | старая лицевая (заменена) |
+
+Итого ≈132 КБ. Вынос в `art-source/` облегчит бандл на столько же.
+
+---
+
 ## Готово
 
 Шут пересобран заново (BUILD-SPEC-03, задача 3, правка в чате 2026-08-26 —
