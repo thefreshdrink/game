@@ -38,13 +38,18 @@ export function headerBottomY(ty, titleLH, scale) {
   return ty + HEADER_LINES * titleLH + Math.round(9 * scale);
 }
 
-/** Ширина, высота и позиция фигуры — во весь канвас, верх у ORACLE_TOP_GAP. */
+/** Размер и позиция фигуры. Фиксированный ×1 — 430×678, без uiScale
+ * (BUILD-SPEC-03 задача 2). Якорь по голове: изображение центрируется по
+ * ширине, голова у него по центру-сверху, поэтому на узком вьюпорте
+ * (320) края (кончики рогов) уходят за кадр — это принятый размен спеки
+ * («обрезаем краем, а не масштабируем дробно»); если мешает — отдельный
+ * ассет под узкий экран, дробно не жмём. */
 export function computeOracleLayout(w, headerBottomY, scale, bodyImage) {
-  const oracleW = w;
-  const oracleH = oracleW * (bodyImage.height / bodyImage.width);
-  const oracleX = (w - oracleW) / 2;
+  const oracleW = bodyImage.width;   // 430
+  const oracleH = bodyImage.height;  // 678
+  const oracleX = Math.round((w - oracleW) / 2); // на узком экране уйдёт в минус — норм
   const oracleY = headerBottomY + Math.round(ORACLE_TOP_GAP * scale);
-  const oracleScale = oracleW / bodyImage.width;
+  const oracleScale = 1;
   return { oracleX, oracleY, oracleW, oracleH, oracleScale };
 }
 
