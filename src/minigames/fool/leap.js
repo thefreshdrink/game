@@ -1,7 +1,13 @@
 // Экран 5 — мини-игра «Leap». Идёшь по дороге вправо, дорога кончается, и
-// последний шаг — тот же самый, что и все предыдущие (BUILD-SPEC). Ходьба
-// вдоль плиты — автоматическая; свайп нужен только чтобы перепрыгнуть щель;
-// у последнего края — одно удержание вместо прыжка. Проиграть нельзя.
+// последний шаг — тот же самый, что и все предыдущие (BUILD-SPEC).
+//
+// Управление — РУЧНОЕ (правка в чате 2026-08-28: «фул сам плывёт, игра
+// очень лёгкая»): держишь палец — Шут идёт вперёд, отпустил — стоит.
+// Назад некуда (уровень линейный). Свайп вверх — прыжок через щель; слабый
+// свайп можно не дотянуть. С плиты можно сойти и упасть. Падение = сцена
+// падения и возврат на НАЧАЛО той же плиты — теряешь пройденный отрезок,
+// не всю игру. Экрана проигрыша, очков, таймера по-прежнему нет
+// (CLAUDE.md). У последнего края — одно удержание вместо прыжка.
 //
 // Анимация — «сначала процедурно, руками только то, что код не умеет»
 // (ASSETS.md): нет отдельных кадров ходьбы/наклона у края/«пёс
@@ -10,7 +16,7 @@
 // walk/sit/look_down/jump у пса).
 
 import { setFont } from '../../core/text.js';
-import { PHYS, TAP_UP_POW, TAP_SIDE_POW, gravityFor, jumpVelocity } from './physics.js';
+import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, drawGhostRoad, drawFarRoad, START_WALK,
 } from './platforms.js';
@@ -38,7 +44,7 @@ const DOG_HOP_DELAY = 0.1; // реакция чуть позже, чем пры�
 const DOG_HOP_DURATION = 0.32;
 const DOG_HOP_HEIGHT = 34;
 
-// Стоя у края (wait_jump/wait_leap/charge) фигура центрируется на p.x, а
+// Стоя у края (walk/wait_leap/charge) фигура центрируется на p.x, а
 // p.x — это САМ край плиты (edgeX в 'walk'), поэтому правая половина
 // спрайта нависала над пропастью (правка в чате: «выходит за край
 // платформы»). Смещаем отрисовку назад только в этих статичных позах —
@@ -73,12 +79,18 @@ export function createLeapScreen({ input, images, goto }) {
   let offHandlers = [];
   let platforms = [];
   let idx = 0; // индекс текущей/последней плиты под ногами
-  let state = 'walk'; // walk | air | wait_jump | wait_leap | charge | fall | landed
+  let state = 'walk'; // walk | air | wait_leap | charge | fall | landed
   let t = 0;
   let stateT = 0;
   let deepestY = 0;
   let camX = 0, camY = 0;
   let hintAlpha = 1;
+  let walking = false;  // палец удерживается — Шут идёт вперёд (ручное управление)
+  let movedEver = false; // хоть раз пошёл — гасим подсказку «HOLD TO WALK»
+  let respawnFlash = 0; // короткая вспышка чёрным после падения, сек
+  // Для распознавания «флика вверх на ходу» (input даёт hold-события без
+  // скорости) — держим предыдущую точку hold-жеста.
+  let holdPrevY = 0, holdPrevMs = 0;
 
   const player = { x: 0, y: 0, vx: 0, vy: 0, face: 1, sqx: 1, sqy: 1, pose: 'idle' };
   // hopDelay > 0 — отсчитывает задержку реакции; hopT >= 0 — идёт сама
@@ -129,17 +141,18 @@ export function createLeapScreen({ input, images, goto }) {
     idx = platforms.indexOf(p);
     state = 'walk';
     stateT = 0;
+    walking = false; // приземлился — не уносим сразу за следующий край
     spawnDust(player.x, player.y, 5);
   }
 
-  /** Провалился мимо всех плит — редкий случай при слабом реальном свайпе
-   * на телефоне (см. RESPAWN_DROP). Возвращаем на плиту, с которой
-   * прыгнул, чуть отступив от края, и снова пускаем ходьбой — так и
-   * прыжковая, и шаговая щель обработаются той же логикой, что и обычно,
-   * без риска зависнуть в ожидании свайпа там, где он не нужен. */
-  function respawnOnOrigin() {
+  /** Упал с плиты (сошёл с края или не дотянул прыжок). Возвращаем на
+   * НАЧАЛО той же плиты (левый край) — пройденный по ней отрезок теряется,
+   * но не вся игра, экрана проигрыша нет (правка в чате 2026-08-28).
+   * Короткая вспышка чёрным вместо полноценной сцены падения — сама сцена
+   * (три такта) это отдельная задача BUILD-SPEC-03. */
+  function respawnAtStart() {
     const p = platforms[idx];
-    player.x = Math.max(p.x, p.x + p.w - 24);
+    player.x = p.x + 20;
     player.y = p.y;
     player.vx = 0;
     player.vy = 0;
@@ -147,12 +160,21 @@ export function createLeapScreen({ input, images, goto }) {
     player.sqy = 1;
     state = 'walk';
     stateT = 0;
+    walking = false;
     hintAlpha = 1;
+    respawnFlash = 0.22;
+    deepestY = player.y; // иначе «пустота» снизу кадра остаётся раздутой после падения
+    // Камеру подводим сразу, без плавного «полёта» обратно.
+    camX = player.x - 430 * 0.38;
+    camY = player.y - 932 * 0.45;
+    dog.x = player.x - DOG_LAG;
+    dog.y = player.y;
+    dog.state = 'follow';
     spawnDust(player.x, player.y, 6);
   }
 
   function beginJump(upPow, sidePow) {
-    if (state !== 'wait_jump') return;
+    if (state !== 'walk') return;
     const v = jumpVelocity(upPow, sidePow);
     player.vy = v.vy;
     player.vx = v.vx;
@@ -185,6 +207,11 @@ export function createLeapScreen({ input, images, goto }) {
       state = 'walk';
       deepestY = 0;
       hintAlpha = 1;
+      walking = false;
+      movedEver = false;
+      respawnFlash = 0;
+      holdPrevY = 0;
+      holdPrevMs = 0;
       dust.length = 0;
 
       const startY = 0;
@@ -209,18 +236,43 @@ export function createLeapScreen({ input, images, goto }) {
       camY = 0;
 
       offHandlers = [
-        input.on('swipe', (e) => {
-          if (state !== 'wait_jump') return;
-          beginJump(e.up, Math.min(1, Math.abs(e.side)));
+        // Держишь палец — Шут идёт вперёд. press* — сырой сигнал «палец
+        // сейчас здесь», без задержки в 250мс (в отличие от hold*), нужен
+        // отзывчивый старт ходьбы.
+        input.on('pressstart', (e) => {
+          if (state === 'walk') walking = true;
+          holdPrevY = e.y;
+          holdPrevMs = 0;
         }),
-        input.on('tap', () => {
-          if (state !== 'wait_jump') return;
-          beginJump(TAP_UP_POW, TAP_SIDE_POW);
+        input.on('pressend', () => { walking = false; }),
+        input.on('swipe', (e) => {
+          // Быстрый свайп (палец на плите < 250мс) — прыжок. Слабый свайп
+          // = слабый прыжок, щель можно не дотянуть (правка 2026-08-28).
+          if (state !== 'walk') return;
+          walking = false;
+          beginJump(e.up, Math.min(1, Math.abs(e.side)));
         }),
         input.on('holdstart', () => {
           if (state !== 'wait_leap') return;
+          walking = false;
           state = 'charge';
           stateT = 0;
+        }),
+        input.on('holdmove', (e) => {
+          // Шёл (держал > 250мс) и на ходу дёрнул вверх — это прыжок, а не
+          // дрейф пальца: input классифицирует такой жест как hold, не swipe,
+          // поэтому ловим по СКОРОСТИ вверх между двумя hold-событиями, а не
+          // по накопленному смещению (иначе сработает от медленного увода).
+          const dtMs = e.duration - holdPrevMs;
+          const prevY = holdPrevY;
+          holdPrevY = e.y;
+          holdPrevMs = e.duration;
+          if (state !== 'walk' || !walking || dtMs < 8) return;
+          const vUp = (prevY - e.y) / dtMs; // px/мс, >0 = вверх
+          if (vUp > 0.7) {
+            walking = false;
+            beginJump(Math.max(0.2, Math.min(1.3, vUp * 0.6)), Math.min(1, Math.abs(e.dx) / 140));
+          }
         }),
         input.on('holdend', () => {
           if (state !== 'charge') return;
@@ -239,6 +291,7 @@ export function createLeapScreen({ input, images, goto }) {
       t += dt;
       stateT += dt;
       updateDust(dt);
+      if (respawnFlash > 0) respawnFlash = Math.max(0, respawnFlash - dt);
 
       // Камера: портрет, фигура держится ниже середины кадра (0.45, не
       // 0.33 — BUILD-SPEC-02, задача 5: было слишком высоко, нижние ~55%
@@ -253,31 +306,27 @@ export function createLeapScreen({ input, images, goto }) {
       const last = platforms[platforms.length - 1];
 
       if (state === 'walk') {
-        player.x += PHYS.walk * dt;
+        // Ручное управление: идёт вперёд только пока держат палец.
+        if (walking) { player.x += PHYS.walk * dt; movedEver = true; }
         player.sqx += (1 - player.sqx) * Math.min(1, dt * 10);
         player.sqy += (1 - player.sqy) * Math.min(1, dt * 10);
         const p = platforms[idx];
         const edgeX = p.x + p.w;
-        if (player.x >= edgeX) {
-          player.x = edgeX;
-          if (p === last) {
-            state = 'wait_leap';
-            stateT = 0;
-          } else {
-            const next = platforms[idx + 1];
-            if (next.jumpIn) {
-              state = 'wait_jump';
-              stateT = 0;
-            } else {
-              // «Сходит с края» — без прыжка, гравитация и текущая
-              // скорость ходьбы сами переносят через узкую щель.
-              player.vx = PHYS.walk;
-              player.vy = 0;
-              state = 'air';
-              stateT = 0;
-              scheduleDogHop();
-            }
+        if (p === last) {
+          // У последнего края мир кончается — дальше идти некуда, шаг
+          // заменяет удержание (BUILD-SPEC). Просто упираемся в кромку.
+          if (player.x >= edgeX - 2) {
+            player.x = edgeX - 2;
+            if (state === 'walk') { state = 'wait_leap'; stateT = 0; }
           }
+        } else if (player.x > edgeX) {
+          // Сошёл с края обычной плиты — падаешь. Если впереди есть куда
+          // приземлиться в пределах дуги — долетишь; нет — respawnAtStart.
+          player.vx = walking ? PHYS.walk : 0;
+          player.vy = 0;
+          state = 'air';
+          stateT = 0;
+          scheduleDogHop();
         }
       } else if (state === 'air') {
         // Растяжение с толчка (beginJump: sqx 0.8/sqy 1.24) не отпускало
@@ -298,15 +347,14 @@ export function createLeapScreen({ input, images, goto }) {
           const p = platformAt(platforms, player.x, prevY - 2, player.y + 2);
           if (p) land(p);
         }
-        // Промахнуться нельзя (BUILD-SPEC) — щели подобраны так, чтобы
-        // этого не случалось, но живой палец на телефоне не гарантия
-        // расчёта. Если всё же провалился мимо всех плит — не подвешиваем
-        // молча в пропасти, а мягко возвращаем на ту плиту, с которой
-        // прыгнул (правка в чате: «нету респавна персонажа после падения»).
+        // Упал мимо всех плит (не дотянул прыжок или сошёл с края) —
+        // возврат на начало текущей плиты. Раньше «промахнуться нельзя»
+        // было гарантией подбора щелей; теперь промах штатный, но без
+        // проигрыша (правка в чате 2026-08-28).
         if (state === 'air' && player.y - platforms[idx].y > RESPAWN_DROP) {
-          respawnOnOrigin();
+          respawnAtStart();
         }
-      } else if (state === 'wait_jump' || state === 'wait_leap') {
+      } else if (state === 'wait_leap') {
         player.sqx += (1 - player.sqx) * Math.min(1, dt * 8);
         player.sqy += (1 - player.sqy) * Math.min(1, dt * 8);
       } else if (state === 'charge') {
@@ -354,7 +402,14 @@ export function createLeapScreen({ input, images, goto }) {
           dog.state = 'overtake';
         }
       } else if (dog.state === 'overtake') {
-        const targetX = player.x + 30;
+        // Пёс выходит вперёд Шута, но НЕ за край: садится у самой кромки
+        // финальной плиты и оглядывается (BUILD-SPEC: «обгоняет, садится,
+        // оглядывается»). Раньше цель была player.x + 30 — а игрок уже
+        // приклеен к краю, так что пёс повисал над пропастью на 30px
+        // (правка в чате 2026-08-28). dog.x — центр (см. drawDog), поэтому
+        // держим центр не дальше кромки минус полуширина и небольшой зазор.
+        const lastEdge = platforms[platforms.length - 1].x + platforms[platforms.length - 1].w;
+        const targetX = Math.min(player.x + 30, lastEdge - DOG_W / 2 - 4);
         dog.x += (targetX - dog.x) * Math.min(1, dt * 5);
         dog.y += (player.y - dog.y) * Math.min(1, dt * 8);
         dog.frameT += dt;
@@ -376,9 +431,10 @@ export function createLeapScreen({ input, images, goto }) {
       // задача 5: «плиты читаются как отдельные бруски в пустоте», нужна
       // глубина без новых ассетов).
       drawFarRoad(ctx, w, h, camX, player.y, scale, 0);
-      platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY, scale));
+      platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       // Дорога за пропастью — видна, не интерактивна (BUILD-SPEC «решение B»).
-      drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 140, camX, camY, scale);
+      // Ширина кратна 32 — тайлсет кладётся целыми плитками (см. drawRoad).
+      drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 160, camX, camY);
 
       // Пустота — чем глубже забрались, тем больше съедает низ кадра.
       const voidFrac = clamp01(deepestY / (FALL_DEPTH * 0.9));
@@ -403,10 +459,15 @@ export function createLeapScreen({ input, images, goto }) {
       // «собаку на первом плане относительно Шута») — раньше порядок был
       // обратный. В падении пёс — часть парного спрайта игрока
       // (fool_dog_fall, BUILD-SPEC-03 задача 3), отдельно не рисуем.
-      const standEdgeX = platforms[idx] ? platforms[idx].x + platforms[idx].w : null;
-      drawPlayer(ctx, images, player, camX, camY, scale, state, t, standEdgeX);
+      // Плиты под ногами — для клэмпа спрайтов по краям (Шут и пёс не
+      // должны свисать за плиту ни левым, ни правым краем — правка в чате
+      // 2026-08-28). Пёс обычно на той же плите, но у края может быть на
+      // соседней — берём по его x.
+      const standPlat = platforms[idx] || null;
+      const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
+      drawPlayer(ctx, images, player, camX, camY, scale, state, t, standPlat);
       if (state !== 'fall' && state !== 'landed') {
-        drawDog(ctx, images, dog, camX, camY, scale);
+        drawDog(ctx, images, dog, camX, camY, scale, dogPlat);
       }
 
       // Белая линия земли — проступает в момент касания, не раньше.
@@ -418,20 +479,25 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.globalAlpha = 1;
       }
 
-      // Подсказка — тот же стиль, что и на других экранах.
+      // Подсказка — тот же стиль, что и на других экранах. Инлайн у
+      // фигуры, не HUD-баннером (BUILD-SPEC-02, задача 5). Текст временный —
+      // задача 5 BUILD-SPEC-03 меняет его на жестовые знаки.
       setFont(ctx, 'menuOption', scale);
       ctx.fillStyle = '#EBA331';
       const marginTop = Math.round(48 * scale);
-      if (state === 'wait_jump' || state === 'walk') {
-        // Инлайн у фигуры, не HUD-баннером по центру сверху (BUILD-SPEC-02,
-        // задача 5) — на уровне головы, со сдвигом вправо. Гаснет после
-        // первого удавшегося прыжка (hintAlpha уже обнуляется в beginJump).
+      if (state === 'walk') {
         ctx.textAlign = 'left';
         const headX = player.x - camX + Math.round(90 * scale);
         const headY = player.y - camY - Math.round(PLAYER_H * scale);
-        ctx.globalAlpha = hintAlpha;
-        ctx.fillText('SWIPE TO JUMP', headX, headY);
-        ctx.globalAlpha = 1;
+        const p = platforms[idx];
+        const nearEdge = p !== last && (p.x + p.w - player.x) < 70;
+        if (!movedEver && !walking) {
+          ctx.fillText('HOLD TO WALK', headX, headY);
+        } else if (nearEdge) {
+          ctx.globalAlpha = hintAlpha;
+          ctx.fillText('SWIPE TO JUMP', headX, headY);
+          ctx.globalAlpha = 1;
+        }
       } else if (state === 'wait_leap' || state === 'charge') {
         ctx.textAlign = 'center';
         ctx.fillText('HOLD', w / 2, marginTop);
@@ -449,6 +515,15 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.fillStyle = '#EBA331';
         ctx.fillRect(barX, barY, Math.round(barW * p), barH);
       }
+
+      // Вспышка чёрным после падения — короткий «моргнул и снова на плите».
+      // Не полноценная сцена падения (та — задача 4 BUILD-SPEC-03).
+      if (respawnFlash > 0) {
+        ctx.globalAlpha = clamp01(respawnFlash / 0.22);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = 1;
+      }
     },
   };
 }
@@ -460,7 +535,7 @@ export function createLeapScreen({ input, images, goto }) {
 // прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
 // с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
 // задача 4 не переделает его на три такта отдельно.
-function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standEdgeX) {
+function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standPlat) {
   let pose;
   let img;
   if (state === 'fall' || state === 'landed') {
@@ -489,13 +564,16 @@ function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standEdgeX) {
   // совсем, чем ближе — тем плавнее подъезжает, у самого края спрайт
   // просто не залезает правым краем дальше физической границы плиты.
   // В воздухе (air/fall/landed) не клэмпим — там за пределами плиты
-  // находиться и есть смысл состояния.
-  const isGrounded = state === 'walk' || state === 'wait_jump'
+  // находиться и есть смысл состояния. На земле — держим спрайт целиком
+  // над плитой, ни левым, ни правым краем не свисает (правка 2026-08-28).
+  const isGrounded = state === 'walk'
     || state === 'wait_leap' || state === 'charge';
   let x = Math.round(p.x - camX - w / 2);
-  if (isGrounded && standEdgeX != null) {
-    const maxRight = Math.round(standEdgeX - camX);
+  if (isGrounded && standPlat) {
+    const minLeft = Math.round(standPlat.x - camX);
+    const maxRight = Math.round(standPlat.x + standPlat.w - camX);
     if (x + w > maxRight) x = maxRight - w;
+    if (x < minLeft) x = minLeft;
   }
   const y = Math.round(p.y - camY - h);
 
@@ -510,7 +588,7 @@ function drawPlayer(ctx, images, p, camX, camY, scale, state, t, standEdgeX) {
   ctx.restore();
 }
 
-function drawDog(ctx, images, d, camX, camY, scale) {
+function drawDog(ctx, images, d, camX, camY, scale, dogPlat) {
   let frames = images.dogWalkFrames;
   let idx = Math.floor(d.frameT * 6) % frames.length;
   if (d.pose === 'sit') { frames = images.dogSitFrames; idx = Math.floor(d.frameT * 2) % frames.length; }
@@ -520,7 +598,15 @@ function drawDog(ctx, images, d, camX, camY, scale) {
   const img = frames[idx];
   const w = Math.round(DOG_W * scale);
   const h = Math.round(DOG_H * scale);
-  const x = Math.round(d.x - camX - w / 2);
+  let x = Math.round(d.x - camX - w / 2);
+  // Пёс не свисает за край плиты (правка 2026-08-28). Во время прыжка
+  // (pose 'jump', над щелью) — можно, там смысл в том, что он в воздухе.
+  if (dogPlat && d.pose !== 'jump') {
+    const minLeft = Math.round(dogPlat.x - camX);
+    const maxRight = Math.round(dogPlat.x + dogPlat.w - camX);
+    if (x + w > maxRight) x = maxRight - w;
+    if (x < minLeft) x = minLeft;
+  }
   const hopY = Math.round((d.hopOffset || 0) * scale);
   const y = Math.round(d.y - camY - h) + hopY;
   ctx.drawImage(img, x, y, w, h);

@@ -9,32 +9,49 @@
 // узкая, что обычная ходьба сама переносит через неё под гравитацией.
 
 export const TILE = 32;
-export const PLATE_H = 24; // 12 арт-px × 2
+export const PLATE_H = 24; // 12 нативных px тайлсета × 2 (CLAUDE.md: высота плиты 24)
 
-// Размеры щелей подобраны так, чтобы минимальный ввод (голый тап) гарантированно
-// перекрывал прыжковую щель, а обычная ходьба — «шаговую»: «Промахнуться
-// нельзя» (BUILD-SPEC) — это гарантия физики и подбора чисел, а не отдельный
-// код-костыль. Проверено расчётом под константы core/leapPhysics.js, потом
-// точно подогнано вживую.
-const GAP_JUMP = 52; // перепрыгивается даже при минимальной силе свайпа
-const GAP_JUMP_FAR = 64; // «дальше» — щель побольше, но всё ещё безопасна
-const GAP_STEP = 32; // «сходит с края» — переносится ходьбой без прыжка
+// Тайлсет дороги — public/assets/road/plat_tiles.png, нарезан из
+// assets/1-bit Pixel Art Platformer Tile.png (design-system/extract-road-tiles.py).
+// Атлас 48×12 нативных: три ячейки 16×12 подряд — [cap_l | mid | cap_r].
+// Рисуется ФИКСИРОВАННЫМ ×2, без uiScale (BUILD-SPEC-03 задача 2: ни одного
+// drawImage со `* scale`). 1 нативный px = ровно 2 экранных, всегда.
+const SRC_TH = 12;      // высота ячейки в тайлсете
+const SRC_CELL = 16;    // ширина ячейки
+const CAP_W = SRC_CELL * 2; // 32 экранных — торец
+const MID_W = SRC_CELL * 2; // 32 экранных — одна серединная плитка, тайлится
 
-// P1 — старт. Ширина 400, не 176 (BUILD-SPEC-02, задача 5): игрок стартует
-// не у самого левого края плиты, а с отступом на исходные 176px от правого
-// края — сама плита продолжается ещё на 224px влево, за кадр, чтобы левый
-// край не «обрывался» в кадре с первого мгновения (см. leap.js, START_WALK).
-export const P1_WIDTH = 400;
+// Щели РАЗНЫЕ, но мягкие (правка в чате 2026-08-28: «не жестить со
+// сложностью, плиты норм размеров»). Нормальный свайп вверх-вперёд
+// перекрывает любую с запасом; упасть можно, если сойти с края или
+// фликнуть совсем вяло — тогда возврат на начало плиты (leap.js), не
+// проигрыш. Ступени вниз (dy +32) переносятся и ходьбой, вверх (dy −32)
+// требуют лёгкого прыжка — естественный пологий градиент.
+const G_A = 48; // короткая
+const G_B = 56; // средняя
+const G_C = 64; // подлиннее
+
+// P1 — старт. Ширина 384 (BUILD-SPEC-02, задача 5): плита продолжается
+// влево за кадр, старт отсчитывается от правого края на START_WALK, чтобы
+// левый край не был виден с первого кадра (см. leap.js).
+//
+// Все ширины — кратные 32 экранным (BUILD-SPEC-03 задача 2): плита = торец
+// 32 + N×серединная 32 + торец 32, целое число плиток. Минимум — 96, но
+// держим 128–224 — «норм размеры». Ступени кратны 32 экранным (CLAUDE.md),
+// только ±32 — без резких скачков. Толщина плиты везде одна (PLATE_H 24).
+export const P1_WIDTH = 384;
 export const START_WALK = 176;
 
 const DATA = [
-  { dy: 0, w: P1_WIDTH }, // P1 — старт
-  { dy: -64, w: 108, gap: GAP_JUMP, jump: true },
-  { dy: 32, w: 108, gap: GAP_STEP, jump: false },
-  { dy: -32, w: 108, gap: GAP_JUMP, jump: true },
-  { dy: -64, w: 108, gap: GAP_JUMP_FAR, jump: true },
-  { dy: 64, w: 108, gap: GAP_STEP, jump: false },
-  { dy: 0, w: 220, gap: GAP_JUMP, jump: true }, // «последнее усилие» + финальный край
+  { dy: 0, w: P1_WIDTH }, // P1 — старт, длинная
+  { dy: -32, w: 160, gap: G_B, jump: true },
+  { dy: 0, w: 128, gap: G_A, jump: true },
+  { dy: -32, w: 160, gap: G_C, jump: true },
+  { dy: 32, w: 128, gap: G_B, jump: true },  // ступень вниз — можно и шагом
+  { dy: -32, w: 128, gap: G_C, jump: true },
+  { dy: 0, w: 160, gap: G_A, jump: true },
+  { dy: -32, w: 128, gap: G_B, jump: true },
+  { dy: 0, w: 224, gap: G_B, jump: true }, // финальная — длинная, дальше удержание
 ];
 
 /** Строит список плит с абсолютными x/y (world-координаты, y растёт вниз). */
@@ -56,49 +73,41 @@ export function platformAt(platforms, x, yMin, yMax) {
   return null;
 }
 
-// Концевая зона блока (скоба + зазор, ASSETS.md: «скоба 7 · зазор 2») —
-// остаётся нерастянутой при 3-slice; середина — однородный повторяющийся
-// брус, поэтому её можно смело растягивать под любую ширину плиты вместо
-// тайлинга по колонкам — визуально неотличимо, а кода меньше.
-const CAP_SLICE = 16;
+// Плита = торец + N серединных плиток + торец, каждая копия — целая, ×2,
+// по целым координатам (CLAUDE.md: спрайты только по целым, иначе размытая
+// полоска). Ширина плиты кратна 32, поэтому N = (w − 64) / 32 всегда целое.
+function drawRoad(ctx, img, x, y, w) {
+  const blit = (sx, dx, dw) =>
+    ctx.drawImage(img, sx, 0, SRC_CELL, SRC_TH, Math.round(dx), Math.round(y), dw, PLATE_H);
 
-function drawBlock(ctx, img, x, y, w, h) {
-  const capW = Math.min(Math.round(w / 2), Math.round(CAP_SLICE * (h / img.height)));
-  const midW = Math.max(0, w - capW * 2);
-  const srcMidW = img.width - CAP_SLICE * 2;
-
-  ctx.drawImage(img, 0, 0, CAP_SLICE, img.height, x, y, capW, h);
-  if (midW > 0) {
-    ctx.drawImage(img, CAP_SLICE, 0, srcMidW, img.height, x + capW, y, midW, h);
-  }
-  ctx.drawImage(img, img.width - CAP_SLICE, 0, CAP_SLICE, img.height, x + w - capW, y, capW, h);
+  blit(0, x, CAP_W); // cap_l
+  const n = Math.max(0, Math.round((w - CAP_W * 2) / MID_W));
+  for (let i = 0; i < n; i++) blit(SRC_CELL, x + CAP_W + i * MID_W, MID_W);
+  blit(SRC_CELL * 2, x + w - CAP_W, CAP_W); // cap_r
 }
 
-/** Рисует плиту: чёрная подложка (design-system) + эталонный блок целиком,
- * 3-slice под фактическую ширину плиты. */
-export function drawPlatform(ctx, images, p, camX, camY, scale) {
+/** Рисует плиту: чёрная подложка (тело — дыра в воздухе, design-system) +
+ * тайлсет дороги, целыми плитками, фиксированный ×2. */
+export function drawPlatform(ctx, images, p, camX, camY) {
   const x = Math.round(p.x - camX);
   const y = Math.round(p.y - camY);
-  const w = Math.round(p.w * scale);
-  const h = Math.round(PLATE_H * scale);
+  const w = p.w; // уже экранные px, кратно 32 — без * scale
   if (x + w < -40 || x > 2000) return; // грубый culling
 
   ctx.fillStyle = '#000000';
-  ctx.fillRect(x, y, w, h);
-  drawBlock(ctx, images.roadBlock, x, y, w, h);
+  ctx.fillRect(x, y, w, PLATE_H);
+  drawRoad(ctx, images.roadTiles, x, y, w);
 }
 
 /** Тусклая дорога за пропастью — видна, недостижима, не интерактивна
- * (BUILD-SPEC «решение B») — тот же блок, приглушённый прозрачностью. */
-export function drawGhostRoad(ctx, images, x, y, w, camX, camY, scale) {
+ * (BUILD-SPEC «решение B») — тот же тайлсет, приглушённый прозрачностью. */
+export function drawGhostRoad(ctx, images, x, y, w, camX, camY) {
   const rx = Math.round(x - camX);
   const ry = Math.round(y - camY);
-  const rw = Math.round(w * scale);
-  const rh = Math.round(PLATE_H * scale);
   ctx.fillStyle = '#000000';
-  ctx.fillRect(rx, ry, rw, rh);
+  ctx.fillRect(rx, ry, w, PLATE_H);
   ctx.globalAlpha = 0.4;
-  drawBlock(ctx, images.roadBlock, rx, ry, rw, rh);
+  drawRoad(ctx, images.roadTiles, rx, ry, w);
   ctx.globalAlpha = 1;
 }
 
