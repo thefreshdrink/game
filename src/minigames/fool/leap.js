@@ -421,28 +421,29 @@ export function createLeapScreen({ input, images, goto }) {
           dog.state = 'overtake';
         }
       } else if (dog.state === 'overtake') {
-        // Пёс выходит вперёд Шута, но НЕ за край: садится у самой кромки
-        // финальной плиты и оглядывается (BUILD-SPEC: «обгоняет, садится,
-        // оглядывается»). Раньше цель была player.x + 30 — а игрок уже
-        // приклеен к краю, так что пёс повисал над пропастью на 30px
-        // (правка в чате 2026-08-28). dog.x — центр (см. drawDog), поэтому
-        // держим центр не дальше кромки минус полуширина и небольшой зазор.
+        // Пёс обгоняет и доходит ДО САМОЙ кромки финальной плиты (dog.x —
+        // центр, см. drawDog; держим не дальше кромки минус полуширина).
         const lastEdge = platforms[platforms.length - 1].x + platforms[platforms.length - 1].w;
-        const targetX = Math.min(player.x + 30, lastEdge - DOG_W / 2 - 4);
+        const targetX = Math.min(player.x + 30, lastEdge - DOG_W / 2 - 2);
         dog.x += (targetX - dog.x) * Math.min(1, dt * 5);
         dog.y += (player.y - dog.y) * Math.min(1, dt * 8);
         dog.frameT += dt;
-        // Дошёл до края — сперва опускает голову вниз (peek), потом садится
-        // и поворачивается к игроку (BUILD-SPEC-03 задача 5). Отдельного
-        // кадра «оглядывается» нет — обходимся sit.
         if (Math.abs(dog.x - targetX) < 2) { dog.state = 'peek'; dog.pose = 'lookdown'; dog.peekT = 0; }
       } else if (dog.state === 'peek') {
+        // Заглядывает вниз с кромки ~0.8 с.
         dog.peekT += dt;
         dog.frameT += dt;
         if (dog.peekT >= 0.8) { dog.state = 'sit'; dog.pose = 'sit'; dog.frameT = 0; }
       } else if (dog.state === 'sit') {
+        // Садится и «оглядывается» на игрока — отступив от Шута, чтобы не
+        // накладываться на наклоняющуюся фигуру (правка в чате 2026-08-29:
+        // «отодвинуть собаку назад»). Отдельного кадра «оглядывается» нет —
+        // обходимся sit.
         dog.pose = 'sit';
         dog.frameT += dt;
+        const sitX = player.x - 56; // позади Шута, чисто от наклона фигуры
+        dog.x += (sitX - dog.x) * Math.min(1, dt * 4);
+        dog.y += (player.y - dog.y) * Math.min(1, dt * 8);
       }
 
       // Финальный край (задача 5): осыпание призрачной дороги + акцентная
