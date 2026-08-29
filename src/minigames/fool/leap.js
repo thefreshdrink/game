@@ -63,11 +63,14 @@ const HOLD_TOTAL = HOLD_T1 + HOLD_T2; // «~2,6 сек»
 // слои пропасти и обломки, скорость нарастает; книзу темнеет, пока не
 // закроет кадр; потом из темноты пиксельно проступает та же дорога.
 const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
-const FALL_DUR = 1.5;     // такт 2 — полёт
+const FALL_DUR = 2.8;     // такт 2 — полёт (длинный, чтобы «летелось», правка 2026-08-29)
 const ARRIVE_DUR = 1.15;  // такт 3 — проявление земли
-const FALL_V0 = 240;      // стартовая скорость «прокрутки мира», экранных px/с
-const FALL_ACCEL = 900;   // нарастание
-const FALL_VMAX = 1500;
+// Скорость «прокрутки мира» в полёте идёт по дуге sin(prog·π): мягкий
+// разгон от V0, пик VPEAK в середине, плавное оседание к земле — полёт,
+// а не обрыв (правка 2026-08-29: «падение обрывистое, хочется красивого
+// полёта»).
+const FALL_V0 = 100;      // экранных px/с в начале и в конце
+const FALL_VPEAK = 820;   // на пике в середине
 const GHOST_W = 160;      // призрачная плита за краем (кратно 32), задача 5
 const ARRIVE_W = 320;     // плита прибытия (кратно 32), задача 7
 
@@ -154,7 +157,7 @@ export function createLeapScreen({ input, images, goto }) {
       if (d.t >= d.life) { dust.splice(i, 1); continue; }
       d.x += d.vx * dt;
       d.y += d.vy * dt;
-      d.vy += 220 * dt;
+      d.vy += (d.g ?? 220) * dt; // мошки в полёте почти не тянет вниз (d.g маленькое)
     }
   }
 
@@ -247,8 +250,9 @@ export function createLeapScreen({ input, images, goto }) {
       // воздух — те же «крупные пиксели», мягкий край, не плоская полоса.
       const CELL = 8;
       const backLayers = [
-        { mult: 0.4, c: '#1C1C1C', band: 96 },
-        { mult: 0.7, c: '#212121', band: 136 },
+        { mult: 0.28, c: '#1C1C1C', band: 88 },
+        { mult: 0.5, c: '#1C1C1C', band: 120 },
+        { mult: 0.78, c: '#212121', band: 148 },
       ];
       for (const L of backLayers) {
         const period = L.band + 160; // просвет воздуха между плитами
@@ -273,50 +277,55 @@ export function createLeapScreen({ input, images, goto }) {
         }
       }
 
-      // Передний план — вертикальные штрихи скорости, летят вверх быстро.
-      // Псевдослучайные, но стабильные колонки (seed от индекса).
-      const SL_N = 16;
+      // Передний план — длинные мягкие штрихи-следы, скользят вверх.
+      // Псевдослучайные, но стабильные колонки (seed от индекса). Реже и
+      // длиннее, чем при «обрыве» — читаются как след, а не как рябь.
+      const SL_N = 11;
+      ctx.globalAlpha = 0.7;
       for (let i = 0; i < SL_N; i++) {
         const seed = (i * 2654435761) >>> 0;
         const colX = (seed % (w - 4));
-        const len = 24 + (seed >> 8) % 64;
-        const mult = 1.0 + ((seed >> 4) & 7) / 10; // 1.0..1.7
+        const len = 44 + (seed >> 8) % 90;
+        const mult = 0.55 + ((seed >> 4) & 7) / 12; // 0.55..1.13
         const period = h + len + 40;
         const yy = h - (((fallScroll * mult) + (seed % period)) % period);
         ctx.fillStyle = ((seed >> 3) & 3) === 0 ? '#808080' : '#4A4A4A';
         ctx.fillRect(Math.round(colX), Math.round(yy), 2, len);
       }
+      ctx.globalAlpha = 1;
 
-      // Плита, с которой шагнул — видна ~0.5 с и уходит вверх.
-      const originY = h * 0.42 - fallScroll;
+      // Плита, с которой шагнул — уходит вверх, чуть медленнее прокрутки,
+      // держится в кадре ~0.9 с.
+      const originY = h * 0.42 - fallScroll * 0.82;
       if (originY > -PLATE_H) {
         drawPlatform(ctx, images, { x: Math.round(w / 2 - 112), y: 0, w: 224 }, 0, -Math.round(originY));
       }
 
-      // Обломки/искры навстречу (в dust, летят вверх), экранные координаты.
+      // Обломки и пылинки навстречу (в dust, летят вверх), экранные координаты.
       dust.forEach((d) => {
         ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
         ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY), d.s, d.s);
       });
 
-      // Пара Шут+пёс — по центру, кувыркаются: покачивание по x + лёгкий
-      // крен туда-сюда (падают, а не парят).
+      // Пара Шут+пёс — по центру, медленно парит: широкое качание по x,
+      // лёгкий боб по y, плавный крен туда-сюда (полёт, не кувырок).
       const pw = PAIR_W;
-      const cx = w / 2 + Math.sin(t * 5) * 4;
-      const cyc = h * 0.44;
+      const cx = w / 2 + Math.sin(t * 1.7) * 6;
+      const cyc = h * 0.44 + Math.sin(t * 1.3) * 4;
       ctx.save();
       ctx.translate(cx, cyc);
-      ctx.rotate(Math.sin(t * 3.3) * 0.13 + prog * 0.1);
+      ctx.rotate(Math.sin(t * 1.05) * 0.16);
       ctx.drawImage(images.foolDogFall, Math.round(-pw / 2), Math.round(-PLAYER_H / 2), pw, PLAYER_H);
       ctx.restore();
 
-      // Кадр закрывается: снизу растёт чернота (главное), сверху подбирается
-      // вдвое медленнее — кадр «схлопывается», а не просто заливается.
-      ctx.fillStyle = '#000000';
-      const coverB = Math.round(h * clamp01(prog ** 1.6));
-      ctx.fillRect(0, h - coverB, w, coverB);
-      const coverT = Math.round(h * 0.5 * clamp01(prog ** 2.4));
-      ctx.fillRect(0, 0, w, coverT);
+      // Кадр гасится мягко и поздно: до 72% полёта — ничего, потом чернота
+      // снизу плавно закрывает кадр к самому концу. Дальше 'arrive' идёт
+      // от чёрного — стыка не видно.
+      const coverB = Math.round(h * clamp01((prog - 0.72) / 0.28) ** 1.5);
+      if (coverB > 0) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, h - coverB, w, coverB);
+      }
       return;
     }
 
@@ -540,20 +549,25 @@ export function createLeapScreen({ input, images, goto }) {
         // Такт 1 — срыв: полный стоп-кадр, ничего не двигается.
         if (stateT >= BRACE_DUR) { state = 'fall'; stateT = 0; fallSpeed = FALL_V0; fallScroll = 0; }
       } else if (state === 'fall') {
-        // Такт 2 — полёт: мир едет вверх, скорость нарастает.
-        fallSpeed = Math.min(FALL_VMAX, fallSpeed + FALL_ACCEL * dt);
+        // Такт 2 — полёт: мир едет вверх по дуге скорости (мягкий разгон →
+        // пик в середине → плавное оседание к земле, не обрыв).
+        const prog = clamp01(stateT / FALL_DUR);
+        fallSpeed = FALL_V0 + (FALL_VPEAK - FALL_V0) * Math.sin(prog * Math.PI);
         fallScroll += fallSpeed * dt;
-        // Обломки и искры навстречу (летят вверх мимо пары) — плотно, чтобы
-        // полёт читался. Размер 2–6 px, изредка крупный кусок.
+        // Навстречу — два потока: редкие обломки (быстро, вверх) и медленные
+        // пылинки-мошки (долго живут, чуть парят) — от них полёт «дышит».
         debrisT -= dt;
         if (debrisT <= 0) {
-          debrisT = 0.025 + Math.random() * 0.05;
-          for (let i = 0, n = 2 + (Math.random() * 3 | 0); i < n; i++) {
-            const big = Math.random() < 0.15;
+          debrisT = 0.05 + Math.random() * 0.09;
+          for (let i = 0, n = 1 + (Math.random() * 2 | 0); i < n; i++) {
+            const mote = Math.random() < 0.55;
             dust.push({
               x: camX + Math.random() * (w || 430), y: camY + (h || 844) + 10,
-              vx: (Math.random() - 0.5) * 40, vy: -(fallSpeed * (0.5 + Math.random() * 0.9)),
-              t: 0, life: 0.3 + Math.random() * 0.35, s: big ? 6 : (Math.random() < 0.5 ? 2 : 4),
+              vx: (Math.random() - 0.5) * (mote ? 16 : 34),
+              vy: mote ? -(45 + Math.random() * 80) : -(fallSpeed * (0.55 + Math.random() * 0.7)),
+              t: 0, life: mote ? (1.1 + Math.random() * 1.3) : (0.4 + Math.random() * 0.4),
+              s: mote ? 2 : (Math.random() < 0.6 ? 2 : 4),
+              g: mote ? 12 : 220,
             });
           }
         }
