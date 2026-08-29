@@ -18,8 +18,9 @@
 import { setFont } from '../../core/text.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
-  buildPlatforms, platformAt, drawPlatform, drawGhostRoad, drawFarRoad, START_WALK,
+  buildPlatforms, platformAt, drawPlatform, drawGhostRoad, START_WALK,
 } from './platforms.js';
+import { drawAbyss } from './abyss.js';
 
 // Спрайты — 44×48 и 18×14 арт-px (ASSETS.md). Правило сетки CLAUDE.md —
 // 1 арт-пиксель = ровно 2 экранных. Значения ниже уже удвоены и рисуются
@@ -427,26 +428,23 @@ export function createLeapScreen({ input, images, goto }) {
       ctx.fillRect(0, 0, w, h);
 
       const last = platforms[platforms.length - 1];
-      // Дальний слой — за настоящими плитами, самым первым (BUILD-SPEC-02,
-      // задача 5: «плиты читаются как отдельные бруски в пустоте», нужна
-      // глубина без новых ассетов).
-      drawFarRoad(ctx, w, h, camX, player.y, scale, 0);
+      // Пропасть — едва заметный дизер-градиент у нижней кромки кадра, за
+      // плитами, виден всю дорогу (задача 4). Заменил и `drawFarRoad`, и
+      // старую растущую черноту.
+      drawAbyss(ctx, w, h, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       // Дорога за пропастью — видна, не интерактивна (BUILD-SPEC «решение B»).
       // Ширина кратна 32 — тайлсет кладётся целыми плитками (см. drawRoad).
       drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 160, camX, camY);
 
-      // Пустота — чем глубже забрались, тем больше съедает низ кадра.
-      const voidFrac = clamp01(deepestY / (FALL_DEPTH * 0.9));
-      const voidH = Math.round(h * (0.15 + voidFrac * 0.55));
-      const ramp = ['#161616', '#1C1C1C', '#212121', '#252525', '#2A2A2A', '#2E2E2E'];
-      const bandH = Math.max(2, Math.round(3 * scale));
-      ramp.forEach((c, i) => {
-        ctx.fillStyle = c;
-        ctx.fillRect(0, h - voidH - (ramp.length - i) * bandH, w, bandH);
-      });
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, h - voidH, w, voidH);
+      // Пока падаешь — низ кадра затягивает чернотой поверх пропасти
+      // (временно; полноценные три такта — задача 7). На земле не рисуем.
+      if (deepestY > 40) {
+        const voidFrac = clamp01(deepestY / (FALL_DEPTH * 0.9));
+        const voidH = Math.round(h * (0.15 + voidFrac * 0.55));
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, h - voidH, w, voidH);
+      }
 
       // Пыль.
       dust.forEach((d) => {
