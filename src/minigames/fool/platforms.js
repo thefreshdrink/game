@@ -100,16 +100,33 @@ export function drawPlatform(ctx, images, p, camX, camY) {
   drawRoad(ctx, images.roadTiles, x, y, w);
 }
 
-/** Тусклая дорога за пропастью — видна, недостижима, не интерактивна
- * (BUILD-SPEC «решение B») — тот же тайлсет, приглушённый прозрачностью. */
-export function drawGhostRoad(ctx, images, x, y, w, camX, camY) {
+// Bayer 4×4 для дизера призрачной дороги.
+const GHOST_BAYER = [
+  [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
+];
+const GHOST_CELL = 4;      // экранных px на ячейку дизера
+const GHOST_FADE_PX = 180; // за столько плотность дизера падает 100% → 0
+
+/** Призрачное продолжение дороги за пропастью (BUILD-SPEC-03 задача 5).
+ * Не тайлсет, а процедурный дизер `#4A4A4A` с плотностью, падающей от
+ * ближнего конца вдаль; без угловой скобы. `reveal` 1→0 — «осыпается»,
+ * когда игрок подходит к последнему краю. */
+export function drawGhostRoad(ctx, x, y, w, camX, camY, reveal) {
+  if (reveal <= 0) return;
   const rx = Math.round(x - camX);
   const ry = Math.round(y - camY);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(rx, ry, w, PLATE_H);
-  ctx.globalAlpha = 0.4;
-  drawRoad(ctx, images.roadTiles, rx, ry, w);
-  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#4A4A4A';
+  for (let cy = 0, row = 0; cy < PLATE_H; cy += GHOST_CELL, row++) {
+    const isSurface = cy < 4; // верхние 2 арт-px — «поверхность», чуть плотнее
+    const brow = GHOST_BAYER[row & 3];
+    for (let cx = 0, col = 0; cx < w; cx += GHOST_CELL, col++) {
+      const near = 1 - Math.min(1, cx / GHOST_FADE_PX);
+      const density = (isSurface ? Math.min(1, near + 0.35) : near) * reveal;
+      if (brow[col & 3] / 16 < density) {
+        ctx.fillRect(rx + cx, ry + cy, GHOST_CELL, Math.min(GHOST_CELL, PLATE_H - cy));
+      }
+    }
+  }
 }
 
 // Дальний пунктирный слой (`drawFarRoad`) удалён — BUILD-SPEC-03 задача 4:

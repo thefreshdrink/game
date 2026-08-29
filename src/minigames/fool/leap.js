@@ -89,6 +89,11 @@ export function createLeapScreen({ input, images, goto }) {
   let walking = false;  // палец удерживается — Шут идёт вперёд (ручное управление)
   let movedEver = false; // хоть раз пошёл — гасим подсказку «HOLD TO WALK»
   let respawnFlash = 0; // короткая вспышка чёрным после падения, сек
+  // Финальный край (задача 5): призрачная дорога проявлена (1) → осыпалась
+  // (0); кромка последней плиты разгорается акцентом (0 → 1).
+  let ghostReveal = 1;
+  let ghostCrumbled = false; // осколки уже сыпанули — один раз
+  let accentEdge = 0;
   // Для распознавания «флика вверх на ходу» (input даёт hold-события без
   // скорости) — держим предыдущую точку hold-жеста.
   let holdPrevY = 0, holdPrevMs = 0;
@@ -97,7 +102,7 @@ export function createLeapScreen({ input, images, goto }) {
   // hopDelay > 0 — отсчитывает задержку реакции; hopT >= 0 — идёт сама
   // дуга прыжка (см. DOG_HOP_*); hopT === -1 — пёс не прыгает.
   const dog = {
-    x: 0, y: 0, state: 'follow', pose: 'walk', frameT: 0, hopDelay: 0, hopT: -1,
+    x: 0, y: 0, state: 'follow', pose: 'walk', frameT: 0, hopDelay: 0, hopT: -1, peekT: 0,
   };
 
   function scheduleDogHop() {
@@ -211,6 +216,9 @@ export function createLeapScreen({ input, images, goto }) {
       walking = false;
       movedEver = false;
       respawnFlash = 0;
+      ghostReveal = 1;
+      ghostCrumbled = false;
+      accentEdge = 0;
       holdPrevY = 0;
       holdPrevMs = 0;
       dust.length = 0;
@@ -414,11 +422,45 @@ export function createLeapScreen({ input, images, goto }) {
         dog.x += (targetX - dog.x) * Math.min(1, dt * 5);
         dog.y += (player.y - dog.y) * Math.min(1, dt * 8);
         dog.frameT += dt;
-        if (Math.abs(dog.x - targetX) < 2) { dog.state = 'sit'; dog.pose = 'sit'; dog.frameT = 0; }
+        // Дошёл до края — сперва опускает голову вниз (peek), потом садится
+        // и поворачивается к игроку (BUILD-SPEC-03 задача 5). Отдельного
+        // кадра «оглядывается» нет — обходимся sit.
+        if (Math.abs(dog.x - targetX) < 2) { dog.state = 'peek'; dog.pose = 'lookdown'; dog.peekT = 0; }
+      } else if (dog.state === 'peek') {
+        dog.peekT += dt;
+        dog.frameT += dt;
+        if (dog.peekT >= 0.8) { dog.state = 'sit'; dog.pose = 'sit'; dog.frameT = 0; }
       } else if (dog.state === 'sit') {
-        dog.pose = state === 'charge' ? 'lookdown' : 'sit';
+        dog.pose = 'sit';
         dog.frameT += dt;
       }
+
+      // Финальный край (задача 5): осыпание призрачной дороги + акцентная
+      // кромка. Оба — от расстояния до правого края последней плиты.
+      const onLast = idx === platforms.length - 1;
+      const toFinalEdge = onLast ? (last.x + last.w - player.x) : Infinity;
+
+      if (toFinalEdge < 120) {
+        ghostReveal = Math.max(0, ghostReveal - dt / 1.2); // осыпается за 1.2 с
+        if (!ghostCrumbled) {
+          ghostCrumbled = true;
+          const gx = last.x + last.w + 40;
+          for (let i = 0; i < 10; i++) {
+            dust.push({
+              x: gx + Math.random() * 140, y: last.y + Math.random() * 8,
+              vx: (Math.random() - 0.5) * 20, vy: 30 + Math.random() * 50,
+              t: 0, life: 0.6 + Math.random() * 0.4, s: Math.random() < 0.5 ? 2 : 4,
+            });
+          }
+        }
+      }
+
+      // Кромка последней плиты (последние 16 арт-px, верхняя линия)
+      // разгорается #EBA331 за 0.6 с, когда подходишь ближе 60px, и гаснет
+      // если отошёл. Больше ничего оранжевым в мини-игре не красим.
+      const wantAccent = onLast && toFinalEdge < 60
+        && (state === 'walk' || state === 'wait_leap' || state === 'charge');
+      accentEdge = clamp01(accentEdge + (wantAccent ? dt : -dt) / 0.6);
     },
 
     draw(ctx, w, h) {
@@ -433,9 +475,22 @@ export function createLeapScreen({ input, images, goto }) {
       // старую растущую черноту.
       drawAbyss(ctx, w, h, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
-      // Дорога за пропастью — видна, не интерактивна (BUILD-SPEC «решение B»).
-      // Ширина кратна 32 — тайлсет кладётся целыми плитками (см. drawRoad).
-      drawGhostRoad(ctx, images, last.x + last.w + 40, last.y, 160, camX, camY);
+      // Призрачное продолжение дороги — процедурный дизер #4A4A4A, плотность
+      // падает вдаль; `ghostReveal` 1→0 — осыпается у финального края
+      // (задача 5).
+      drawGhostRoad(ctx, last.x + last.w + 40, last.y, 160, camX, camY, ghostReveal);
+
+      // Кромка последней плиты загорается акцентом (задача 5): верхние
+      // 2 арт-px последних 16 арт-px плиты, alpha = accentEdge. Единственное
+      // оранжевое пятно во всей мини-игре — «место, куда встаёт нога».
+      if (accentEdge > 0) {
+        const ex = Math.round(last.x - camX) + last.w;
+        const ey = Math.round(last.y - camY);
+        ctx.globalAlpha = accentEdge;
+        ctx.fillStyle = '#EBA331';
+        ctx.fillRect(ex - 32, ey, 32, 4);
+        ctx.globalAlpha = 1;
+      }
 
       // Пока падаешь — низ кадра затягивает чернотой поверх пропасти
       // (временно; полноценные три такта — задача 7). На земле не рисуем.
