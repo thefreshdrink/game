@@ -491,10 +491,17 @@ export function createLeapScreen({ input, images, goto }) {
       // (задача 5).
       drawGhostRoad(ctx, last.x + last.w + 40, last.y, 160, camX, camY, ghostReveal);
 
+      // Наклон Шута идёт РЕЗЧЕ К КОНЦУ, чем растёт кольцо (правка в чате
+      // 2026-08-29: «не в унисон» — кольцо метёт 360°, наклон всего 32°,
+      // кольцо убегало). lean² — Шут сперва «сопротивляется», к моменту
+      // замыкания кольца валится. Акцентная кромка укорачивается по этой
+      // же кривой, чтобы быть в паре с видимым наклоном.
+      const leanV = lean * lean;
+
       // Кромка последней плиты загорается акцентом (задача 5): верхние
       // 2 арт-px последних 16 арт-px плиты. По мере наклона (задача 6)
       // укорачивается от края внутрь — к точке невозврата гаснет совсем.
-      const accentW = Math.round(32 * (1 - lean));
+      const accentW = Math.round(32 * (1 - leanV));
       if (accentEdge > 0 && accentW > 0) {
         const ex = Math.round(last.x - camX) + last.w;
         const ey = Math.round(last.y - camY);
@@ -530,7 +537,7 @@ export function createLeapScreen({ input, images, goto }) {
       // соседней — берём по его x.
       const standPlat = platforms[idx] || null;
       const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
-      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, lean);
+      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV);
       if (state !== 'fall' && state !== 'landed') {
         drawDog(ctx, images, dog, camX, camY, dogPlat);
       }
