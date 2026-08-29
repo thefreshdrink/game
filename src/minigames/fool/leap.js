@@ -16,6 +16,7 @@
 // walk/sit/look_down/jump у пса).
 
 import { setFont } from '../../core/text.js';
+import { drawHoldRing } from '../../core/gestureGlyph.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, drawGhostRoad, START_WALK,
@@ -530,6 +531,19 @@ export function createLeapScreen({ input, images, goto }) {
       drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, lean);
       if (state !== 'fall' && state !== 'landed') {
         drawDog(ctx, images, dog, camX, camY, dogPlat);
+      }
+
+      // Знак удержания — кольцо, заполняющееся по дуге (задача 8), у головы
+      // Шута. Появляется только КОГДА уже держишь (charge) — это индикатор
+      // «сколько до срыва», а не подсказка «надо держать» (её игрок
+      // находит сам). progress = lean = holdProgress.
+      if (state === 'charge' && lean > 0.02 && lean < 1) {
+        drawHoldRing(
+          ctx,
+          Math.round(player.x - camX + 46),
+          Math.round(player.y - camY - PLAYER_H + 8),
+          lean,
+        );
       }
 
       // Белая линия земли — проступает в момент касания, не раньше.
