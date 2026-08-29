@@ -270,6 +270,7 @@ export function createLeapScreen({ input, images, goto }) {
           walking = false;
           state = 'charge';
           stateT = 0;
+          lean = 0; // кольцо/наклон начинают с нуля, не с недовыпрямленного значения
         }),
         input.on('holdmove', (e) => {
           // Шёл (держал > 250мс) и на ходу дёрнул вверх — это прыжок, а не

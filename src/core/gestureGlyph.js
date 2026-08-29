@@ -6,46 +6,59 @@
 // финального края (правка в чате 2026-08-29). Точка (тап) и точка с
 // хвостом (свайп) — задел под остальную задачу 8.
 //
-// Всё рисуется по целым координатам ячейкой 2 экранных px (1 арт-px),
-// чтобы держать пиксельную сетку.
+// Всё рисуется по целым АРТ-пикселям (ячейка 2 экранных px), сетка не
+// плывёт. Кольцо — честный пиксельный круг (алгоритм средней точки), не
+// набор редких точек по синусу.
 
-const DOT = '#808080';   // пунктир, дальняя деталь
-const LINE = '#FFFFFF';  // главный контур
-const FILL = '#EBA331';   // «сделай этот жест сейчас» — та же роль, что у
-                          // акцентной кромки: место/действие, которого касаешься
+const DIM = '#808080';   // незалитый обод — виден на воздухе #111111, но тускл
+const FILL = '#EBA331';  // дуга прогресса — «держи, вот сколько осталось»
 
-function px(ctx, x, y, c) {
+// R — радиус в АРТ-пикселях. Возвращает список точек контура круга в
+// первом октанте, зеркалит на все восемь. Кэш по радиусу.
+const ringCache = new Map();
+function ringPoints(R) {
+  let pts = ringCache.get(R);
+  if (pts) return pts;
+  pts = [];
+  let x = R, y = 0, err = 1 - R;
+  while (x >= y) {
+    for (const [sx, sy] of [
+      [x, y], [y, x], [-y, x], [-x, y], [-x, -y], [-y, -x], [y, -x], [x, -y],
+    ]) pts.push([sx, sy]);
+    y++;
+    if (err < 0) err += 2 * y + 1;
+    else { x--; err += 2 * (y - x) + 1; }
+  }
+  ringCache.set(R, pts);
+  return pts;
+}
+
+function cell(ctx, ax, ay, c) {
   ctx.fillStyle = c;
-  ctx.fillRect(Math.round(x / 2) * 2, Math.round(y / 2) * 2, 2, 2);
+  ctx.fillRect(ax * 2, ay * 2, 2, 2);
 }
 
-/** Кольцо удержания: тусклый пунктирный обод по кругу + яркая дуга,
- * заполняющаяся по часовой от верха на progress (0..1). Центр (cx, cy). */
+/** Кольцо удержания. Центр (cx, cy) в экранных px. progress 0..1 — доля
+ * обода, залитая ярким от верхней точки по часовой. */
 export function drawHoldRing(ctx, cx, cy, progress) {
-  const R = 22;                 // радиус, экранных px (11 арт-px)
-  const start = -Math.PI / 2;   // верх
-  const end = start + Math.PI * 2 * Math.max(0, Math.min(1, progress));
-  const step = 0.18;            // шаг по дуге, рад
-  for (let a = -Math.PI / 2; a < Math.PI * 1.5; a += step) {
-    const x = cx + Math.cos(a) * R;
-    const y = cy + Math.sin(a) * R;
-    // пунктир — через одну
-    if (Math.round(a / step) % 2 === 0) px(ctx, x, y, DOT);
-  }
-  for (let a = start; a <= end; a += step / 2) {
-    const x = cx + Math.cos(a) * R;
-    const y = cy + Math.sin(a) * R;
-    px(ctx, x, y, FILL);
-    // вторая нить контура внутрь — двойная линия дизайн-системы
-    px(ctx, cx + Math.cos(a) * (R - 2), cy + Math.sin(a) * (R - 2), a < end - step ? LINE : FILL);
+  const R = 13;                 // арт-px (26 экранных)
+  const acx = Math.round(cx / 2);
+  const acy = Math.round(cy / 2);
+  const p = Math.max(0, Math.min(1, progress));
+
+  for (const [dx, dy] of ringPoints(R)) {
+    // угол точки, 0 = верх (−Y), по часовой
+    const ang = (Math.atan2(dx, -dy) + Math.PI * 2) % (Math.PI * 2);
+    const lit = ang <= p * Math.PI * 2;
+    cell(ctx, acx + dx, acy + dy, lit ? FILL : DIM);
   }
 }
 
-/** Точка — знак тапа (задел под задачу 8). */
+/** Точка — знак тапа (задел под задачу 8). Центр (cx, cy) в экранных px. */
 export function drawTapDot(ctx, cx, cy) {
-  for (let dx = -2; dx <= 2; dx += 2) {
-    for (let dy = -2; dy <= 2; dy += 2) {
-      if (Math.abs(dx) + Math.abs(dy) <= 2) px(ctx, cx + dx, cy + dy, LINE);
-    }
+  const acx = Math.round(cx / 2);
+  const acy = Math.round(cy / 2);
+  for (const [dx, dy] of [[0, -1], [-1, 0], [0, 0], [1, 0], [0, 1]]) {
+    cell(ctx, acx + dx, acy + dy, '#FFFFFF');
   }
 }
