@@ -6,21 +6,34 @@
 //
 // Итог мини-игры на текст не влияет — банк статичный, только подстановка
 // по ключу card.reading[category] (BUILD-SPEC, GDD §7.4).
+//
+// Расхождение с референсом, зафиксировано вслух (правило CLAUDE.md): на
+// The prediction.png низ экрана пустой, а здесь у нижней кромки держится
+// та же дорога, на которую Шут пришёл в такте 3 падения (leap.js) — по
+// правке в чате 2026-08-30 («размести сцену внизу экрана, предсказание
+// проявляй поверх фона верхней части»): экраны 5→6 склеиваются без
+// скачка, дорога просто остаётся под словами.
 
 import { CARDS, getReading } from '../data/cards.js';
 import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
+import {
+  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
+} from '../minigames/fool/platforms.js';
+import { drawAbyss } from '../minigames/fool/abyss.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
 const PARA_PAUSE = 0.6;      // печать замирает на границе абзацев (задача 10)
 const PARA_GAP_LINES = 1;    // пустая строка между абзацами
 
-export function createPredictionScreen({ input, goto }) {
+export function createPredictionScreen({ input, images, goto }) {
   let offTap = null;
   let t = 0;
   let promptZone = null; // хит-зона ›ONE MORE QUESTION (textButton.js)
+  let groundMain = null; // полосы дороги под текстом — та же, что в такте 3 падения
+  let groundSide = null;
   // Тексты банка приходят одной строкой; `\n\n` (пустая строка) делит их
   // на абзацы (задача 10). Одиночные переводы строки внутри абзаца
   // схлопываем в пробел — wrapLines рвёт только по пробелам.
@@ -63,6 +76,9 @@ export function createPredictionScreen({ input, goto }) {
         .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
         .filter(Boolean);
 
+      if (!groundMain) groundMain = buildRoadStrip(images, ARRIVE_MAIN_W);
+      if (!groundSide) groundSide = buildRoadStrip(images, ARRIVE_SIDE_W);
+
       offTap = input.on('tap', (e) => {
         if (!typingDone()) { t = totalTime(); return; }
         if (!zoneHit(promptZone, e.x, e.y)) return;
@@ -82,6 +98,20 @@ export function createPredictionScreen({ input, goto }) {
     draw(ctx, w, h) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
+
+      // Та же дорога, что в такте 3 падения (leap.js) — у нижней кромки,
+      // с продолжением вправо, дизер пустоты под ней. Статична: Шут своё
+      // «прибытие» уже отыграл, здесь дорога просто держит сцену под
+      // словами (правка в чате 2026-08-30). Рисуем ДО текста — слова лягут
+      // поверх воздуха верхней части.
+      if (groundMain) {
+        drawAbyss(ctx, w, h, t);
+        const gy = Math.round(h * ARRIVE_GROUND_FRAC);
+        const gw = groundMain.width;
+        const gx = Math.round(w / 2 - gw / 2 - 28);
+        ctx.drawImage(groundMain, gx, gy);
+        ctx.drawImage(groundSide, gx + gw, gy);
+      }
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);

@@ -90,8 +90,12 @@ const ROW_COUNT = CARD_COUNT / ROWS;
 // как перебор, особенно с двумя рядами сразу). FAN_RADIUS — радиус
 // ПЕРЕДНЕГО (главного, интерактивного) ряда; задний — на ROW_GAP дальше
 // от той же оси, то есть выше на экране (см. cardCenterAt).
-const FAN_RADIUS = 620;
-const FAN_ANGLE_TOTAL = (38 * Math.PI) / 180;
+// Правка в чате 2026-08-30: после фиксации размера карты (задача 2) веер
+// «стал скудным и чуть кривым, карты близко к тексту». Дуга у́же и радиус
+// больше — веер собранный и мельче по вертикали; ряды ближе; вся
+// композиция опущена ниже под шапку.
+const FAN_RADIUS = 680;
+const FAN_ANGLE_TOTAL = (30 * Math.PI) / 180;
 
 // Доля высоты экрана, не константный пиксельный разнос (правка в чате,
 // 2026-08-24: «верхний уровень карты колоды можно чуть поднять, чтобы
@@ -107,7 +111,7 @@ const FAN_ANGLE_TOTAL = (38 * Math.PI) / 180;
 // подписью и веером всё ещё многовато, второй ряд разнесён с первым
 // заметнее, вместе со смещением по углу (см. layoutCards) читается как
 // зубец, а не просто «повыше».
-const ROW_GAP_FRAC = 0.30;
+const ROW_GAP_FRAC = 0.22;
 
 // Верх центральной (самой верхней) карты ПЕРЕДНЕГО ряда — доля высоты
 // экрана, не фиксированный пиксельный отступ от низа: после того как
@@ -238,7 +242,7 @@ export function createDeckScreen({ input, images, goto }) {
       if (!cards[i]) cards[i] = { spreadR: 0 };
       const slot = i % ROW_COUNT;
       const row = Math.floor(i / ROW_COUNT); // 0 — задний, 1 — передний
-      const backRowOffset = row === 0 ? angleStep / 2 : 0;
+      const backRowOffset = row === 0 ? angleStep * 0.35 : 0; // мягче зубца (правка 2026-08-30: «чуть криво»)
       cards[i].angle = (slot - centerIndex) * angleStep + backRowOffset;
       cards[i].radius = FAN_RADIUS + (ROWS - 1 - row) * rowGap;
       cards[i].w = cardW;

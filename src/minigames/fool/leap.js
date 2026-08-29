@@ -20,6 +20,7 @@ import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, PLATE_H,
+  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
 
@@ -64,7 +65,7 @@ const HOLD_TOTAL = HOLD_T1 + HOLD_T2; // «~2,6 сек»
 // закроет кадр; потом из темноты пиксельно проступает та же дорога.
 const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
 const FALL_DUR = 2.8;     // такт 2 — полёт (длинный, чтобы «летелось», правка 2026-08-29)
-const ARRIVE_DUR = 1.15;  // такт 3 — проявление земли
+const ARRIVE_DUR = 1.4;   // такт 3 — проявление земли (мягче, правка 2026-08-30)
 // Скорость «прокрутки мира» в полёте идёт по дуге sin(prog·π): мягкий
 // разгон от V0, пик VPEAK в середине, плавное оседание к земле — полёт,
 // а не обрыв (правка 2026-08-29: «падение обрывистое, хочется красивого
@@ -72,7 +73,7 @@ const ARRIVE_DUR = 1.15;  // такт 3 — проявление земли
 const FALL_V0 = 100;      // экранных px/с в начале и в конце
 const FALL_VPEAK = 820;   // на пике в середине
 const GHOST_W = 160;      // призрачная плита за краем (кратно 32), задача 5
-const ARRIVE_W = 320;     // плита прибытия (кратно 32), задача 7
+const ARRIVE_W = ARRIVE_MAIN_W; // плита прибытия — 256 (правка 2026-08-30: «поменьше»)
 
 // Насколько можно провалиться ниже плиты, с которой прыгнул, прежде чем
 // это считается промахом и включается респавн — заметно больше любой
@@ -113,6 +114,10 @@ export function createLeapScreen({ input, images, goto }) {
   let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
   // Падение — три такта (задача 7): 'brace' → 'fall' (мир едет вверх) → 'arrive'.
   let fallScroll = 0, fallSpeed = 0, debrisT = 0, arriveDust = false;
+  // Экранная позиция Шута в момент срыва — пара въезжает в центр кадра из
+  // неё, без скачка (правка в чате 2026-08-30: «камера не движется за
+  // персонажем, появление резкое»).
+  let fallFromX = 0, fallFromY = 0;
   // Офскрин-полосы дороги для пиксельного проявления/растворения: узкая —
   // призрачная плита у края (задача 5), плита прибытия (задача 7).
   let ghostStrip = null;
@@ -126,6 +131,7 @@ export function createLeapScreen({ input, images, goto }) {
   // дуга прыжка (см. DOG_HOP_*); hopT === -1 — пёс не прыгает.
   const dog = {
     x: 0, y: 0, state: 'follow', pose: 'walk', frameT: 0, hopDelay: 0, hopT: -1, peekT: 0,
+    stillT: 0, // сколько пёс стоит на месте — за порогом садится и виляет хвостом
   };
 
   function scheduleDogHop() {
@@ -199,6 +205,8 @@ export function createLeapScreen({ input, images, goto }) {
     dog.x = player.x - DOG_LAG;
     dog.y = player.y;
     dog.state = 'follow';
+    dog.pose = 'walk';
+    dog.stillT = 0;
     spawnDust(player.x, player.y, 6);
   }
 
@@ -232,6 +240,10 @@ export function createLeapScreen({ input, images, goto }) {
     fallSpeed = 0;
     debrisT = 0;
     arriveDust = false;
+    // Откуда пара въезжает в центр кадра в такте 2 — экранная позиция
+    // Шута прямо сейчас (у кромки).
+    fallFromX = player.x - camX;
+    fallFromY = player.y - camY - PLAYER_H / 2;
   }
 
   // Матрица Bayer 4×4 для дизера слоёв пустоты в полёте — та же, что в
@@ -294,11 +306,21 @@ export function createLeapScreen({ input, images, goto }) {
       }
       ctx.globalAlpha = 1;
 
-      // Плита, с которой шагнул — уходит вверх, чуть медленнее прокрутки,
-      // держится в кадре ~0.9 с.
-      const originY = h * 0.42 - fallScroll * 0.82;
-      if (originY > -PLATE_H) {
+      // Пара въезжает в центр кадра из позиции срыва за первые ~0.45 с —
+      // не телепорт (правка в чате 2026-08-30). enter 0→1 сглажен.
+      const enterRaw = clamp01(stateT / 0.45);
+      const enter = enterRaw * enterRaw * (3 - 2 * enterRaw); // smoothstep
+      const baseX = fallFromX + (w / 2 - fallFromX) * enter;
+      const baseY = fallFromY + (h * 0.44 - fallFromY) * enter;
+
+      // Плита, с которой шагнул — стоит под парой в момент срыва и уходит
+      // вверх вместе с миром, растворяясь (fade), а не сползая рывком за край.
+      const originY = baseY + PLAYER_H / 2 - fallScroll * 0.9;
+      const originA = clamp01(1 - fallScroll / 240);
+      if (originA > 0 && originY > -PLATE_H) {
+        ctx.globalAlpha = originA;
         drawPlatform(ctx, images, { x: Math.round(w / 2 - 112), y: 0, w: 224 }, 0, -Math.round(originY));
+        ctx.globalAlpha = 1;
       }
 
       // Обломки и пылинки навстречу (в dust, летят вверх), экранные координаты.
@@ -307,14 +329,14 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY), d.s, d.s);
       });
 
-      // Пара Шут+пёс — по центру, медленно парит: широкое качание по x,
-      // лёгкий боб по y, плавный крен туда-сюда (полёт, не кувырок).
+      // Пара Шут+пёс: качание/боб/крен нарастают по enter (у кромки —
+      // ещё почти завал из такта 1, к центру — плавный парящий крен).
       const pw = PAIR_W;
-      const cx = w / 2 + Math.sin(t * 1.7) * 6;
-      const cyc = h * 0.44 + Math.sin(t * 1.3) * 4;
+      const cx = baseX + Math.sin(t * 1.7) * 6 * enter;
+      const cyc = baseY + Math.sin(t * 1.3) * 4 * enter;
       ctx.save();
       ctx.translate(cx, cyc);
-      ctx.rotate(Math.sin(t * 1.05) * 0.16);
+      ctx.rotate(0.5 * (1 - enter) + Math.sin(t * 1.05) * 0.16 * enter);
       ctx.drawImage(images.foolDogFall, Math.round(-pw / 2), Math.round(-PLAYER_H / 2), pw, PLAYER_H);
       ctx.restore();
 
@@ -329,33 +351,42 @@ export function createLeapScreen({ input, images, goto }) {
       return;
     }
 
-    // arrive — прибытие, не удар: из темноты пиксельным проявлением оракула
-    // проступает ТА ЖЕ плита (buildRoadStrip), на неё садятся Шут и пёс.
+    // arrive — прибытие ВНИЗУ экрана (правка в чате 2026-08-30): дорога
+    // проступает у нижней кромки, сразу с продолжением вправо; верх кадра
+    // остаётся чистым воздухом — туда потом лягут слова предсказания
+    // (prediction.js держит ту же дорогу, стыка между экранами не видно).
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
     const p = clamp01(stateT / ARRIVE_DUR);
-    // Немного пустоты под плитой — чтобы читалось как уступ, не просто пол.
-    drawAbyss(ctx, w, h, t);
+    drawAbyss(ctx, w, h, t); // дизер пустоты у нижней кромки — «уступ», не пол
 
-    const gw = groundStrip.width;
-    const gx = Math.round((w - gw) / 2);
-    const gy = Math.round(h * 0.6);
-    drawPixelReveal(ctx, groundStrip, gx, gy, gw, PLATE_H, p, 4, 0.5, 0.4);
+    const gy = Math.round(h * ARRIVE_GROUND_FRAC);
+    const gw = groundStrip.width;                    // ARRIVE_MAIN_W (256)
+    const gx = Math.round(w / 2 - gw / 2 - 28);      // чуть левее центра — место продолжению
+    const fcx = gx + Math.round(gw * 0.44);          // где стоит Шут
 
-    if (p > 0.5) {
-      ctx.globalAlpha = clamp01((p - 0.5) / 0.4);
-      const cx = Math.round(w / 2);
-      // Пёс сидит слева от Шута — «как было с собакой» (правка 2026-08-29).
-      const dogImg = images.dogSitFrames[Math.floor(t * 2) % images.dogSitFrames.length];
-      ctx.drawImage(dogImg, cx - PLAYER_W / 2 - DOG_W - 4, gy - DOG_H, DOG_W, DOG_H);
+    // Основная плита — пиксельным проявлением оракула.
+    drawPixelReveal(ctx, groundStrip, gx, gy, gw, PLATE_H, p, 4, 0.42, 0.4);
+    // Продолжение дороги вправо — проступает чуть позже: «путь идёт дальше».
+    const sideP = clamp01((p - 0.22) / 0.62);
+    if (sideP > 0) {
+      drawPixelReveal(ctx, ghostStrip, gx + gw, gy, ghostStrip.width, PLATE_H, sideP, 4, 0, 0.4);
+    }
+
+    if (p > 0.35) {
+      const a = clamp01((p - 0.35) / 0.45);
+      ctx.globalAlpha = a;
+      const settle = Math.round((1 - a) * 10); // Шут мягко оседает на дорогу
+      const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
+      ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H - settle, DOG_W, DOG_H);
       const fr = images.foolIdleFrames;
-      ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], cx - PLAYER_W / 2, gy - PLAYER_H, PLAYER_W, PLAYER_H);
+      ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], fcx - PLAYER_W / 2, gy - PLAYER_H - settle, PLAYER_W, PLAYER_H);
       ctx.globalAlpha = 1;
     }
     if (p >= 1) {
       dust.forEach((d) => {
         ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
-        ctx.fillRect(Math.round(w / 2 + (d.x - player.x)), Math.round(gy - (player.y - d.y)), d.s, d.s);
+        ctx.fillRect(Math.round(fcx + (d.x - player.x)), Math.round(gy - (player.y - d.y)), d.s, d.s);
       });
     }
   }
@@ -406,6 +437,9 @@ export function createLeapScreen({ input, images, goto }) {
       dog.state = 'follow';
       dog.pose = 'walk';
       dog.frameT = 0;
+      dog.stillT = 0;
+      dog.hopT = -1;
+      dog.hopDelay = 0;
       camX = 0;
       camY = 0;
 
@@ -604,7 +638,12 @@ export function createLeapScreen({ input, images, goto }) {
         dog.hopOffset = dog.hopT >= 0
           ? -Math.sin(clamp01(dog.hopT / DOG_HOP_DURATION) * Math.PI) * DOG_HOP_HEIGHT
           : 0;
-        dog.pose = dog.hopT >= 0 ? 'jump' : 'walk';
+        // Стоит на месте (игрок не идёт, пёс догнал, не в прыжке) — через
+        // 0.3 с садится и виляет хвостом (кадр dog_sit — это анимация
+        // хвоста), а не топчется в цикле ходьбы (правка в чате 2026-08-30).
+        const still = !walking && dog.hopT < 0 && Math.abs(dog.x - targetX) < 6;
+        dog.stillT = still ? dog.stillT + dt : 0;
+        dog.pose = dog.hopT >= 0 ? 'jump' : (dog.stillT > 0.3 ? 'sit' : 'walk');
         if (state === 'wait_leap' || state === 'charge') {
           dog.state = 'overtake';
         }
@@ -752,29 +791,31 @@ export function createLeapScreen({ input, images, goto }) {
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
       // Жестовые знаки (задача 8) — кодом из графического языка проекта,
-      // РЯДОМ С ФИГУРОЙ, не в HUD. Ни одного слова в кадре. Появляются
-      // после паузы бездействия (1.2 с; у финального края — 6 с, там
-      // заминка это содержание, а не затруднение) и гаснут навсегда после
-      // первого удавшегося жеста своего типа.
+      // РЯДОМ С ФИГУРОЙ, не в HUD. Ни одного слова в кадре.
+      // Правка в чате 2026-08-30: «вообще ничего не вижу» — таймер 1.2 с
+      // почти никогда не набирался в реальной игре (любой ввод его
+      // сбрасывает). Стартовую подсказку показываем СРАЗУ (единственное
+      // «как начать»), знак свайпа — после короткой заминки у щели.
       const glyphX = Math.round(player.x - camX + 30);
       const glyphY = Math.round(player.y - camY - PLAYER_H - 30);
-      // Знак удержания-подсказки — та же дуга, что в charge, но сама
-      // прокручивается 0→1→0: показывает жест, а не статичный кружок.
+      // Знак-подсказка — та же дуга, что в charge, но сама прокручивается
+      // 0→1→0: показывает жест, а не статичный кружок.
       const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
       if (state === 'charge') {
         // Уже держишь — дуга показывает, сколько до срыва (индикатор, не
-        // подсказка). До 100% и на нуле не рисуем. Полный радиус.
-        if (lean > 0.02 && lean < 1) drawHoldRing(ctx, glyphX, glyphY, lean);
-      } else if (state === 'walk' && !walking && idleT > 1.2) {
-        const fade = clamp01((idleT - 1.2) / 0.4);
+        // подсказка). Кольцо поменьше (правка в чате: «большеват»).
+        if (lean > 0.02 && lean < 1) drawHoldRing(ctx, glyphX, glyphY, lean, 1, 8);
+      } else if (state === 'walk' && !walking && !movedEver) {
+        // «Удержи, чтобы идти» — от старта карты до первого шага. Лёгкий
+        // проявляющийся заход.
+        drawHoldRing(ctx, glyphX, glyphY, sweep, clamp01((t - 0.3) / 0.5), 6);
+      } else if (state === 'walk' && !walking && idleT > 0.6 && !swipeGlyphDone) {
+        // Замялся у щели → знак свайпа. Один раз за карту (swipeGlyphDone).
         const p = platforms[idx];
-        const nearGap = p !== last && (p.x + p.w - player.x) < 80;
-        if (!movedEver) {
-          drawHoldRing(ctx, glyphX, glyphY, sweep, fade, 6); // «удержи, чтобы идти»
-        } else if (nearGap && !swipeGlyphDone) {
-          drawSwipeTick(ctx, glyphX, glyphY, fade);          // «свайп вверх» у щели
-        }
+        const nearGap = p !== last && (p.x + p.w - player.x) < 90;
+        if (nearGap) drawSwipeTick(ctx, glyphX, glyphY, clamp01((idleT - 0.6) / 0.4));
       } else if (state === 'wait_leap' && idleT > 6) {
+        // Финальный край: заминка это содержание — знак только через 6 с.
         drawHoldRing(ctx, glyphX, glyphY, sweep, clamp01((idleT - 6) / 0.8), 6);
       }
       // Полоска HOLD и текст у финального края убраны совсем (задача 6):
@@ -854,7 +895,7 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
 function drawDog(ctx, images, d, camX, camY, dogPlat) {
   let frames = images.dogWalkFrames;
   let idx = Math.floor(d.frameT * 6) % frames.length;
-  if (d.pose === 'sit') { frames = images.dogSitFrames; idx = Math.floor(d.frameT * 2) % frames.length; }
+  if (d.pose === 'sit') { frames = images.dogSitFrames; idx = Math.floor(d.frameT * 4) % frames.length; } // 2 кадра = хвост вверх/вниз, ~2 виляния/с
   else if (d.pose === 'lookdown') { frames = [images.dogLookDown]; idx = 0; }
   else if (d.pose === 'jump') { frames = [images.dogJump]; idx = 0; }
 
