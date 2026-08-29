@@ -17,9 +17,10 @@
 
 import { setFont } from '../../core/text.js';
 import { drawHoldRing } from '../../core/gestureGlyph.js';
+import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
-  buildPlatforms, platformAt, drawPlatform, drawGhostRoad, START_WALK,
+  buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, PLATE_H,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
 
@@ -58,9 +59,18 @@ const HOLD_T1 = 1.6; // первые 75% полоски
 const HOLD_T2 = 1.0; // последние 25% — заметно медленнее (BUILD-SPEC)
 const HOLD_TOTAL = HOLD_T1 + HOLD_T2; // «~2,6 сек»
 
-const FALL_G = 900;
-const FALL_VMAX = 760;
-const FALL_DEPTH = 900; // экранных px падения до касания земли
+// Падение — три такта (BUILD-SPEC-03 задача 7). Не «летим вниз через мир»,
+// а «мир едет вверх»: пара Шут+пёс держится по центру кадра, мимо летят
+// слои пропасти и обломки, скорость нарастает; книзу темнеет, пока не
+// закроет кадр; потом из темноты пиксельно проступает та же дорога.
+const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
+const FALL_DUR = 1.5;     // такт 2 — полёт
+const ARRIVE_DUR = 1.15;  // такт 3 — проявление земли
+const FALL_V0 = 240;      // стартовая скорость «прокрутки мира», экранных px/с
+const FALL_ACCEL = 900;   // нарастание
+const FALL_VMAX = 1500;
+const GHOST_W = 160;      // призрачная плита за краем (кратно 32), задача 5
+const ARRIVE_W = 320;     // плита прибытия (кратно 32), задача 7
 
 // Насколько можно провалиться ниже плиты, с которой прыгнул, прежде чем
 // это считается промахом и включается респавн — заметно больше любой
@@ -81,7 +91,7 @@ export function createLeapScreen({ input, images, goto }) {
   let offHandlers = [];
   let platforms = [];
   let idx = 0; // индекс текущей/последней плиты под ногами
-  let state = 'walk'; // walk | air | wait_leap | charge | fall | landed
+  let state = 'walk'; // walk | air | wait_leap | charge | brace | fall | arrive
   let t = 0;
   let stateT = 0;
   let deepestY = 0;
@@ -96,6 +106,12 @@ export function createLeapScreen({ input, images, goto }) {
   let ghostCrumbled = false; // осколки уже сыпанули — один раз
   let accentEdge = 0;
   let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
+  // Падение — три такта (задача 7): 'brace' → 'fall' (мир едет вверх) → 'arrive'.
+  let fallScroll = 0, fallSpeed = 0, debrisT = 0, arriveDust = false;
+  // Офскрин-полосы дороги для пиксельного проявления/растворения: узкая —
+  // призрачная плита у края (задача 5), плита прибытия (задача 7).
+  let ghostStrip = null;
+  let groundStrip = null;
   // Для распознавания «флика вверх на ходу» (input даёт hold-события без
   // скорости) — держим предыдущую точку hold-жеста.
   let holdPrevY = 0, holdPrevMs = 0;
@@ -196,16 +212,140 @@ export function createLeapScreen({ input, images, goto }) {
   }
 
   function commitLeap() {
-    state = 'fall';
+    // Такт 1 (задача 7): срыв — стоп-кадр. Дальше 'fall' (мир едет вверх),
+    // потом 'arrive' (плита проступает пикселями, на неё же садятся Шут и
+    // пёс). Пёс всю дорогу — часть парного спрайта (fool_dog_fall),
+    // отдельно не летит. lean держим на 1 — Шут застыл заваленным вперёд
+    // на весь такт 1.
+    state = 'brace';
     stateT = 0;
-    lean = 0; // дальше падение своим парным спрайтом, наклон не накладываем
-    player.vx = 60;
-    player.vy = -120;
-    // Пёс больше не летит отдельным объектом — падение теперь один
-    // парный спрайт (fool_dog_fall, BUILD-SPEC-03 задача 3), не два
-    // накладывающихся друг на друга (был баг: «пёс оказался у него на
-    // голове»). Состояние 'leap' и физика пса ниже были нужны только
-    // для отдельной отрисовки — убраны вместе с ней.
+    lean = 1;
+    player.vx = 0;
+    player.vy = 0;
+    fallScroll = 0;
+    fallSpeed = 0;
+    debrisT = 0;
+    arriveDust = false;
+  }
+
+  // Матрица Bayer 4×4 для дизера слоёв пустоты в полёте — та же, что в
+  // abyss.js: слои должны быть из тех же «крупных пикселей», не плоские.
+  const FALL_BAYER = [
+    [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
+  ];
+
+  /** Три такта падения (задача 7). Фон уже залит #111111. */
+  function drawFallSequence(ctx, w, h) {
+    if (state === 'fall') {
+      const prog = clamp01(stateT / FALL_DUR);
+
+      // Два дальних слоя пустоты — плиты, ползут вверх медленно, дают
+      // глубину. Тело сплошное, верх и низ на 2 ячейки растворены дизером в
+      // воздух — те же «крупные пиксели», мягкий край, не плоская полоса.
+      const CELL = 8;
+      const backLayers = [
+        { mult: 0.4, c: '#1C1C1C', band: 96 },
+        { mult: 0.7, c: '#212121', band: 136 },
+      ];
+      for (const L of backLayers) {
+        const period = L.band + 160; // просвет воздуха между плитами
+        const off = ((fallScroll * L.mult) % period + period) % period;
+        for (let top = h - off; top > -period; top -= period) {
+          for (let cy = 0; cy < L.band; cy += CELL) {
+            const edgeCells = Math.min(cy, L.band - CELL - cy) / CELL; // 0 у края
+            const solid = edgeCells >= 2;
+            ctx.fillStyle = L.c;
+            if (solid) {
+              ctx.fillRect(0, Math.round(top + cy), w, CELL);
+            } else {
+              const row = FALL_BAYER[((top + cy) / CELL | 0) & 3];
+              const dens = edgeCells === 0 ? 0.28 : 0.62;
+              for (let cx = 0; cx < w; cx += CELL) {
+                if (row[(cx / CELL | 0) & 3] / 16 < dens) {
+                  ctx.fillRect(cx, Math.round(top + cy), CELL, CELL);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Передний план — вертикальные штрихи скорости, летят вверх быстро.
+      // Псевдослучайные, но стабильные колонки (seed от индекса).
+      const SL_N = 16;
+      for (let i = 0; i < SL_N; i++) {
+        const seed = (i * 2654435761) >>> 0;
+        const colX = (seed % (w - 4));
+        const len = 24 + (seed >> 8) % 64;
+        const mult = 1.0 + ((seed >> 4) & 7) / 10; // 1.0..1.7
+        const period = h + len + 40;
+        const yy = h - (((fallScroll * mult) + (seed % period)) % period);
+        ctx.fillStyle = ((seed >> 3) & 3) === 0 ? '#808080' : '#4A4A4A';
+        ctx.fillRect(Math.round(colX), Math.round(yy), 2, len);
+      }
+
+      // Плита, с которой шагнул — видна ~0.5 с и уходит вверх.
+      const originY = h * 0.42 - fallScroll;
+      if (originY > -PLATE_H) {
+        drawPlatform(ctx, images, { x: Math.round(w / 2 - 112), y: 0, w: 224 }, 0, -Math.round(originY));
+      }
+
+      // Обломки/искры навстречу (в dust, летят вверх), экранные координаты.
+      dust.forEach((d) => {
+        ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
+        ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY), d.s, d.s);
+      });
+
+      // Пара Шут+пёс — по центру, кувыркаются: покачивание по x + лёгкий
+      // крен туда-сюда (падают, а не парят).
+      const pw = PAIR_W;
+      const cx = w / 2 + Math.sin(t * 5) * 4;
+      const cyc = h * 0.44;
+      ctx.save();
+      ctx.translate(cx, cyc);
+      ctx.rotate(Math.sin(t * 3.3) * 0.13 + prog * 0.1);
+      ctx.drawImage(images.foolDogFall, Math.round(-pw / 2), Math.round(-PLAYER_H / 2), pw, PLAYER_H);
+      ctx.restore();
+
+      // Кадр закрывается: снизу растёт чернота (главное), сверху подбирается
+      // вдвое медленнее — кадр «схлопывается», а не просто заливается.
+      ctx.fillStyle = '#000000';
+      const coverB = Math.round(h * clamp01(prog ** 1.6));
+      ctx.fillRect(0, h - coverB, w, coverB);
+      const coverT = Math.round(h * 0.5 * clamp01(prog ** 2.4));
+      ctx.fillRect(0, 0, w, coverT);
+      return;
+    }
+
+    // arrive — прибытие, не удар: из темноты пиксельным проявлением оракула
+    // проступает ТА ЖЕ плита (buildRoadStrip), на неё садятся Шут и пёс.
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
+    const p = clamp01(stateT / ARRIVE_DUR);
+    // Немного пустоты под плитой — чтобы читалось как уступ, не просто пол.
+    drawAbyss(ctx, w, h, t);
+
+    const gw = groundStrip.width;
+    const gx = Math.round((w - gw) / 2);
+    const gy = Math.round(h * 0.6);
+    drawPixelReveal(ctx, groundStrip, gx, gy, gw, PLATE_H, p, 4, 0.5, 0.4);
+
+    if (p > 0.5) {
+      ctx.globalAlpha = clamp01((p - 0.5) / 0.4);
+      const cx = Math.round(w / 2);
+      // Пёс сидит слева от Шута — «как было с собакой» (правка 2026-08-29).
+      const dogImg = images.dogSitFrames[Math.floor(t * 2) % images.dogSitFrames.length];
+      ctx.drawImage(dogImg, cx - PLAYER_W / 2 - DOG_W - 4, gy - DOG_H, DOG_W, DOG_H);
+      const fr = images.foolIdleFrames;
+      ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], cx - PLAYER_W / 2, gy - PLAYER_H, PLAYER_W, PLAYER_H);
+      ctx.globalAlpha = 1;
+    }
+    if (p >= 1) {
+      dust.forEach((d) => {
+        ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
+        ctx.fillRect(Math.round(w / 2 + (d.x - player.x)), Math.round(gy - (player.y - d.y)), d.s, d.s);
+      });
+    }
   }
 
   return {
@@ -223,9 +363,17 @@ export function createLeapScreen({ input, images, goto }) {
       ghostCrumbled = false;
       accentEdge = 0;
       lean = 0;
+      fallScroll = 0;
+      fallSpeed = 0;
+      debrisT = 0;
+      arriveDust = false;
       holdPrevY = 0;
       holdPrevMs = 0;
       dust.length = 0;
+      // Полосы дороги под пиксельное проявление: GHOST_W у края (кратно 32),
+      // ARRIVE_W — плита прибытия (кратно 32, уже соло-поз Шута).
+      if (!ghostStrip) ghostStrip = buildRoadStrip(images, GHOST_W);
+      if (!groundStrip) groundStrip = buildRoadStrip(images, ARRIVE_W);
 
       const startY = 0;
       platforms = buildPlatforms(startY);
@@ -378,19 +526,35 @@ export function createLeapScreen({ input, images, goto }) {
         // точка невозврата: тело уходит само, отпускание уже ничего не меняет.
         lean = holdProgress(stateT);
         if (stateT >= HOLD_TOTAL) commitLeap();
+      } else if (state === 'brace') {
+        // Такт 1 — срыв: полный стоп-кадр, ничего не двигается.
+        if (stateT >= BRACE_DUR) { state = 'fall'; stateT = 0; fallSpeed = FALL_V0; fallScroll = 0; }
       } else if (state === 'fall') {
-        player.vy = Math.min(FALL_VMAX, player.vy + FALL_G * dt);
-        player.x += player.vx * dt;
-        player.y += player.vy * dt;
-        deepestY = Math.max(deepestY, player.y);
-        if (player.y - last.y >= FALL_DEPTH) {
-          state = 'landed';
-          stateT = 0;
+        // Такт 2 — полёт: мир едет вверх, скорость нарастает.
+        fallSpeed = Math.min(FALL_VMAX, fallSpeed + FALL_ACCEL * dt);
+        fallScroll += fallSpeed * dt;
+        // Обломки и искры навстречу (летят вверх мимо пары) — плотно, чтобы
+        // полёт читался. Размер 2–6 px, изредка крупный кусок.
+        debrisT -= dt;
+        if (debrisT <= 0) {
+          debrisT = 0.025 + Math.random() * 0.05;
+          for (let i = 0, n = 2 + (Math.random() * 3 | 0); i < n; i++) {
+            const big = Math.random() < 0.15;
+            dust.push({
+              x: camX + Math.random() * (w || 430), y: camY + (h || 844) + 10,
+              vx: (Math.random() - 0.5) * 40, vy: -(fallSpeed * (0.5 + Math.random() * 0.9)),
+              t: 0, life: 0.3 + Math.random() * 0.35, s: big ? 6 : (Math.random() < 0.5 ? 2 : 4),
+            });
+          }
+        }
+        if (stateT >= FALL_DUR) { state = 'arrive'; stateT = 0; }
+      } else if (state === 'arrive') {
+        // Такт 3 — прибытие: земля проступает пикселями, потом предсказание.
+        if (stateT >= ARRIVE_DUR && !arriveDust) {
+          arriveDust = true;
           spawnDust(player.x, player.y, 14);
         }
-      } else if (state === 'landed') {
-        // ждём короткий такт, потом уходим на предсказание.
-        if (stateT >= 1.1) goto('prediction');
+        if (stateT >= ARRIVE_DUR + 0.5) goto('prediction');
       }
 
       // Пёс следует за игроком, пока не наступает его собственная реплика
@@ -452,15 +616,19 @@ export function createLeapScreen({ input, images, goto }) {
       const toFinalEdge = onLast ? (last.x + last.w - player.x) : Infinity;
 
       if (toFinalEdge < 120) {
-        ghostReveal = Math.max(0, ghostReveal - dt / 1.2); // осыпается за 1.2 с
+        ghostReveal = Math.max(0, ghostReveal - dt / 1.2); // растворяется за 1.2 с
+        // Пока тают пиксели — вниз сыплются осколки (те же «крупные
+        // пиксели», 4 px), по всей ширине призрачной плиты, гуще у дальнего
+        // конца. Разово — как заводится осыпание.
         if (!ghostCrumbled) {
           ghostCrumbled = true;
-          const gx = last.x + last.w + 40;
-          for (let i = 0; i < 10; i++) {
+          const gx = last.x + last.w;
+          for (let i = 0; i < 16; i++) {
+            const f = Math.random();
             dust.push({
-              x: gx + Math.random() * 140, y: last.y + Math.random() * 8,
-              vx: (Math.random() - 0.5) * 20, vy: 30 + Math.random() * 50,
-              t: 0, life: 0.6 + Math.random() * 0.4, s: Math.random() < 0.5 ? 2 : 4,
+              x: gx + f * GHOST_W, y: last.y + Math.random() * PLATE_H,
+              vx: (Math.random() - 0.5) * 24, vy: 20 + Math.random() * 70 + f * 40,
+              t: 0, life: 0.6 + Math.random() * 0.5, s: 4,
             });
           }
         }
@@ -480,16 +648,34 @@ export function createLeapScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
+      // Такты 2–3 падения (задача 7) — свой мир, обычную сцену не рисуем.
+      // Такт 1 ('brace') — это стоп-кадр обычной сцены, идёт по общему пути.
+      if (state === 'fall' || state === 'arrive') {
+        drawFallSequence(ctx, w, h);
+        return;
+      }
+
       const last = platforms[platforms.length - 1];
       // Пропасть — едва заметный дизер-градиент у нижней кромки кадра, за
       // плитами, виден всю дорогу (задача 4). Заменил и `drawFarRoad`, и
       // старую растущую черноту.
       drawAbyss(ctx, w, h, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
-      // Призрачное продолжение дороги — процедурный дизер #4A4A4A, плотность
-      // падает вдаль; `ghostReveal` 1→0 — осыпается у финального края
-      // (задача 5).
-      drawGhostRoad(ctx, last.x + last.w + 40, last.y, 160, camX, camY, ghostReveal);
+      // Призрачное продолжение дороги за краем — ТА ЖЕ плита (тайлсет), не
+      // отдельный дизер (правка 2026-08-29). Впритык к последней плите;
+      // `ghostReveal` 1→0 — растворяется тем же пиксельным проявлением
+      // оракула, дальние ячейки уходят первыми (origin слева) — «осыпается
+      // от тебя в пропасть» (задача 5).
+      if (ghostReveal > 0) {
+        drawPixelReveal(
+          ctx,
+          ghostStrip,
+          Math.round(last.x + last.w - camX),
+          Math.round(last.y - camY),
+          ghostStrip.width, PLATE_H,
+          ghostReveal, 4, 0, 0.35,
+        );
+      }
 
       // Наклон Шута идёт РЕЗЧЕ К КОНЦУ, чем растёт кольцо (правка в чате
       // 2026-08-29: «не в унисон» — кольцо метёт 360°, наклон всего 32°,
@@ -511,11 +697,12 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.globalAlpha = 1;
       }
 
-      // Пока падаешь — низ кадра затягивает чернотой поверх пропасти
-      // (временно; полноценные три такта — задача 7). На земле не рисуем.
-      if (deepestY > 40) {
-        const voidFrac = clamp01(deepestY / (FALL_DEPTH * 0.9));
-        const voidH = Math.round(h * (0.15 + voidFrac * 0.55));
+      // Обычное падение с плиты (сошёл с края / не дотянул прыжок) — низ
+      // кадра затягивает чернотой, пока не сработает respawnAtStart. Это
+      // НЕ финальный leap (у того свои три такта, см. drawFallSequence).
+      const fellBelow = deepestY - (platforms[idx] ? platforms[idx].y : 0);
+      if (state === 'air' && fellBelow > 40) {
+        const voidH = Math.round(h * (0.15 + clamp01(fellBelow / RESPAWN_DROP) * 0.55));
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, h - voidH, w, voidH);
       }
@@ -538,9 +725,9 @@ export function createLeapScreen({ input, images, goto }) {
       const standPlat = platforms[idx] || null;
       const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
       drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV);
-      if (state !== 'fall' && state !== 'landed') {
-        drawDog(ctx, images, dog, camX, camY, dogPlat);
-      }
+      // fall/arrive сюда не доходят (ранний return выше); в остальных
+      // состояниях, включая стоп-кадр 'brace', пёс рисуется.
+      drawDog(ctx, images, dog, camX, camY, dogPlat);
 
       // Знак удержания — кольцо, заполняющееся по дуге (задача 8), у головы
       // Шута. Появляется только КОГДА уже держишь (charge) — это индикатор
@@ -553,15 +740,6 @@ export function createLeapScreen({ input, images, goto }) {
           Math.round(player.y - camY - PLAYER_H + 8),
           lean,
         );
-      }
-
-      // Белая линия земли — проступает в момент касания, не раньше.
-      if (state === 'landed') {
-        const lineY = Math.round(player.y - camY + PLAYER_H * 0.9);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.globalAlpha = clamp01(stateT / 0.15);
-        ctx.fillRect(0, lineY, w, Math.max(2, Math.round(2 * scale)));
-        ctx.globalAlpha = 1;
       }
 
       // Подсказка — тот же стиль, что и на других экранах. Инлайн у
@@ -599,20 +777,16 @@ export function createLeapScreen({ input, images, goto }) {
   };
 }
 
-// Обычный прыжок (state 'air', короткая щель между плитами) теперь
-// читается по фазе дуги — вверх и вниз разными позами, не одной статичной
-// (правка в чате, 2026-08-26, после разбора ассетов): 'rise', пока
-// vy < 0 (ещё поднимается), 'fall' — как только пошёл вниз. Финальный
-// прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
-// с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
-// задача 4 не переделает его на три такта отдельно.
+// Обычный прыжок (state 'air', короткая щель между плитами) читается по
+// фазе дуги — вверх и вниз разными позами, не одной статичной (правка в
+// чате, 2026-08-26): 'rise', пока vy < 0 (ещё поднимается), 'fall' — как
+// только пошёл вниз. Финальный leap через пропасть рисует не эта функция,
+// а drawFallSequence (три такта, задача 7) — сюда доходит только стоп-кадр
+// 'brace', и он идёт по общей ветке idle, повёрнутой на leanV.
 function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
   let pose;
   let img;
-  if (state === 'fall' || state === 'landed') {
-    pose = 'fallPair';
-    img = images.foolDogFall;
-  } else if (state === 'air') {
+  if (state === 'air') {
     pose = p.vy < 0 ? 'rise' : 'fall';
     img = pose === 'rise' ? images.foolRise : images.foolFall;
   } else {
@@ -620,8 +794,7 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
     const frames = images.foolIdleFrames;
     img = frames[Math.floor(t * IDLE_FPS) % frames.length];
   }
-  // Парный спрайт падения шире соло-поз — своя ширина холста, не PLAYER_W.
-  const baseW = pose === 'fallPair' ? PAIR_W : PLAYER_W;
+  const baseW = PLAYER_W;
   // Фиксированный ×2 (BUILD-SPEC-03 задача 2): PLAYER_W/H уже удвоены,
   // никакого uiScale. sqx/sqy — намеренный squash анимации, остаются.
   const w = Math.round(baseW * p.sqx);
@@ -636,8 +809,8 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
   // это на любом расстоянии сразу: пока до края далеко — сдвига нет
   // совсем, чем ближе — тем плавнее подъезжает, у самого края спрайт
   // просто не залезает правым краем дальше физической границы плиты.
-  // В воздухе (air/fall/landed) не клэмпим — там за пределами плиты
-  // находиться и есть смысл состояния. На земле — держим спрайт целиком
+  // В воздухе ('air') не клэмпим — там за пределами плиты находиться и
+  // есть смысл состояния. На земле — держим спрайт целиком
   // над плитой, ни левым, ни правым краем не свисает (правка 2026-08-28).
   const isGrounded = state === 'walk'
     || state === 'wait_leap' || state === 'charge';

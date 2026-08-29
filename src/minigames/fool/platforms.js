@@ -100,36 +100,27 @@ export function drawPlatform(ctx, images, p, camX, camY) {
   drawRoad(ctx, images.roadTiles, x, y, w);
 }
 
-// Bayer 4×4 для дизера призрачной дороги.
-const GHOST_BAYER = [
-  [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
-];
-const GHOST_CELL = 4;      // экранных px на ячейку дизера
-const GHOST_FADE_PX = 180; // за столько плотность дизера падает 100% → 0
-
-/** Призрачное продолжение дороги за пропастью (BUILD-SPEC-03 задача 5).
- * Не тайлсет, а процедурный дизер `#4A4A4A` с плотностью, падающей от
- * ближнего конца вдаль; без угловой скобы. `reveal` 1→0 — «осыпается»,
- * когда игрок подходит к последнему краю. */
-export function drawGhostRoad(ctx, x, y, w, camX, camY, reveal) {
-  if (reveal <= 0) return;
-  const rx = Math.round(x - camX);
-  const ry = Math.round(y - camY);
-  ctx.fillStyle = '#4A4A4A';
-  for (let cy = 0, row = 0; cy < PLATE_H; cy += GHOST_CELL, row++) {
-    const isSurface = cy < 4; // верхние 2 арт-px — «поверхность», чуть плотнее
-    const brow = GHOST_BAYER[row & 3];
-    for (let cx = 0, col = 0; cx < w; cx += GHOST_CELL, col++) {
-      const near = 1 - Math.min(1, cx / GHOST_FADE_PX);
-      const density = (isSurface ? Math.min(1, near + 0.35) : near) * reveal;
-      if (brow[col & 3] / 16 < density) {
-        ctx.fillRect(rx + cx, ry + cy, GHOST_CELL, Math.min(GHOST_CELL, PLATE_H - cy));
-      }
-    }
-  }
+/** Офскрин-полоса дороги шириной sw (кратно 32) — тело + тайлсет, как у
+ * обычной плиты. Нужна там, где дорогу надо ПРОЯВИТЬ или РАСТВОРИТЬ
+ * попиксельно (`core/pixelReveal.js`): призрачное продолжение у финального
+ * края (задача 5) и прибытие после падения (задача 7). Рисуем один раз,
+ * дальше только маскируем. */
+export function buildRoadStrip(images, sw) {
+  const c = document.createElement('canvas');
+  c.width = sw;
+  c.height = PLATE_H;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  drawPlatform(g, images, { x: 0, y: 0, w: sw }, 0, 0);
+  return c;
 }
 
 // Дальний пунктирный слой (`drawFarRoad`) удалён — BUILD-SPEC-03 задача 4:
 // глубину под дорогой теперь даёт дышащий дизер-градиент пропасти
 // (`abyss.js`), а не пунктир. Плюс он был последним местом с дробным
 // `* scale` в дорожном пути (хвост задачи 2).
+//
+// Процедурный дизер призрачной дороги (`drawGhostRoad`) удалён — правка в
+// чате 2026-08-29: рушащаяся плита должна быть ТАКОЙ ЖЕ, как остальные, и
+// осыпаться пиксельным проявлением оракула. Теперь это `buildRoadStrip` +
+// `drawPixelReveal` с progress 1→0 (leap.js).
