@@ -94,6 +94,7 @@ export function createLeapScreen({ input, images, goto }) {
   let ghostReveal = 1;
   let ghostCrumbled = false; // осколки уже сыпанули — один раз
   let accentEdge = 0;
+  let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
   // Для распознавания «флика вверх на ходу» (input даёт hold-события без
   // скорости) — держим предыдущую точку hold-жеста.
   let holdPrevY = 0, holdPrevMs = 0;
@@ -196,6 +197,7 @@ export function createLeapScreen({ input, images, goto }) {
   function commitLeap() {
     state = 'fall';
     stateT = 0;
+    lean = 0; // дальше падение своим парным спрайтом, наклон не накладываем
     player.vx = 60;
     player.vy = -120;
     // Пёс больше не летит отдельным объектом — падение теперь один
@@ -219,6 +221,7 @@ export function createLeapScreen({ input, images, goto }) {
       ghostReveal = 1;
       ghostCrumbled = false;
       accentEdge = 0;
+      lean = 0;
       holdPrevY = 0;
       holdPrevMs = 0;
       dust.length = 0;
@@ -366,8 +369,13 @@ export function createLeapScreen({ input, images, goto }) {
       } else if (state === 'wait_leap') {
         player.sqx += (1 - player.sqx) * Math.min(1, dt * 8);
         player.sqy += (1 - player.sqy) * Math.min(1, dt * 8);
+        lean = Math.max(0, lean - dt / 0.4); // отпустил до срыва — выпрямляется за 0.4 с
       } else if (state === 'charge') {
-        // полоска считается в draw() из stateT — тут только поза/пёс.
+        // Наклон вперёд, не «зарядка» (задача 6): пока держишь — угол растёт
+        // 0→1 по holdProgress (последняя четверть медленнее). На 100% —
+        // точка невозврата: тело уходит само, отпускание уже ничего не меняет.
+        lean = holdProgress(stateT);
+        if (stateT >= HOLD_TOTAL) commitLeap();
       } else if (state === 'fall') {
         player.vy = Math.min(FALL_VMAX, player.vy + FALL_G * dt);
         player.x += player.vx * dt;
@@ -481,14 +489,15 @@ export function createLeapScreen({ input, images, goto }) {
       drawGhostRoad(ctx, last.x + last.w + 40, last.y, 160, camX, camY, ghostReveal);
 
       // Кромка последней плиты загорается акцентом (задача 5): верхние
-      // 2 арт-px последних 16 арт-px плиты, alpha = accentEdge. Единственное
-      // оранжевое пятно во всей мини-игре — «место, куда встаёт нога».
-      if (accentEdge > 0) {
+      // 2 арт-px последних 16 арт-px плиты. По мере наклона (задача 6)
+      // укорачивается от края внутрь — к точке невозврата гаснет совсем.
+      const accentW = Math.round(32 * (1 - lean));
+      if (accentEdge > 0 && accentW > 0) {
         const ex = Math.round(last.x - camX) + last.w;
         const ey = Math.round(last.y - camY);
         ctx.globalAlpha = accentEdge;
         ctx.fillStyle = '#EBA331';
-        ctx.fillRect(ex - 32, ey, 32, 4);
+        ctx.fillRect(ex - 32, ey, accentW, 4);
         ctx.globalAlpha = 1;
       }
 
@@ -518,7 +527,7 @@ export function createLeapScreen({ input, images, goto }) {
       // соседней — берём по его x.
       const standPlat = platforms[idx] || null;
       const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
-      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat);
+      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, lean);
       if (state !== 'fall' && state !== 'landed') {
         drawDog(ctx, images, dog, camX, camY, dogPlat);
       }
@@ -537,7 +546,6 @@ export function createLeapScreen({ input, images, goto }) {
       // задача 5 BUILD-SPEC-03 меняет его на жестовые знаки.
       setFont(ctx, 'menuOption', scale);
       ctx.fillStyle = '#EBA331';
-      const marginTop = Math.round(48 * scale);
       if (state === 'walk') {
         ctx.textAlign = 'left';
         const headX = player.x - camX + Math.round(90 * scale);
@@ -551,23 +559,10 @@ export function createLeapScreen({ input, images, goto }) {
           ctx.fillText('SWIPE TO JUMP', headX, headY);
           ctx.globalAlpha = 1;
         }
-      } else if (state === 'wait_leap' || state === 'charge') {
-        ctx.textAlign = 'center';
-        ctx.fillText('HOLD', w / 2, marginTop);
       }
-
-      if (state === 'charge') {
-        const p = clamp01(holdProgress(stateT));
-        const barW = Math.round(160 * scale);
-        const barX = Math.round(w / 2 - barW / 2);
-        const barY = marginTop + Math.round(16 * scale);
-        const barH = Math.max(3, Math.round(4 * scale));
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(barX + 0.5, barY + 0.5, barW, barH);
-        ctx.fillStyle = '#EBA331';
-        ctx.fillRect(barX, barY, Math.round(barW * p), barH);
-      }
+      // Полоска HOLD и текст у финального края убраны совсем (задача 6):
+      // никакого HUD. Обратная связь — наклон Шута и укорачивающаяся
+      // акцентная кромка (см. drawPlayer и блок accentEdge выше).
 
       // Вспышка чёрным после падения — короткий «моргнул и снова на плите».
       // Не полноценная сцена падения (та — задача 4 BUILD-SPEC-03).
@@ -588,7 +583,7 @@ export function createLeapScreen({ input, images, goto }) {
 // прыжок через пропасть (state 'fall'/'landed') — отдельный парный спрайт
 // с псом (fool_dog_fall), тот же, что покрывает и такт приземления, пока
 // задача 4 не переделает его на три такта отдельно.
-function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat) {
+function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
   let pose;
   let img;
   if (state === 'fall' || state === 'landed') {
@@ -633,10 +628,12 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat) {
   const y = Math.round(p.y - camY - h);
 
   ctx.save();
-  if (state === 'wait_leap' || state === 'charge') {
-    // Наклон у края — процедурно, отдельного кадра нет (ASSETS.md).
+  if (lean > 0) {
+    // Наклон вперёд у финального края (задача 6, вместо полоски заряда):
+    // поворот вокруг точки у ног, угол 0 → 32° по lean. Отдельного кадра
+    // нет (ASSETS.md). lean уже несёт кривую holdProgress и выпрямление.
     ctx.translate(x + w / 2, y + h);
-    ctx.rotate(0.10);
+    ctx.rotate(lean * 0.559); // 32° в радианах
     ctx.translate(-(x + w / 2), -(y + h));
   }
   ctx.drawImage(img, x, y, w, h);
