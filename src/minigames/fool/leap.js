@@ -15,8 +15,7 @@
 // программный наклон и позиционирование по существующим позам (idle/fall,
 // walk/sit/look_down/jump у пса).
 
-import { setFont } from '../../core/text.js';
-import { drawHoldRing } from '../../core/gestureGlyph.js';
+import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
@@ -96,10 +95,13 @@ export function createLeapScreen({ input, images, goto }) {
   let stateT = 0;
   let deepestY = 0;
   let camX = 0, camY = 0;
-  let hintAlpha = 1;
   let walking = false;  // палец удерживается — Шут идёт вперёд (ручное управление)
-  let movedEver = false; // хоть раз пошёл — гасим подсказку «HOLD TO WALK»
+  let movedEver = false; // хоть раз пошёл — знак «удержи, чтобы идти» больше не нужен
   let respawnFlash = 0; // короткая вспышка чёрным после падения, сек
+  // Жестовые знаки (задача 8): появляются после паузы бездействия, гаснут
+  // навсегда после первого удавшегося жеста своего типа.
+  let idleT = 0;            // сек без ввода в состоянии, ждущем жеста
+  let swipeGlyphDone = false; // хоть раз прыгнул свайпом — знак свайпа снят
   // Финальный край (задача 5): призрачная дорога проявлена (1) → осыпалась
   // (0); кромка последней плиты разгорается акцентом (0 → 1).
   let ghostReveal = 1;
@@ -185,7 +187,7 @@ export function createLeapScreen({ input, images, goto }) {
     state = 'walk';
     stateT = 0;
     walking = false;
-    hintAlpha = 1;
+    idleT = 0;
     respawnFlash = 0.22;
     deepestY = player.y; // иначе «пустота» снизу кадра остаётся раздутой после падения
     // Камеру подводим сразу, без плавного «полёта» обратно.
@@ -206,7 +208,8 @@ export function createLeapScreen({ input, images, goto }) {
     player.sqy = 1.24;
     state = 'air';
     stateT = 0;
-    hintAlpha = 0;
+    idleT = 0;
+    swipeGlyphDone = true; // удачный свайп — знак свайпа в этой карте больше не нужен
     spawnDust(player.x, player.y, 4);
     scheduleDogHop();
   }
@@ -355,9 +358,10 @@ export function createLeapScreen({ input, images, goto }) {
       idx = 0;
       state = 'walk';
       deepestY = 0;
-      hintAlpha = 1;
       walking = false;
       movedEver = false;
+      idleT = 0;
+      swipeGlyphDone = false;
       respawnFlash = 0;
       ghostReveal = 1;
       ghostCrumbled = false;
@@ -402,18 +406,21 @@ export function createLeapScreen({ input, images, goto }) {
         // отзывчивый старт ходьбы.
         input.on('pressstart', (e) => {
           if (state === 'walk') walking = true;
+          idleT = 0;
           holdPrevY = e.y;
           holdPrevMs = 0;
         }),
-        input.on('pressend', () => { walking = false; }),
+        input.on('pressend', () => { walking = false; idleT = 0; }),
         input.on('swipe', (e) => {
           // Быстрый свайп (палец на плите < 250мс) — прыжок. Слабый свайп
           // = слабый прыжок, щель можно не дотянуть (правка 2026-08-28).
+          idleT = 0;
           if (state !== 'walk') return;
           walking = false;
           beginJump(e.up, Math.min(1, Math.abs(e.side)));
         }),
         input.on('holdstart', () => {
+          idleT = 0;
           if (state !== 'wait_leap') return;
           walking = false;
           state = 'charge';
@@ -421,6 +428,7 @@ export function createLeapScreen({ input, images, goto }) {
           lean = 0; // кольцо/наклон начинают с нуля, не с недовыпрямленного значения
         }),
         input.on('holdmove', (e) => {
+          idleT = 0;
           // Шёл (держал > 250мс) и на ходу дёрнул вверх — это прыжок, а не
           // дрейф пальца: input классифицирует такой жест как hold, не swipe,
           // поэтому ловим по СКОРОСТИ вверх между двумя hold-событиями, а не
@@ -437,6 +445,7 @@ export function createLeapScreen({ input, images, goto }) {
           }
         }),
         input.on('holdend', () => {
+          idleT = 0;
           if (state !== 'charge') return;
           if (stateT >= HOLD_TOTAL) commitLeap();
           else { state = 'wait_leap'; stateT = 0; } // отпустил раньше — просто ждём снова
@@ -452,6 +461,7 @@ export function createLeapScreen({ input, images, goto }) {
     update(dt, w = 430, h = 932) {
       t += dt;
       stateT += dt;
+      idleT += dt; // сбрасывается в обработчиках ввода; кормит жестовые знаки
       updateDust(dt);
       if (respawnFlash > 0) respawnFlash = Math.max(0, respawnFlash - dt);
 
@@ -643,8 +653,6 @@ export function createLeapScreen({ input, images, goto }) {
     },
 
     draw(ctx, w, h) {
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
-
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
@@ -729,41 +737,34 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
-      // Знак удержания — кольцо, заполняющееся по дуге (задача 8), у головы
-      // Шута. Появляется только КОГДА уже держишь (charge) — это индикатор
-      // «сколько до срыва», а не подсказка «надо держать» (её игрок
-      // находит сам). progress = lean = holdProgress.
-      if (state === 'charge' && lean > 0.02 && lean < 1) {
-        drawHoldRing(
-          ctx,
-          Math.round(player.x - camX + 46),
-          Math.round(player.y - camY - PLAYER_H + 8),
-          lean,
-        );
-      }
-
-      // Подсказка — тот же стиль, что и на других экранах. Инлайн у
-      // фигуры, не HUD-баннером (BUILD-SPEC-02, задача 5). Текст временный —
-      // задача 5 BUILD-SPEC-03 меняет его на жестовые знаки.
-      setFont(ctx, 'menuOption', scale);
-      ctx.fillStyle = '#EBA331';
-      if (state === 'walk') {
-        ctx.textAlign = 'left';
-        const headX = player.x - camX + Math.round(90 * scale);
-        const headY = player.y - camY - PLAYER_H;
+      // Жестовые знаки (задача 8) — кодом из графического языка проекта,
+      // РЯДОМ С ФИГУРОЙ, не в HUD. Ни одного слова в кадре. Появляются
+      // после паузы бездействия (1.2 с; у финального края — 6 с, там
+      // заминка это содержание, а не затруднение) и гаснут навсегда после
+      // первого удавшегося жеста своего типа.
+      const glyphX = Math.round(player.x - camX + 30);
+      const glyphY = Math.round(player.y - camY - PLAYER_H - 30);
+      // Знак удержания-подсказки — та же дуга, что в charge, но сама
+      // прокручивается 0→1→0: показывает жест, а не статичный кружок.
+      const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
+      if (state === 'charge') {
+        // Уже держишь — дуга показывает, сколько до срыва (индикатор, не
+        // подсказка). До 100% и на нуле не рисуем. Полный радиус.
+        if (lean > 0.02 && lean < 1) drawHoldRing(ctx, glyphX, glyphY, lean);
+      } else if (state === 'walk' && !walking && idleT > 1.2) {
+        const fade = clamp01((idleT - 1.2) / 0.4);
         const p = platforms[idx];
-        const nearEdge = p !== last && (p.x + p.w - player.x) < 70;
-        if (!movedEver && !walking) {
-          ctx.fillText('HOLD TO WALK', headX, headY);
-        } else if (nearEdge) {
-          ctx.globalAlpha = hintAlpha;
-          ctx.fillText('SWIPE TO JUMP', headX, headY);
-          ctx.globalAlpha = 1;
+        const nearGap = p !== last && (p.x + p.w - player.x) < 80;
+        if (!movedEver) {
+          drawHoldRing(ctx, glyphX, glyphY, sweep, fade, 6); // «удержи, чтобы идти»
+        } else if (nearGap && !swipeGlyphDone) {
+          drawSwipeTick(ctx, glyphX, glyphY, fade);          // «свайп вверх» у щели
         }
+      } else if (state === 'wait_leap' && idleT > 6) {
+        drawHoldRing(ctx, glyphX, glyphY, sweep, clamp01((idleT - 6) / 0.8), 6);
       }
       // Полоска HOLD и текст у финального края убраны совсем (задача 6):
-      // никакого HUD. Обратная связь — наклон Шута и укорачивающаяся
-      // акцентная кромка (см. drawPlayer и блок accentEdge выше).
+      // обратная связь — наклон Шута и укорачивающаяся акцентная кромка.
 
       // Вспышка чёрным после падения — короткий «моргнул и снова на плите».
       // Не полноценная сцена падения (та — задача 4 BUILD-SPEC-03).
