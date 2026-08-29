@@ -16,6 +16,7 @@ import {
   layoutWords, visibleWordCount, revealDuration, blinkAlpha,
 } from '../core/textReveal.js';
 import { drawCardFace, CARD_W, CARD_H } from '../core/cardRender.js';
+import { textButtonZone, zoneHit } from '../core/textButton.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
 const REVEAL_CELL_SIZE = 4;
@@ -26,10 +27,12 @@ function clamp01(x) {
 }
 
 export function createRevealScreen({ input, images, goto }) {
-  let offTap = null;
+  let offHandlers = [];
   let t = 0;
   let box = { x: 0, y: 0, w: 0, h: 0 };
-  let continueLabel = { x0: 0, x1: 0, y: 0 };
+  let continueZone = null; // хит-зона ›KEEP GOING (textButton.js)
+  let continueY = 0;
+  let hovering = false;    // курсор над ›KEEP GOING (десктоп) — гасим мигание
   let titleRevealDuration = 0;
 
   function layout(w, h, scale) {
@@ -48,7 +51,7 @@ export function createRevealScreen({ input, images, goto }) {
     // относится: взгляд шёл реплика → CTA → только потом карта. Отступ
     // увеличен с 36 (правка в чате: «оч близко расположена к карте») —
     // явный зазор, а не почти впритык к нижнему краю рамки.
-    continueLabel.y = box.y + box.h + Math.round(64 * scale);
+    continueY = box.y + box.h + Math.round(64 * scale);
   }
 
   function continueReady() {
@@ -58,16 +61,24 @@ export function createRevealScreen({ input, images, goto }) {
   return {
     enter() {
       t = 0;
-      offTap = input.on('tap', (e) => {
-        if (!continueReady()) return;
-        const l = continueLabel;
-        if (e.x < l.x0 - 12 || e.x > l.x1 + 12 || Math.abs(e.y - l.y) > 22) return;
-        goto('leap');
-      });
+      hovering = false;
+      offHandlers = [
+        input.on('tap', (e) => {
+          if (!continueReady()) return;
+          if (!zoneHit(continueZone, e.x, e.y)) return;
+          goto('leap');
+        }),
+        input.on('hover', (e) => {
+          hovering = continueReady() && zoneHit(continueZone, e.x, e.y);
+        }),
+        input.on('hoverend', () => { hovering = false; }),
+        input.on('pressend', () => { hovering = false; }),
+      ];
     },
 
     exit() {
-      offTap?.();
+      offHandlers.forEach((off) => off());
+      offHandlers = [];
     },
 
     update(dt) {
@@ -103,7 +114,7 @@ export function createRevealScreen({ input, images, goto }) {
       });
 
       if (continueReady()) {
-        setFont(ctx, 'menuOption', scale);
+        const lineHeight = setFont(ctx, 'menuOption', scale);
         ctx.textAlign = 'left';
         ctx.fillStyle = '#EBA331';
         // Было «›CONTINUE» — «нелогичная формулировка» (правка в чате):
@@ -113,12 +124,13 @@ export function createRevealScreen({ input, images, goto }) {
         // предложенных вариантов в чате.
         const label = '›KEEP GOING';
         const width = ctx.measureText(label).width;
-        continueLabel.x0 = Math.round(w / 2 - width / 2);
-        continueLabel.x1 = continueLabel.x0 + width;
+        const x0 = Math.round(w / 2 - width / 2);
+        continueZone = textButtonZone(x0, continueY, width, lineHeight);
         // Мигание — тем же приёмом, что у CLICK TO DRAW/подписи экрана 2
-        // (правка в чате: «она не мигает», забыли применить сюда же).
-        ctx.globalAlpha = blinkAlpha(t);
-        ctx.fillText(label, continueLabel.x0, continueLabel.y);
+        // (правка в чате: «она не мигает», забыли применить сюда же). Под
+        // курсором (десктоп) мигание гасим — сплошной акцент (задача 9).
+        ctx.globalAlpha = hovering ? 1 : blinkAlpha(t);
+        ctx.fillText(label, x0, continueY);
         ctx.globalAlpha = 1;
       }
     },

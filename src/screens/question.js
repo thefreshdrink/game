@@ -14,6 +14,7 @@
 import { CATEGORIES } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
+import { textButtonZone, zoneHit } from '../core/textButton.js';
 import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY,
@@ -21,11 +22,13 @@ import {
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
-// Без пальца на экране пункты сами по очереди загораются акцентом —
+// Без пальца/курсора на экране пункты сами по очереди загораются —
 // динамика, о которой просили в чате. Резкое переключение, без fade
-// (тот же стиль, что и у точек — «плавно» не понравилось). Палец поверх
-// автоцикла — pressedIndex всегда важнее.
+// (тот же стиль, что и у точек — «плавно» не понравилось). Но это
+// ХОЛОСТОЙ перебор: акцент в полсилы (globalAlpha 0.55), полный акцент
+// только под пальцем или курсором (BUILD-SPEC-03 задача 9).
 const MENU_ITEM_ON = 0.8;
+const IDLE_CYCLE_ALPHA = 0.55;
 
 // Тайминги интро, секунды.
 //
@@ -93,27 +96,26 @@ function clamp01(x) {
 
 export function createQuestionScreen({ input, images, goto }) {
   let offHandlers = [];
-  let items = []; // {category, label, x0, x1, y}
+  let items = []; // {category, label, zone}
   let t = 0;
   let blinkTimer = BLINK_MIN + Math.random() * (BLINK_MAX - BLINK_MIN);
   let blinking = false;
   let blinkT = 0;
   let pressedIndex = null; // подсветка «пальцем сейчас здесь», не финальный выбор
+  let hoverIndex = null;   // подсветка «курсор над пунктом» (десктоп)
   let shortMode = false; // короткий вход на возврате — session.seenIntro на момент enter()
   let introMarked = false; // session.seenIntro уже выставлен в этом заходе
   let text2Start = TEXT2_START;
   let optionsStart = OPTIONS_START;
 
   function itemAt(x, y) {
-    const idx = items.findIndex(
-      (it) => x >= it.x0 - 10 && x <= it.x1 + 10 && Math.abs(y - it.y) < 22,
-    );
+    const idx = items.findIndex((it) => zoneHit(it.zone, x, y));
     return idx === -1 ? null : idx;
   }
 
   function layout(ctx, w, scale, y) {
     const marginX = Math.round(53 * scale);
-    setFont(ctx, 'menuOption', scale);
+    const lineHeight = setFont(ctx, 'menuOption', scale);
     const gap = Math.round(30 * scale);
 
     items = [];
@@ -121,7 +123,10 @@ export function createQuestionScreen({ input, images, goto }) {
     for (const cat of CATEGORIES) {
       const label = `›${LABELS[cat]}`; // › + имя, как на референсе
       const width = ctx.measureText(label).width;
-      items.push({ category: cat, label, x0: x, x1: x + width, y });
+      items.push({
+        category: cat, label, x, y,
+        zone: textButtonZone(x, y, width, lineHeight),
+      });
       x += width + gap;
     }
   }
@@ -132,6 +137,7 @@ export function createQuestionScreen({ input, images, goto }) {
       blinking = false;
       blinkTimer = BLINK_MIN + Math.random() * (BLINK_MAX - BLINK_MIN);
       pressedIndex = null;
+      hoverIndex = null;
       introMarked = false;
 
       // Короткий вход — только если полное интро уже отыграло в этой
@@ -153,6 +159,13 @@ export function createQuestionScreen({ input, images, goto }) {
         }),
         input.on('pressend', () => {
           pressedIndex = null;
+          hoverIndex = null; // тач: pointermove после отрыва не придёт, чистим руками
+        }),
+        input.on('hover', (e) => {
+          hoverIndex = optionsReady() ? itemAt(e.x, e.y) : null;
+        }),
+        input.on('hoverend', () => {
+          hoverIndex = null;
         }),
         input.on('tap', (e) => {
           if (!optionsReady()) return;
@@ -286,11 +299,23 @@ export function createQuestionScreen({ input, images, goto }) {
         const autoIndex = t >= allShownT
           ? Math.floor((t - allShownT) / MENU_ITEM_ON) % items.length
           : null;
-        const highlighted = pressedIndex !== null ? pressedIndex : autoIndex;
+        // Приоритет: палец > курсор > холостой перебор. Первые два — полный
+        // акцент; перебор — акцент в полсилы (задача 9).
+        const active = pressedIndex !== null ? pressedIndex : hoverIndex;
         items.forEach((it, i) => {
           if (t < optionsStart + i * OPTION_ITEM_STAGGER) return;
-          ctx.fillStyle = i === highlighted ? '#EBA331' : '#FFFFFF';
-          ctx.fillText(it.label, it.x0, it.y);
+          if (i === active) {
+            ctx.fillStyle = '#EBA331';
+            ctx.fillText(it.label, it.x, it.y);
+          } else if (active === null && i === autoIndex) {
+            ctx.fillStyle = '#EBA331';
+            ctx.globalAlpha = IDLE_CYCLE_ALPHA;
+            ctx.fillText(it.label, it.x, it.y);
+            ctx.globalAlpha = 1;
+          } else {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(it.label, it.x, it.y);
+          }
         });
       }
     },

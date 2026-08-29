@@ -14,6 +14,13 @@
 // подсветки UI при касании (на тач-устройствах нет hover) — например,
 // пункт меню подсвечивается акцентом, пока на нём палец, независимо от
 // того, чем жест кончится.
+//
+// hover / hoverend — курсор БЕЗ нажатия (десктоп): hover на каждом
+// pointermove с координатами, hoverend когда курсор ушёл с канваса
+// (BUILD-SPEC-03 задача 9 — подсветка пункта под курсором). На тач-
+// устройствах pointermove идёт только с прижатым пальцем, так что hover
+// там дублирует pressmove и сам собой затихает; hoverend экраны всё
+// равно чистят и по pressend.
 
 const SWIPE_THRESHOLD = 16;
 const SWIPE_NORMALIZE = 120;
@@ -25,6 +32,7 @@ export function createInput(target) {
   const handlers = {
     tap: [], swipe: [], holdstart: [], holdmove: [], holdend: [],
     pressstart: [], pressmove: [], pressend: [],
+    hover: [], hoverend: [],
   };
 
   let pointerActive = false;
@@ -79,8 +87,9 @@ export function createInput(target) {
   }
 
   function onMove(e) {
-    if (!pointerActive) return;
     const p = toLocal(e);
+    emit('hover', { x: p.x, y: p.y });
+    if (!pointerActive) return;
     emit('pressmove', { x: p.x, y: p.y });
     if (!holdActive) return;
     emit('holdmove', {
@@ -131,6 +140,7 @@ export function createInput(target) {
   target.addEventListener('pointermove', onMove);
   target.addEventListener('pointerup', onUp);
   target.addEventListener('pointercancel', onUp);
+  target.addEventListener('pointerleave', () => emit('hoverend', {}));
 
   return { on };
 }

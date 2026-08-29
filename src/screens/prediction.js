@@ -10,6 +10,7 @@
 import { CARDS, getReading } from '../data/cards.js';
 import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
+import { textButtonZone, zoneHit } from '../core/textButton.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
@@ -22,7 +23,7 @@ export function createPredictionScreen({ input, goto }) {
   let offTap = null;
   let t = 0;
   let fullText = '';
-  let promptLabel = { x0: 0, x1: 0, y: 0 };
+  let promptZone = null; // хит-зона ›ONE MORE QUESTION (textButton.js)
 
   function shownCount() {
     return Math.min(fullText.length, Math.floor(t / CHAR_INTERVAL));
@@ -40,8 +41,7 @@ export function createPredictionScreen({ input, goto }) {
 
       offTap = input.on('tap', (e) => {
         if (!typingDone()) { t = fullText.length * CHAR_INTERVAL; return; }
-        const l = promptLabel;
-        if (e.x < l.x0 - 12 || e.x > l.x1 + 12 || Math.abs(e.y - l.y) > 22) return;
+        if (!zoneHit(promptZone, e.x, e.y)) return;
         resetSession();
         goto('question');
       });
@@ -101,13 +101,17 @@ export function createPredictionScreen({ input, goto }) {
       }
 
       if (typingDone()) {
-        setFont(ctx, 'menuOption', scale);
+        const lineHeight = setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
         const promptY = bodyStartY + lines.length * bodyLH + Math.round(28 * scale);
         const label = '›ONE MORE QUESTION';
         ctx.fillText(label, marginX, promptY);
         const width = ctx.measureText(label).width;
-        promptLabel = { x0: marginX, x1: marginX + width, y: promptY };
+        // Одна формула хит-зоны на все экраны (задача 9). Своей подсветки
+        // под курсором у этой подписи нет — она и так статичный акцент,
+        // подсвечивать нечего (в отличие от мигающей ›KEEP GOING и
+        // перебора категорий).
+        promptZone = textButtonZone(marginX, promptY, width, lineHeight);
       }
     },
   };
