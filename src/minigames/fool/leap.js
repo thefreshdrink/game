@@ -120,7 +120,6 @@ export function createLeapScreen({ input, images, goto }) {
   // (0); кромка последней плиты разгорается акцентом (0 → 1).
   let ghostReveal = 1;
   let ghostCrumbled = false; // осколки уже сыпанули — один раз
-  let accentEdge = 0;
   let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
   // Падение — три такта (задача 7): 'brace' → 'fall' (мир едет вверх) → 'arrive'.
   let fallScroll = 0, fallSpeed = 0, debrisT = 0, arriveDust = false;
@@ -266,10 +265,10 @@ export function createLeapScreen({ input, images, goto }) {
   /** Три такта финального падения (задача 7): 'brace' (стоп-кадр) → 'fall'
    * (полёт) → 'arrive' (проявление земли). Фон уже залит #111111.
    *
-   * Переделано в чате 2026-08-31: фон почти чёрный (серый дизер убивал
-   * контраст молний), молнии тонкие и яркие, пара Шут+пёс видна ВСЁ
-   * время — без затемнения и повторного проявления, — и плавно опускается
-   * на плиту, которая проступает под ней. */
+   * Переделано в чате 2026-08-31: фон почти чёрный (серый дизер мешал),
+   * молнии убраны совсем (эффект «смены миров» — отдельно), пара Шут+пёс
+   * видна ВСЁ время — без затемнения и повторного проявления, — и плавно
+   * опускается на плиту, которая проступает под ней. */
   function drawFallSequence(ctx, w, h) {
     // Линия прибытия и точка, где встаёт пара — общие для 'fall' и
     // 'arrive', чтобы снижение шло без скачка.
@@ -278,33 +277,6 @@ export function createLeapScreen({ input, images, goto }) {
     const groundX = Math.round(w / 2 - gw / 2 - 28);
     const standCX = groundX + Math.round(gw * 0.44); // центр Шута на плите
     const floatY = Math.round(h * 0.44);            // высота парения в полёте
-
-    // Тонкие яркие молнии на почти чёрном фоне (правка в чате 2026-08-31:
-    // прежние «чанки» 6px в сером были толстые и не читались). Ломаная 2px,
-    // белая, резкая вспышка → быстрый спад. Три штуки, каждая видна ~0.14 с
-    // своего цикла.
-    const drawBolts = () => {
-      for (let b = 0; b < 3; b++) {
-        const seed = (b * 0x9E37 + 0x1B1B) >>> 0;
-        const cyc = 1.3 + (seed % 5) * 0.3;                 // период появления, с
-        const ph = ((t / cyc) + (seed % 97) / 97) % 1;
-        if (ph > 0.14) continue;
-        ctx.globalAlpha = ph < 0.04 ? 1 : ph < 0.09 ? 0.5 : 0.16;
-        ctx.fillStyle = '#FFFFFF';
-        let bx = 40 + (seed % Math.max(1, w - 80));
-        let by = h + 20;
-        for (let s = 0; s < 12 && by > -30; s++) {
-          const seg = 40 + ((seed >> (s + 1)) & 7) * 9;    // вертикальный отрезок
-          const jog = (((seed >> (s * 2)) & 3) - 1.5) * 20; // излом вбок
-          ctx.fillRect(Math.round(bx), Math.round(by - seg), 2, Math.round(seg) + 2);
-          ctx.fillRect(Math.round(Math.min(bx, bx + jog)), Math.round(by - seg),
-            Math.round(Math.abs(jog)) + 2, 2);
-          bx += jog;
-          by -= seg;
-        }
-        ctx.globalAlpha = 1;
-      }
-    };
 
     // Обломки и пылинки, летящие навстречу вверх — крупные квадраты по
     // сетке. Единственная фактура движения, раз серых слоёв больше нет.
@@ -328,8 +300,6 @@ export function createLeapScreen({ input, images, goto }) {
       const streakGap = 190;
       const so = ((fallScroll * 0.3) % streakGap + streakGap) % streakGap;
       for (let y = h - so; y > -4; y -= streakGap) ctx.fillRect(0, Math.round(y), w, 2);
-
-      drawBolts();
 
       // Плита, с которой шагнул — уходит вверх и растворяется.
       const enterRaw = clamp01(stateT / 0.45);
@@ -425,7 +395,6 @@ export function createLeapScreen({ input, images, goto }) {
       respawnFlash = 0;
       ghostReveal = 1;
       ghostCrumbled = false;
-      accentEdge = 0;
       lean = 0;
       fallScroll = 0;
       fallSpeed = 0;
@@ -712,8 +681,8 @@ export function createLeapScreen({ input, images, goto }) {
         dog.y += (player.y - dog.y) * Math.min(1, dt * 8);
       }
 
-      // Финальный край (задача 5): осыпание призрачной дороги + акцентная
-      // кромка. Оба — от расстояния до правого края последней плиты.
+      // Финальный край (задача 5): осыпание призрачной дороги — от
+      // расстояния до правого края последней плиты.
       const onLast = idx === platforms.length - 1;
       const toFinalEdge = onLast ? (last.x + last.w - player.x) : Infinity;
 
@@ -736,12 +705,6 @@ export function createLeapScreen({ input, images, goto }) {
         }
       }
 
-      // Кромка последней плиты (последние 16 арт-px, верхняя линия)
-      // разгорается #EBA331 за 0.6 с, когда подходишь ближе 60px, и гаснет
-      // если отошёл. Больше ничего оранжевым в мини-игре не красим.
-      const wantAccent = onLast && toFinalEdge < 60
-        && (state === 'walk' || state === 'wait_leap' || state === 'charge');
-      accentEdge = clamp01(accentEdge + (wantAccent ? dt : -dt) / 0.6);
     },
 
     draw(ctx, w, h) {
@@ -780,22 +743,8 @@ export function createLeapScreen({ input, images, goto }) {
       // Наклон Шута идёт РЕЗЧЕ К КОНЦУ, чем растёт кольцо (правка в чате
       // 2026-08-29: «не в унисон» — кольцо метёт 360°, наклон всего 32°,
       // кольцо убегало). lean² — Шут сперва «сопротивляется», к моменту
-      // замыкания кольца валится. Акцентная кромка укорачивается по этой
-      // же кривой, чтобы быть в паре с видимым наклоном.
+      // замыкания кольца валится.
       const leanV = lean * lean;
-
-      // Кромка последней плиты загорается акцентом (задача 5): верхние
-      // 2 арт-px последних 16 арт-px плиты. По мере наклона (задача 6)
-      // укорачивается от края внутрь — к точке невозврата гаснет совсем.
-      const accentW = Math.round(32 * (1 - leanV));
-      if (accentEdge > 0 && accentW > 0) {
-        const ex = Math.round(last.x - camX) + last.w;
-        const ey = Math.round(last.y - camY);
-        ctx.globalAlpha = accentEdge;
-        ctx.fillStyle = '#EBA331';
-        ctx.fillRect(ex - 32, ey, accentW, 4);
-        ctx.globalAlpha = 1;
-      }
 
       // Обычное падение мимо всех плит (сошёл с края / не дотянул прыжок) —
       // низ кадра затягивает чернотой, пока не сработает respawnAtStart.
@@ -829,7 +778,8 @@ export function createLeapScreen({ input, images, goto }) {
       // соседней — берём по его x.
       const standPlat = platforms[idx] || null;
       const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
-      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV);
+      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV,
+        standPlat === platforms[platforms.length - 1]);
       // fall/arrive сюда не доходят (ранний return выше); в остальных
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
@@ -908,7 +858,7 @@ export function createLeapScreen({ input, images, goto }) {
 // только пошёл вниз. Финальный leap через пропасть рисует не эта функция,
 // а drawFallSequence (три такта, задача 7) — сюда доходит только стоп-кадр
 // 'brace', и он идёт по общей ветке idle, повёрнутой на leanV.
-function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
+function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0, finalEdge = false) {
   let pose;
   let img;
   if (state === 'air') {
@@ -935,16 +885,21 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0) {
   // совсем, чем ближе — тем плавнее подъезжает, у самого края спрайт
   // просто не залезает правым краем дальше физической границы плиты.
   // В воздухе ('air') не клэмпим — там за пределами плиты находиться и
-  // есть смысл состояния. На земле — держим спрайт целиком
-  // над плитой, ни левым, ни правым краем не свисает (правка 2026-08-28).
+  // есть смысл состояния. На земле — держим спрайт целиком над плитой,
+  // ни левым, ни правым краем не свисает (правка 2026-08-28). ИСКЛЮЧЕНИЕ:
+  // последняя плита (finalEdge) — правый клэмп снят, Шут подходит носком
+  // к самому обрыву (правка в чате 2026-08-31, отмена оранжевой кромки —
+  // см. decisions-log).
   const isGrounded = state === 'walk'
     || state === 'wait_leap' || state === 'charge';
   let x = Math.round(p.x - camX - w / 2);
   if (isGrounded && standPlat) {
     const minLeft = Math.round(standPlat.x - camX);
-    const maxRight = Math.round(standPlat.x + standPlat.w - camX);
-    if (x + w > maxRight) x = maxRight - w;
     if (x < minLeft) x = minLeft;
+    if (!finalEdge) {
+      const maxRight = Math.round(standPlat.x + standPlat.w - camX);
+      if (x + w > maxRight) x = maxRight - w;
+    }
   }
   const y = Math.round(p.y - camY - h);
 
