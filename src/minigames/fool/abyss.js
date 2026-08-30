@@ -17,10 +17,11 @@ const PALETTE = ['#111111', '#161616', '#1C1C1C', '#212121', '#252525', '#2A2A2A
 // обычного пикселя, в духе проявления оракула (там cellSize 4 экранных).
 const CELL = 8;
 
-// Доля высоты экрана, с которой начинается градиент. Хорошо ниже дороги
-// (камера держит текущую плиту на ~0.45h) — между ними заметный зазор
-// чистого воздуха.
-const TOP_FRAC = 0.62;
+// Доля высоты экрана, с которой начинается градиент. Держим НИЗКО —
+// камера ведёт текущую плиту на ~0.45h, а между дорогой и пропастью
+// должен быть широкий зазор чистого воздуха (правка в чате 2026-08-31:
+// пропасть была слишком близко к дороге).
+const TOP_FRAC = 0.80;
 
 // Матрица Bayer 4×4, порог 0..15 → 0..1 после /16.
 const BAYER = [
@@ -34,27 +35,20 @@ const BREATHE_AMP = 24;   // «дыхание» фазы градиента, э�
 const BREATHE_PERIOD = 7; // секунд
 
 /**
- * @param t     общее время сцены, сек — для «дыхания»
- * @param lure  0..1 — «манит вниз»: после обрушения плиты пропасть чуть
- *              светлеет и дышит чаще (правка в чате 2026-08-30).
+ * @param t  общее время сцены, сек — для «дыхания»
  */
-export function drawAbyss(ctx, w, h, t, lure = 0) {
-  const L = lure < 0 ? 0 : lure > 1 ? 1 : lure;
-  const topFrac = TOP_FRAC - L * 0.10;        // выше начало → пропасть больше, тона светлее
-  const period = BREATHE_PERIOD / (1 + L * 1.5); // дышит чаще
-  const amp = BREATHE_AMP * (1 + L * 0.7);       // и заметнее
-
-  const top = Math.round(h * topFrac / CELL) * CELL;
+export function drawAbyss(ctx, w, h, t) {
+  const top = Math.round(h * TOP_FRAC / CELL) * CELL;
   const span = h - top;
   if (span <= 0) return;
 
   // «Дыхание»: фаза градиента медленно ползёт вверх-вниз. Округляем до
   // целой ячейки, иначе край дрожит.
-  const breathe = Math.round(Math.sin((t / period) * Math.PI * 2) * amp / CELL) * CELL;
+  const breathe = Math.round(Math.sin((t / BREATHE_PERIOD) * Math.PI * 2) * BREATHE_AMP / CELL) * CELL;
   const last = PALETTE.length - 1;
 
   for (let cy = top, row = 0; cy < h; cy += CELL, row++) {
-    let p = (cy - top + breathe + CELL / 2) / span + L * 0.14; // сдвиг к светлым тонам
+    let p = (cy - top + breathe + CELL / 2) / span;
     p = p < 0 ? 0 : p > 1 ? 1 : p;
 
     const idx = p * last;
