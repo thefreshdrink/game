@@ -869,9 +869,11 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
-      // Подсказки (BUILD-SPEC-04 задача 3): каждая — две строки-фразы, чуть
-      // ВЫШЕ головы, с миганием как на других экранах. Стрелка свайпа — справа
-      // от нижней строки, на её уровне, с заметным зазором.
+      // Подсказки (BUILD-SPEC-04 задача 3 + правки в чате 2026-08-31): каждая —
+      // две строки-фразы, чуть ВЫШЕ головы, с миганием как на других экранах.
+      // WALK — сразу на старте; SWIPE — сразу после первого шага и держится по
+      // обычным плитам; HOLD TO JUMP — на последнем краю. Стрелка свайпа —
+      // справа от нижней строки, на её уровне, с заметным зазором.
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
       const headTop = Math.round(player.y - camY - PLAYER_H);
@@ -901,21 +903,21 @@ export function createLeapScreen({ input, images, goto }) {
 
       if (state === 'charge') {
         if (lean > 0.02 && lean < 1) drawHoldRing(ctx, figX + 30, headTop - 30, lean, 1, 8);
-      } else if (state === 'wait_leap' && idleT > 6) {
-        const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
-        drawHoldRing(ctx, figX + 30, headTop - 30, sweep, clamp01((idleT - 6) / 0.8), 6);
+      } else if (state === 'wait_leap') {
+        // Последний край: подсказка удержания — сразу, как встал у кромки
+        // (правка в чате 2026-08-31). stateT не сбрасывается вводом.
+        hintStack(['HOLD', 'TO JUMP'], stateT / 0.3);
       } else if (state === 'walk' && !movedEver) {
-        hintStack(['TAP OR HOLD', 'TO WALK'], (t - 0.3) / 0.5);
-      } else if (state === 'walk' && !walking && walkImpulse <= 0 && idleT > 0.5) {
-        const p = platforms[idx];
-        const nearGap = p !== last && (p.x + p.w - player.x) < 90;
-        if (nearGap) {
-          const a = clamp01((idleT - 0.5) / 0.4);
-          const box = hintStack(['SWIPE UP', 'TO JUMP'], a);
-          // Центр знака — на базовой линии нижней строки, не по середине стека.
-          const ay = box.bottom;
-          drawSwipeTick(ctx, Math.round(figX + box.widest / 2 + 28), Math.round(ay), a, t);
-        }
+        // Первая подсказка — практически сразу, без задержки в 0.3 с.
+        hintStack(['TAP OR HOLD', 'TO WALK'], t / 0.2);
+      } else if (state === 'walk' && movedEver && platforms[idx] !== last) {
+        // Знак свайпа — сразу после первого действия игрока и держится всю
+        // дорогу по обычным плитам (правка в чате 2026-08-31): раньше ждал
+        // паузы 0.5 с у самой щели.
+        const box = hintStack(['SWIPE UP', 'TO JUMP'], 1);
+        // Центр знака — на базовой линии нижней строки, не по середине стека.
+        const ay = box.bottom;
+        drawSwipeTick(ctx, Math.round(figX + box.widest / 2 + 28), Math.round(ay), 1, t);
       }
 
       // Вспышка чёрным после падения — короткий «моргнул и снова на плите».
