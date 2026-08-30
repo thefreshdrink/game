@@ -20,7 +20,7 @@ import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, PLATE_H,
-  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
+  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
 
@@ -351,26 +351,25 @@ export function createLeapScreen({ input, images, goto }) {
       return;
     }
 
-    // arrive — прибытие ВНИЗУ экрана (правка в чате 2026-08-30): дорога
-    // проступает у нижней кромки, сразу с продолжением вправо; верх кадра
-    // остаётся чистым воздухом — туда потом лягут слова предсказания
-    // (prediction.js держит ту же дорогу, стыка между экранами не видно).
+    // arrive — прибытие ВНИЗУ экрана (правка в чате 2026-08-30): без тумана,
+    // Шут с псом стоят на дороге у нижней кромки, а НАД ними проявляется
+    // следующая плита — путь идёт дальше и вверх. Верх кадра чистый: туда
+    // лягут слова предсказания (prediction.js держит ту же композицию).
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
     const p = clamp01(stateT / ARRIVE_DUR);
-    drawAbyss(ctx, w, h, t); // дизер пустоты у нижней кромки — «уступ», не пол
 
     const gy = Math.round(h * ARRIVE_GROUND_FRAC);
     const gw = groundStrip.width;                    // ARRIVE_MAIN_W (256)
-    const gx = Math.round(w / 2 - gw / 2 - 28);      // чуть левее центра — место продолжению
+    const gx = Math.round(w / 2 - gw / 2 - 28);      // чуть левее центра
     const fcx = gx + Math.round(gw * 0.44);          // где стоит Шут
 
     // Основная плита — пиксельным проявлением оракула.
     drawPixelReveal(ctx, groundStrip, gx, gy, gw, PLATE_H, p, 4, 0.42, 0.4);
-    // Продолжение дороги вправо — проступает чуть позже: «путь идёт дальше».
-    const sideP = clamp01((p - 0.22) / 0.62);
-    if (sideP > 0) {
-      drawPixelReveal(ctx, ghostStrip, gx + gw, gy, ghostStrip.width, PLATE_H, sideP, 4, 0, 0.4);
+    // Следующая плита — НАД Шутом, ступенькой вправо-вверх, проступает позже.
+    const upP = clamp01((p - 0.3) / 0.6);
+    if (upP > 0) {
+      drawPixelReveal(ctx, ghostStrip, gx + gw - 72, gy - ARRIVE_STEP_UP, ghostStrip.width, PLATE_H, upP, 4, 0.2, 1);
     }
 
     if (p > 0.35) {
@@ -758,12 +757,17 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.globalAlpha = 1;
       }
 
-      // Обычное падение с плиты (сошёл с края / не дотянул прыжок) — низ
-      // кадра затягивает чернотой, пока не сработает respawnAtStart. Это
-      // НЕ финальный leap (у того свои три такта, см. drawFallSequence).
+      // Обычное падение мимо всех плит (сошёл с края / не дотянул прыжок) —
+      // низ кадра затягивает чернотой, пока не сработает respawnAtStart.
+      // Порог высокий: только НАСТОЯЩИЙ провал (уже больше половины пути до
+      // респавна и летим ВНИЗ), иначе чернота мигала на дуге обычного
+      // прыжка и на ступенях вниз (правка в чате 2026-08-30: «чёрный экран
+      // обрывистый внизу во время прыжков»).
       const fellBelow = deepestY - (platforms[idx] ? platforms[idx].y : 0);
-      if (state === 'air' && fellBelow > 40) {
-        const voidH = Math.round(h * (0.15 + clamp01(fellBelow / RESPAWN_DROP) * 0.55));
+      const voidStart = RESPAWN_DROP * 0.6;
+      if (state === 'air' && player.vy > 0 && fellBelow > voidStart) {
+        const k = clamp01((fellBelow - voidStart) / (RESPAWN_DROP - voidStart));
+        const voidH = Math.round(h * (0.08 + k * 0.5));
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, h - voidH, w, voidH);
       }

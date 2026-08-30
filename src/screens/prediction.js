@@ -19,14 +19,20 @@ import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import {
-  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
+  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP,
 } from '../minigames/fool/platforms.js';
-import { drawAbyss } from '../minigames/fool/abyss.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
 const PARA_PAUSE = 0.6;      // печать замирает на границе абзацев (задача 10)
 const PARA_GAP_LINES = 1;    // пустая строка между абзацами
+// Размеры спрайтов Шута и пса — как в leap.js (не экспортируются оттуда;
+// нужны для статичной композиции прибытия под текстом).
+const PLAYER_W = 88;
+const PLAYER_H = 96;
+const DOG_W = 36;
+const DOG_H = 28;
+const IDLE_FPS = 6;
 
 export function createPredictionScreen({ input, images, goto }) {
   let offTap = null;
@@ -99,21 +105,24 @@ export function createPredictionScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      // Та же дорога, что в такте 3 падения (leap.js) — у нижней кромки,
-      // с продолжением вправо, дизер пустоты под ней. Статична: Шут своё
-      // «прибытие» уже отыграл, здесь дорога просто держит сцену под
-      // словами (правка в чате 2026-08-30). Рисуем ДО текста — слова лягут
-      // поверх воздуха верхней части.
+      // Та же композиция, что в такте 3 падения (leap.js): Шут с псом на
+      // дороге у нижней кромки, над ними — следующая плита; без тумана
+      // (правка в чате 2026-08-30). Статична — «прибытие» уже отыграно.
+      // Рисуем ДО текста: слова лягут поверх чистого воздуха верхней части.
+      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       if (groundMain) {
-        drawAbyss(ctx, w, h, t);
         const gy = Math.round(h * ARRIVE_GROUND_FRAC);
         const gw = groundMain.width;
         const gx = Math.round(w / 2 - gw / 2 - 28);
+        const fcx = gx + Math.round(gw * 0.44);
         ctx.drawImage(groundMain, gx, gy);
-        ctx.drawImage(groundSide, gx + gw, gy);
+        ctx.drawImage(groundSide, gx + gw - 72, gy - ARRIVE_STEP_UP); // следующая плита над Шутом
+        const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
+        ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
+        const fr = images.foolIdleFrames;
+        ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], fcx - PLAYER_W / 2, gy - PLAYER_H, PLAYER_W, PLAYER_H);
       }
 
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
       const card = CARDS[session.cardId] ?? CARDS.fool;
@@ -121,12 +130,10 @@ export function createPredictionScreen({ input, images, goto }) {
       const titleLH = setFont(ctx, 'title', scale);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
-      // Экран 6 — не часть связки «The deck offers itself…» с экранов
-      // 2–5, а отдельный, самостоятельный момент (само предсказание) —
-      // держит собственный, более низкий уровень заголовка (правка в
-      // чате: «сделай как было по расположению текста»), а не общий
-      // уровень 70 экранов 1–5.
-      const titleY = Math.round(230 * scale);
+      // Заголовок и текст — в ВЕРХНЕЙ части кадра, над дорогой и следующей
+      // плитой (правка в чате 2026-08-30: «текст появляется выше, где
+      // чёрный фон»). Уровень 90 — как у экранов 1–5, не прежний 230.
+      const titleY = Math.round(90 * scale);
       ctx.fillText(card.name, marginX, titleY);
 
       const bodyLH = setFont(ctx, 'body', scale);
