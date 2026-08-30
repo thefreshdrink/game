@@ -15,6 +15,7 @@
 // программный наклон и позиционирование по существующим позам (idle/fall,
 // walk/sit/look_down/jump у пса).
 
+import { setFont } from '../../core/text.js';
 import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
@@ -37,6 +38,11 @@ const IDLE_FPS = 6; // темп смены кадров дыхания (4 кад
 const DOG_W = 36;
 const DOG_H = 28;
 const DOG_LAG = 46; // насколько пёс отстаёт по x в обычной ходьбе
+
+// Управление ходьбой — на выбор (правка в чате 2026-08-30): УДЕРЖАНИЕ
+// пальца ведёт непрерывно, а короткий ТАП делает один «шаг» — авто-ходьба
+// на TAP_STEP секунд. Оба пишут movedEver.
+const TAP_STEP = 0.34;
 
 // Прыжок пса за игроком — процедурная дуга по Y, не смена спрайта саму
 // по себе (правка в чате: «не похоже, что он прыгает за ним» — раньше
@@ -100,7 +106,8 @@ export function createLeapScreen({ input, images, goto }) {
   let deepestY = 0;
   let camX = 0, camY = 0;
   let walking = false;  // палец удерживается — Шут идёт вперёд (ручное управление)
-  let movedEver = false; // хоть раз пошёл — знак «удержи, чтобы идти» больше не нужен
+  let walkImpulse = 0;  // остаток авто-ходьбы после тапа, сек (TAP_STEP)
+  let movedEver = false; // хоть раз пошёл — стартовая подсказка больше не нужна
   let respawnFlash = 0; // короткая вспышка чёрным после падения, сек
   // Жестовые знаки (задача 8): появляются после паузы бездействия, гаснут
   // навсегда после первого удавшегося жеста своего типа.
@@ -177,6 +184,7 @@ export function createLeapScreen({ input, images, goto }) {
     state = 'walk';
     stateT = 0;
     walking = false; // приземлился — не уносим сразу за следующий край
+    walkImpulse = 0;
     spawnDust(player.x, player.y, 5);
   }
 
@@ -196,6 +204,7 @@ export function createLeapScreen({ input, images, goto }) {
     state = 'walk';
     stateT = 0;
     walking = false;
+    walkImpulse = 0;
     idleT = 0;
     respawnFlash = 0.22;
     deepestY = player.y; // иначе «пустота» снизу кадра остаётся раздутой после падения
@@ -220,6 +229,7 @@ export function createLeapScreen({ input, images, goto }) {
     state = 'air';
     stateT = 0;
     idleT = 0;
+    walkImpulse = 0;
     swipeGlyphDone = true; // удачный свайп — знак свайпа в этой карте больше не нужен
     spawnDust(player.x, player.y, 4);
     scheduleDogHop();
@@ -398,6 +408,7 @@ export function createLeapScreen({ input, images, goto }) {
       state = 'walk';
       deepestY = 0;
       walking = false;
+      walkImpulse = 0;
       movedEver = false;
       idleT = 0;
       swipeGlyphDone = false;
@@ -443,7 +454,7 @@ export function createLeapScreen({ input, images, goto }) {
       camY = 0;
 
       offHandlers = [
-        // Держишь палец — Шут идёт вперёд. press* — сырой сигнал «палец
+        // Держишь палец — Шут идёт непрерывно. press* — сырой сигнал «палец
         // сейчас здесь», без задержки в 250мс (в отличие от hold*), нужен
         // отзывчивый старт ходьбы.
         input.on('pressstart', (e) => {
@@ -453,6 +464,14 @@ export function createLeapScreen({ input, images, goto }) {
           holdPrevMs = 0;
         }),
         input.on('pressend', () => { walking = false; idleT = 0; }),
+        // Короткий тап — один «шаг» (авто-ходьба на TAP_STEP). Выбор
+        // игрока: тап ИЛИ удержание (правка в чате 2026-08-30).
+        input.on('tap', () => {
+          if (state !== 'walk') return;
+          walkImpulse = TAP_STEP;
+          movedEver = true;
+          idleT = 0;
+        }),
         input.on('swipe', (e) => {
           // Быстрый свайп (палец на плите < 250мс) — прыжок. Слабый свайп
           // = слабый прыжок, щель можно не дотянуть (правка 2026-08-28).
@@ -520,8 +539,10 @@ export function createLeapScreen({ input, images, goto }) {
       const last = platforms[platforms.length - 1];
 
       if (state === 'walk') {
-        // Ручное управление: идёт вперёд только пока держат палец.
-        if (walking) { player.x += PHYS.walk * dt; movedEver = true; }
+        // Ручное управление: идёт, пока держат палец ИЛИ пока не истёк
+        // импульс от тапа.
+        if (walking || walkImpulse > 0) { player.x += PHYS.walk * dt; movedEver = true; }
+        if (walkImpulse > 0) walkImpulse = Math.max(0, walkImpulse - dt);
         player.sqx += (1 - player.sqx) * Math.min(1, dt * 10);
         player.sqy += (1 - player.sqy) * Math.min(1, dt * 10);
         const p = platforms[idx];
@@ -531,13 +552,15 @@ export function createLeapScreen({ input, images, goto }) {
           // заменяет удержание (BUILD-SPEC). Просто упираемся в кромку.
           if (player.x >= edgeX - 2) {
             player.x = edgeX - 2;
+            walkImpulse = 0;
             if (state === 'walk') { state = 'wait_leap'; stateT = 0; }
           }
         } else if (player.x > edgeX) {
           // Сошёл с края обычной плиты — падаешь. Если впереди есть куда
           // приземлиться в пределах дуги — долетишь; нет — respawnAtStart.
-          player.vx = walking ? PHYS.walk : 0;
+          player.vx = (walking || walkImpulse > 0) ? PHYS.walk : 0;
           player.vy = 0;
+          walkImpulse = 0;
           state = 'air';
           stateT = 0;
           scheduleDogHop();
@@ -794,36 +817,53 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
-      // Жестовые знаки (задача 8) — кодом из графического языка проекта,
-      // РЯДОМ С ФИГУРОЙ, не в HUD. Ни одного слова в кадре.
-      // Правка в чате 2026-08-30: «вообще ничего не вижу» — таймер 1.2 с
-      // почти никогда не набирался в реальной игре (любой ввод его
-      // сбрасывает). Стартовую подсказку показываем СРАЗУ (единственное
-      // «как начать»), знак свайпа — после короткой заминки у щели.
-      const glyphX = Math.round(player.x - camX + 30);
-      const glyphY = Math.round(player.y - camY - PLAYER_H - 30);
-      // Знак-подсказка — та же дуга, что в charge, но сама прокручивается
-      // 0→1→0: показывает жест, а не статичный кружок.
-      const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
+      // Подсказки (правка в чате 2026-08-30: только знаки — неочевидно при
+      // ходьбе; вернули короткий текст + знак свайпа анимированный).
+      //  - старт, до первого шага: «TAP OR HOLD TO WALK»
+      //  - заминка у щели, до первого прыжка: «SWIPE UP» + стрелка с
+      //    бегущим вверх акцентным пунктиром
+      //  - финальный край: кольцо (там и так понятно — 6 с)
+      //  - charge: кольцо-индикатор прогресса до срыва
+      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const marginX = Math.round(53 * scale);
+      const headY = Math.round(player.y - camY - PLAYER_H + 4);
+
+      const hintText = (label, alpha) => {
+        setFont(ctx, 'menuOption', scale);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#EBA331';
+        const tw = ctx.measureText(label).width;
+        let tx = Math.round(player.x - camX - tw / 2);
+        tx = Math.max(marginX, Math.min(tx, w - marginX - tw));
+        ctx.globalAlpha = clamp01(alpha);
+        ctx.fillText(label, tx, headY);
+        ctx.globalAlpha = 1;
+      };
+
       if (state === 'charge') {
-        // Уже держишь — дуга показывает, сколько до срыва (индикатор, не
-        // подсказка). Кольцо поменьше (правка в чате: «большеват»).
-        if (lean > 0.02 && lean < 1) drawHoldRing(ctx, glyphX, glyphY, lean, 1, 8);
-      } else if (state === 'walk' && !walking && !movedEver) {
-        // «Удержи, чтобы идти» — от старта карты до первого шага. Лёгкий
-        // проявляющийся заход.
-        drawHoldRing(ctx, glyphX, glyphY, sweep, clamp01((t - 0.3) / 0.5), 6);
-      } else if (state === 'walk' && !walking && idleT > 0.6 && !swipeGlyphDone) {
-        // Замялся у щели → знак свайпа. Один раз за карту (swipeGlyphDone).
+        if (lean > 0.02 && lean < 1) {
+          drawHoldRing(ctx,
+            Math.round(player.x - camX + 30), Math.round(player.y - camY - PLAYER_H - 30),
+            lean, 1, 8);
+        }
+      } else if (state === 'wait_leap' && idleT > 6) {
+        const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
+        drawHoldRing(ctx,
+          Math.round(player.x - camX + 30), Math.round(player.y - camY - PLAYER_H - 30),
+          sweep, clamp01((idleT - 6) / 0.8), 6);
+      } else if (state === 'walk' && !movedEver) {
+        hintText('TAP OR HOLD TO WALK', (t - 0.3) / 0.5);
+      } else if (state === 'walk' && !walking && walkImpulse <= 0 && !swipeGlyphDone && idleT > 0.5) {
         const p = platforms[idx];
         const nearGap = p !== last && (p.x + p.w - player.x) < 90;
-        if (nearGap) drawSwipeTick(ctx, glyphX, glyphY, clamp01((idleT - 0.6) / 0.4));
-      } else if (state === 'wait_leap' && idleT > 6) {
-        // Финальный край: заминка это содержание — знак только через 6 с.
-        drawHoldRing(ctx, glyphX, glyphY, sweep, clamp01((idleT - 6) / 0.8), 6);
+        if (nearGap) {
+          const a = clamp01((idleT - 0.5) / 0.4);
+          hintText('SWIPE UP', a);
+          drawSwipeTick(ctx,
+            Math.round(player.x - camX + 34), Math.round(player.y - camY - PLAYER_H - 12),
+            a, t);
+        }
       }
-      // Полоска HOLD и текст у финального края убраны совсем (задача 6):
-      // обратная связь — наклон Шута и укорачивающаяся акцентная кромка.
 
       // Вспышка чёрным после падения — короткий «моргнул и снова на плите».
       // Не полноценная сцена падения (та — задача 4 BUILD-SPEC-03).
