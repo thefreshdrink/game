@@ -122,7 +122,8 @@ export function buildRoadStrip(images, sw) {
 export const ARRIVE_GROUND_FRAC = 0.82; // верх основной дороги (правка 2026-08-30: ниже)
 export const ARRIVE_MAIN_W = 256;  // плита, на которой стоит Шут (кратно 32)
 export const ARRIVE_SIDE_W = 160;  // следующая плита над Шутом (кратно 32)
-export const ARRIVE_STEP_UP = 192; // насколько следующая плита выше (кратно 32)
+export const ARRIVE_STEP_UP = 128; // насколько следующая плита выше (кратно 32; правка 2026-08-30: ниже)
+export const ARRIVE_STEP_DX = 16;  // отступ следующей плиты от правого края основной (правее)
 
 // Дальний пунктирный слой (`drawFarRoad`) удалён — BUILD-SPEC-03 задача 4:
 // глубину под дорогой теперь даёт дышащий дизер-градиент пропасти

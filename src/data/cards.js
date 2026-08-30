@@ -25,27 +25,35 @@ export const CARDS = {
     // «The deck offers itself…». Текст банка, не выдумывать на ходу.
     arrival: 'The Fool answers you.',
 
+    // Разбивка на абзацы (\n\n) — правка в чате 2026-08-30. Слова не
+    // тронуты, только вставлен разрыв на смысловом переходе «наблюдение →
+    // совет». Отход от «строфы приедут отдельно» (задача 10) — по прямой
+    // просьбе пользователя.
     reading: {
       work:
         'You are standing at the edge of your working life with empty pockets and ' +
         'the whole morning ahead of you. What looks like a fall is only the shape ' +
-        'of a beginning seen from above. This week, say yes to the one thing you ' +
-        'are not qualified for — the ground arrives under the foot that moves, not ' +
-        'the foot that waits. Go lightly. Only do not confuse the leap with running away.',
+        'of a beginning seen from above.' +
+        '\n\n' +
+        'This week, say yes to the one thing you are not qualified for — the ground ' +
+        'arrives under the foot that moves, not the foot that waits. Go lightly. ' +
+        'Only do not confuse the leap with running away.',
 
       love:
         'Something in you wants to walk toward a person without a map. That is not ' +
-        'foolish. It is the only way anyone has ever arrived. Let yourself be seen ' +
-        'before you are certain — say the plain sentence you have been rehearsing, ' +
-        'and say it first. An open road is not the same as an open door. Keep one ' +
-        'hand for yourself.',
+        'foolish. It is the only way anyone has ever arrived.' +
+        '\n\n' +
+        'Let yourself be seen before you are certain — say the plain sentence you ' +
+        'have been rehearsing, and say it first. An open road is not the same as an ' +
+        'open door. Keep one hand for yourself.',
 
       mental:
         'Your mind has been standing at the same edge for a long time now, looking ' +
-        'down and calling it thinking. It is not thinking. It is rehearsal. Choose ' +
-        'one small thing and do it before you feel ready — the body settles what the ' +
-        'head cannot. Be gentle about the timing. Beginning again is not the same as ' +
-        'having failed.',
+        'down and calling it thinking. It is not thinking. It is rehearsal.' +
+        '\n\n' +
+        'Choose one small thing and do it before you feel ready — the body settles ' +
+        'what the head cannot. Be gentle about the timing. Beginning again is not ' +
+        'the same as having failed.',
     },
   },
 

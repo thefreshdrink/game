@@ -59,17 +59,21 @@ export function drawHoldRing(ctx, cx, cy, progress, alpha = 1, R = 13) {
   ctx.restore();
 }
 
-/** Знак свайпа вверх — стрелка с БЕГУЩИМ вверх акцентным пунктиром
- * (правка в чате 2026-08-30: «хочется анимировать, чтобы акцентный
- * пунктир шёл вверх»). Остриё статичное, хвост из дэшей (шаг 4 арт-px)
- * ползёт к острию по `phase` (секунды). Всё в акценте #EBA331 — «сюда».
- * Центр острия — (cx, cy) в экранных px. */
+// Пунктир свайпа меняет цвет по мере подъёма: входит белым внизу, у
+// острия становится акцентным (правка в чате 2026-08-30: «пусть меняет
+// цвет анимации с белого на акцентный»).
+const SWIPE_TAIL = ['#FFFFFF', '#FFFFFF', '#B8B8B8', '#EBA331', '#EBA331'];
+
+/** Знак свайпа вверх — стрелка с БЕГУЩИМ вверх пунктиром, который
+ * перекрашивается из белого в акцент по ходу подъёма. Остриё пульсирует
+ * белый↔акцент. `phase` — секунды. Центр острия — (cx, cy) в экранных px. */
 export function drawSwipeTick(ctx, cx, cy, alpha = 1, phase = 0) {
   const acx = Math.round(cx / 2);
   const acy = Math.round(cy / 2);
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  // Остриё вверх — плотная скоба + короткий стержень, не двигается.
+  // Остриё вверх — плотная скоба + короткий стержень; пульс цвета.
+  const headC = Math.sin(phase * 4) > 0 ? FILL : '#FFFFFF';
   const head = [
     [0, -9], [1, -9],
     [-1, -8], [0, -8], [1, -8], [2, -8],
@@ -77,16 +81,16 @@ export function drawSwipeTick(ctx, cx, cy, alpha = 1, phase = 0) {
     [0, -6], [1, -6],
     [0, -5], [1, -5],
   ];
-  for (const [dx, dy] of head) cell(ctx, acx + dx, acy + dy, FILL);
-  // Хвост: дэши 2×2 с шагом 4 арт-px, сдвиг вверх по фазе (по модулю шага) —
-  // пунктир бесконечно «течёт» к острию. Обрезаем то, что зашло в остриё
-  // или ушло ниже низа хвоста.
+  for (const [dx, dy] of head) cell(ctx, acx + dx, acy + dy, headC);
+  // Хвост: дэши 2×2, шаг 4 арт-px, ползут вверх по фазе. Цвет дэша — по
+  // его позиции в потоке (снизу белый → к острию акцентный).
   const scroll = Math.round(((phase * 12) % 4 + 4) % 4);
-  for (let k = 0; k < 7; k++) {
+  const n = SWIPE_TAIL.length;
+  for (let k = 0; k < n; k++) {
     const y = acy + 12 - k * 4 - scroll;
     if (y > acy + 13 || y < acy - 4) continue;
-    cell(ctx, acx, y, FILL);
-    cell(ctx, acx + 1, y, FILL);
+    cell(ctx, acx, y, SWIPE_TAIL[k]);
+    cell(ctx, acx + 1, y, SWIPE_TAIL[k]);
   }
   ctx.restore();
 }

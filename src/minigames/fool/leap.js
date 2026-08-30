@@ -16,12 +16,13 @@
 // walk/sit/look_down/jump у пса).
 
 import { setFont } from '../../core/text.js';
+import { blinkAlpha } from '../../core/textReveal.js';
 import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, PLATE_H,
-  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP,
+  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP, ARRIVE_STEP_DX,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
 
@@ -117,6 +118,7 @@ export function createLeapScreen({ input, images, goto }) {
   // (0); кромка последней плиты разгорается акцентом (0 → 1).
   let ghostReveal = 1;
   let ghostCrumbled = false; // осколки уже сыпанули — один раз
+  let abyssLure = 0;         // 0→1 после обрушения плиты: пропасть светлее и дышит чаще
   let accentEdge = 0;
   let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
   // Падение — три такта (задача 7): 'brace' → 'fall' (мир едет вверх) → 'arrive'.
@@ -299,22 +301,29 @@ export function createLeapScreen({ input, images, goto }) {
         }
       }
 
-      // Передний план — длинные мягкие штрихи-следы, скользят вверх.
-      // Псевдослучайные, но стабильные колонки (seed от индекса). Реже и
-      // длиннее, чем при «обрыве» — читаются как след, а не как рябь.
-      const SL_N = 11;
-      ctx.globalAlpha = 0.7;
-      for (let i = 0; i < SL_N; i++) {
-        const seed = (i * 2654435761) >>> 0;
-        const colX = (seed % (w - 4));
-        const len = 44 + (seed >> 8) % 90;
-        const mult = 0.55 + ((seed >> 4) & 7) / 12; // 0.55..1.13
-        const period = h + len + 40;
-        const yy = h - (((fallScroll * mult) + (seed % period)) % period);
-        ctx.fillStyle = ((seed >> 3) & 3) === 0 ? '#808080' : '#4A4A4A';
-        ctx.fillRect(Math.round(colX), Math.round(yy), 2, len);
+      // Передний план — РЕДКИЕ чанки-пиксельные молнии (правка в чате
+      // 2026-08-30: тонкие линии «не в стиле», хочется покрупнее, и молнии,
+      // а не линии). Ломаный путь снизу вверх блочными сегментами 6 px,
+      // каждая молния видна ~0.12 с своего цикла.
+      for (let b = 0; b < 3; b++) {
+        const seed = (b * 0x9E37 + 0x1B1B) >>> 0;
+        const cyc = 1.0 + (seed % 5) * 0.22;          // период появления, с
+        const ph = ((t / cyc) + (seed % 97) / 97) % 1;
+        if (ph > 0.12) continue;
+        ctx.globalAlpha = (ph < 0.05 ? 0.9 : 0.45);   // резкий блик, потом гаснет
+        let bx = 24 + (seed % Math.max(1, w - 48));
+        let by = h + 24;
+        for (let s = 0; s < 10 && by > -40; s++) {
+          const seg = 44 + ((seed >> (s + 1)) & 7) * 10;   // вертикальный отрезок
+          const jog = (((seed >> (s * 2)) & 3) - 1.5) * 22; // горизонтальный сдвиг
+          ctx.fillStyle = (s & 1) ? '#808080' : '#4A4A4A';
+          ctx.fillRect(Math.round(bx), Math.round(by - seg), 6, Math.round(seg) + 6);       // вертикаль
+          ctx.fillRect(Math.round(Math.min(bx, bx + jog)), Math.round(by - seg), Math.round(Math.abs(jog)) + 6, 6); // колено
+          bx += jog;
+          by -= seg;
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
 
       // Пара въезжает в центр кадра из позиции срыва за первые ~0.45 с —
       // не телепорт (правка в чате 2026-08-30). enter 0→1 сглажен.
@@ -333,10 +342,13 @@ export function createLeapScreen({ input, images, goto }) {
         ctx.globalAlpha = 1;
       }
 
-      // Обломки и пылинки навстречу (в dust, летят вверх), экранные координаты.
+      // Обломки и пылинки навстречу (в dust, летят вверх) — крупными
+      // квадратами по сетке (правка в чате 2026-08-30: «увеличить
+      // пиксельность»). Размер уже задан крупнее при спавне.
       dust.forEach((d) => {
         ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
-        ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY), d.s, d.s);
+        const s = Math.max(4, d.s);
+        ctx.fillRect(Math.round((d.x - camX) / 4) * 4, Math.round((d.y - camY) / 4) * 4, s, s);
       });
 
       // Пара Шут+пёс: качание/боб/крен нарастают по enter (у кромки —
@@ -350,13 +362,35 @@ export function createLeapScreen({ input, images, goto }) {
       ctx.drawImage(images.foolDogFall, Math.round(-pw / 2), Math.round(-PLAYER_H / 2), pw, PLAYER_H);
       ctx.restore();
 
-      // Кадр гасится мягко и поздно: до 72% полёта — ничего, потом чернота
-      // снизу плавно закрывает кадр к самому концу. Дальше 'arrive' идёт
-      // от чёрного — стыка не видно.
-      const coverB = Math.round(h * clamp01((prog - 0.72) / 0.28) ** 1.5);
-      if (coverB > 0) {
+      // Кадр гасится снизу ДИЗЕР-ГРАДИЕНТОМ (как пропасть), а не резким
+      // чёрным (правка в чате 2026-08-30). Полоса растёт с 60% полёта:
+      // сверху почти воздух, книзу — чёрное, через тона пустоты; матрица
+      // Bayer решает стык. К самому концу добиваем сплошным чёрным, чтобы
+      // 'arrive' стартовал от чёрного.
+      const DARK = ['#111111', '#161616', '#1C1C1C', '#252525', '#000000'];
+      const coverP = clamp01((prog - 0.60) / 0.40);
+      if (coverP > 0) {
+        const bandH = Math.round(h * coverP * 1.2);
+        const bandTop = h - bandH;
+        const dl = DARK.length - 1;
+        for (let cy = Math.floor(bandTop / CELL) * CELL, row = 0; cy < h; cy += CELL, row++) {
+          const f = clamp01((cy - bandTop) / Math.max(1, bandH));
+          const gi = f * dl;
+          const lo = Math.floor(gi);
+          const hi = lo < dl ? lo + 1 : dl;
+          const fr = gi - lo;
+          const brow = FALL_BAYER[row & 3];
+          for (let cx = 0, col = 0; cx < w; cx += CELL, col++) {
+            ctx.fillStyle = brow[col & 3] / 16 < fr ? DARK[hi] : DARK[lo];
+            ctx.fillRect(cx, cy, CELL, Math.min(CELL, h - cy));
+          }
+        }
+      }
+      if (prog > 0.9) {
+        ctx.globalAlpha = clamp01((prog - 0.9) / 0.1);
         ctx.fillStyle = '#000000';
-        ctx.fillRect(0, h - coverB, w, coverB);
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = 1;
       }
       return;
     }
@@ -379,7 +413,7 @@ export function createLeapScreen({ input, images, goto }) {
     // Следующая плита — НАД Шутом, ступенькой вправо-вверх, проступает позже.
     const upP = clamp01((p - 0.3) / 0.6);
     if (upP > 0) {
-      drawPixelReveal(ctx, ghostStrip, gx + gw - 72, gy - ARRIVE_STEP_UP, ghostStrip.width, PLATE_H, upP, 4, 0.2, 1);
+      drawPixelReveal(ctx, ghostStrip, gx + gw - ARRIVE_STEP_DX, gy - ARRIVE_STEP_UP, ghostStrip.width, PLATE_H, upP, 4, 0.2, 1);
     }
 
     if (p > 0.35) {
@@ -415,6 +449,7 @@ export function createLeapScreen({ input, images, goto }) {
       respawnFlash = 0;
       ghostReveal = 1;
       ghostCrumbled = false;
+      abyssLure = 0;
       accentEdge = 0;
       lean = 0;
       fallScroll = 0;
@@ -614,15 +649,16 @@ export function createLeapScreen({ input, images, goto }) {
         // пылинки-мошки (долго живут, чуть парят) — от них полёт «дышит».
         debrisT -= dt;
         if (debrisT <= 0) {
-          debrisT = 0.05 + Math.random() * 0.09;
+          debrisT = 0.06 + Math.random() * 0.11;
           for (let i = 0, n = 1 + (Math.random() * 2 | 0); i < n; i++) {
-            const mote = Math.random() < 0.55;
+            const mote = Math.random() < 0.5;
             dust.push({
-              x: camX + Math.random() * (w || 430), y: camY + (h || 844) + 10,
+              x: camX + Math.random() * (w || 430), y: camY + (h || 844) + 12,
               vx: (Math.random() - 0.5) * (mote ? 16 : 34),
               vy: mote ? -(45 + Math.random() * 80) : -(fallSpeed * (0.55 + Math.random() * 0.7)),
               t: 0, life: mote ? (1.1 + Math.random() * 1.3) : (0.4 + Math.random() * 0.4),
-              s: mote ? 2 : (Math.random() < 0.6 ? 2 : 4),
+              // крупнее (правка 2026-08-30): мошки 4, обломки 4–8
+              s: mote ? 4 : (Math.random() < 0.5 ? 4 : 8),
               g: mote ? 12 : 220,
             });
           }
@@ -708,16 +744,20 @@ export function createLeapScreen({ input, images, goto }) {
         if (!ghostCrumbled) {
           ghostCrumbled = true;
           const gx = last.x + last.w;
-          for (let i = 0; i < 16; i++) {
+          for (let i = 0; i < 14; i++) {
             const f = Math.random();
             dust.push({
               x: gx + f * GHOST_W, y: last.y + Math.random() * PLATE_H,
               vx: (Math.random() - 0.5) * 24, vy: 20 + Math.random() * 70 + f * 40,
-              t: 0, life: 0.6 + Math.random() * 0.5, s: 4,
+              t: 0, life: 0.6 + Math.random() * 0.5, s: Math.random() < 0.5 ? 4 : 8,
             });
           }
         }
       }
+
+      // После обрушения плиты пропасть «манит вниз» — светлеет и дышит
+      // чаще (правка в чате 2026-08-30). Нарастает за ~1 с.
+      if (ghostCrumbled) abyssLure = Math.min(1, abyssLure + dt / 1.0);
 
       // Кромка последней плиты (последние 16 арт-px, верхняя линия)
       // разгорается #EBA331 за 0.6 с, когда подходишь ближе 60px, и гаснет
@@ -740,9 +780,9 @@ export function createLeapScreen({ input, images, goto }) {
 
       const last = platforms[platforms.length - 1];
       // Пропасть — едва заметный дизер-градиент у нижней кромки кадра, за
-      // плитами, виден всю дорогу (задача 4). Заменил и `drawFarRoad`, и
-      // старую растущую черноту.
-      drawAbyss(ctx, w, h, t);
+      // плитами, виден всю дорогу (задача 4). После обрушения плиты —
+      // светлеет и дышит чаще (abyssLure, правка 2026-08-30).
+      drawAbyss(ctx, w, h, t, abyssLure);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       // Призрачное продолжение дороги за краем — ТА ЖЕ плита (тайлсет), не
       // отдельный дизер (правка 2026-08-29). Впритык к последней плите;
@@ -817,51 +857,51 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
-      // Подсказки (правка в чате 2026-08-30: только знаки — неочевидно при
-      // ходьбе; вернули короткий текст + знак свайпа анимированный).
-      //  - старт, до первого шага: «TAP OR HOLD TO WALK»
-      //  - заминка у щели, до первого прыжка: «SWIPE UP» + стрелка с
-      //    бегущим вверх акцентным пунктиром
-      //  - финальный край: кольцо (там и так понятно — 6 с)
-      //  - charge: кольцо-индикатор прогресса до срыва
+      // Подсказки (правка в чате 2026-08-30): текст ВЫСОКИЙ И УЗКИЙ —
+      // слова в столбик, чуть ВЫШЕ головы, с миганием как на других
+      // экранах. Стрелка свайпа — вплотную справа от столбика.
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
-      const headY = Math.round(player.y - camY - PLAYER_H + 4);
+      const headTop = Math.round(player.y - camY - PLAYER_H);
+      const figX = Math.round(player.x - camX);
 
-      const hintText = (label, alpha) => {
+      // Рисует слова в столбик по центру фигуры (клэмп в поля), низ
+      // столбика на 18px выше головы. Возвращает геометрию для стрелки.
+      const hintStack = (words, fadeIn) => {
+        const lineH = Math.round(24 * scale);
         setFont(ctx, 'menuOption', scale);
-        ctx.textAlign = 'left';
+        ctx.textAlign = 'center';
         ctx.fillStyle = '#EBA331';
-        const tw = ctx.measureText(label).width;
-        let tx = Math.round(player.x - camX - tw / 2);
-        tx = Math.max(marginX, Math.min(tx, w - marginX - tw));
-        ctx.globalAlpha = clamp01(alpha);
-        ctx.fillText(label, tx, headY);
+        ctx.globalAlpha = clamp01(fadeIn) * blinkAlpha(t);
+        const bottom = headTop - Math.round(18 * scale);
+        let widest = 0;
+        words.forEach((word, i) => {
+          const wy = bottom - (words.length - 1 - i) * lineH;
+          const halfW = ctx.measureText(word).width / 2;
+          const cxw = Math.max(marginX + halfW, Math.min(figX, w - marginX - halfW));
+          ctx.fillText(word, cxw, wy);
+          widest = Math.max(widest, halfW * 2);
+        });
         ctx.globalAlpha = 1;
+        ctx.textAlign = 'left';
+        return { bottom, lineH, count: words.length, widest };
       };
 
       if (state === 'charge') {
-        if (lean > 0.02 && lean < 1) {
-          drawHoldRing(ctx,
-            Math.round(player.x - camX + 30), Math.round(player.y - camY - PLAYER_H - 30),
-            lean, 1, 8);
-        }
+        if (lean > 0.02 && lean < 1) drawHoldRing(ctx, figX + 30, headTop - 30, lean, 1, 8);
       } else if (state === 'wait_leap' && idleT > 6) {
         const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
-        drawHoldRing(ctx,
-          Math.round(player.x - camX + 30), Math.round(player.y - camY - PLAYER_H - 30),
-          sweep, clamp01((idleT - 6) / 0.8), 6);
+        drawHoldRing(ctx, figX + 30, headTop - 30, sweep, clamp01((idleT - 6) / 0.8), 6);
       } else if (state === 'walk' && !movedEver) {
-        hintText('TAP OR HOLD TO WALK', (t - 0.3) / 0.5);
+        hintStack(['TAP', 'OR', 'HOLD', 'TO', 'WALK'], (t - 0.3) / 0.5);
       } else if (state === 'walk' && !walking && walkImpulse <= 0 && !swipeGlyphDone && idleT > 0.5) {
         const p = platforms[idx];
         const nearGap = p !== last && (p.x + p.w - player.x) < 90;
         if (nearGap) {
           const a = clamp01((idleT - 0.5) / 0.4);
-          hintText('SWIPE UP', a);
-          drawSwipeTick(ctx,
-            Math.round(player.x - camX + 34), Math.round(player.y - camY - PLAYER_H - 12),
-            a, t);
+          const box = hintStack(['SWIPE', 'UP'], a);
+          const ay = box.bottom - (box.count - 1) * box.lineH / 2 + 4;
+          drawSwipeTick(ctx, Math.round(figX + box.widest / 2 + 14), Math.round(ay), a, t);
         }
       }
 

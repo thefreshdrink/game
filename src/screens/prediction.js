@@ -19,7 +19,8 @@ import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import {
-  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP,
+  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
+  ARRIVE_STEP_UP, ARRIVE_STEP_DX,
 } from '../minigames/fool/platforms.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
@@ -116,7 +117,7 @@ export function createPredictionScreen({ input, images, goto }) {
         const gx = Math.round(w / 2 - gw / 2 - 28);
         const fcx = gx + Math.round(gw * 0.44);
         ctx.drawImage(groundMain, gx, gy);
-        ctx.drawImage(groundSide, gx + gw - 72, gy - ARRIVE_STEP_UP); // следующая плита над Шутом
+        ctx.drawImage(groundSide, gx + gw - ARRIVE_STEP_DX, gy - ARRIVE_STEP_UP); // следующая плита над Шутом
         const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
         ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
         const fr = images.foolIdleFrames;
