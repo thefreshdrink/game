@@ -107,13 +107,15 @@ export function createLeapScreen({ input, images, goto }) {
   let deepestY = 0;
   let camX = 0, camY = 0;
   let walking = false;  // палец удерживается — Шут идёт вперёд (ручное управление)
+  let pointerDown = false; // сырое состояние пальца на экране, отдельно от walking (BUILD-SPEC-04 задача 2)
   let walkImpulse = 0;  // остаток авто-ходьбы после тапа, сек (TAP_STEP)
   let movedEver = false; // хоть раз пошёл — стартовая подсказка больше не нужна
   let respawnFlash = 0; // короткая вспышка чёрным после падения, сек
-  // Жестовые знаки (задача 8): появляются после паузы бездействия, гаснут
-  // навсегда после первого удавшегося жеста своего типа.
+  // Жестовые знаки (задача 8): появляются после паузы бездействия рядом с
+  // фигурой. Знак свайпа больше не снимается навсегда (BUILD-SPEC-04
+  // задача 3) — условие само себя ограничивает: он виден только когда
+  // игрок стоит у кромки дольше 0.5 с, при непрерывном удержании — не виден.
   let idleT = 0;            // сек без ввода в состоянии, ждущем жеста
-  let swipeGlyphDone = false; // хоть раз прыгнул свайпом — знак свайпа снят
   // Финальный край (задача 5): призрачная дорога проявлена (1) → осыпалась
   // (0); кромка последней плиты разгорается акцентом (0 → 1).
   let ghostReveal = 1;
@@ -185,7 +187,9 @@ export function createLeapScreen({ input, images, goto }) {
     idx = platforms.indexOf(p);
     state = 'walk';
     stateT = 0;
-    walking = false; // приземлился — не уносим сразу за следующий край
+    // Палец не отпускали — идём дальше сами (BUILD-SPEC-04 задача 2). Риск
+    // унестись за следующий край осознан: падение штатно (решение 2026-08-30).
+    walking = pointerDown;
     walkImpulse = 0;
     spawnDust(player.x, player.y, 5);
   }
@@ -205,7 +209,10 @@ export function createLeapScreen({ input, images, goto }) {
     player.sqy = 1;
     state = 'walk';
     stateT = 0;
-    walking = false;
+    // Палец на экране — идём сразу, без нового касания (BUILD-SPEC-04
+    // задача 2): респавн в начале плиты, до кромки далеко, среагировать
+    // успеешь; заодно чинится молчаливый ступор.
+    walking = pointerDown;
     walkImpulse = 0;
     idleT = 0;
     respawnFlash = 0.22;
@@ -232,7 +239,6 @@ export function createLeapScreen({ input, images, goto }) {
     stateT = 0;
     idleT = 0;
     walkImpulse = 0;
-    swipeGlyphDone = true; // удачный свайп — знак свайпа в этой карте больше не нужен
     spawnDust(player.x, player.y, 4);
     scheduleDogHop();
   }
@@ -442,10 +448,10 @@ export function createLeapScreen({ input, images, goto }) {
       state = 'walk';
       deepestY = 0;
       walking = false;
+      pointerDown = false;
       walkImpulse = 0;
       movedEver = false;
       idleT = 0;
-      swipeGlyphDone = false;
       respawnFlash = 0;
       ghostReveal = 1;
       ghostCrumbled = false;
@@ -493,12 +499,13 @@ export function createLeapScreen({ input, images, goto }) {
         // сейчас здесь», без задержки в 250мс (в отличие от hold*), нужен
         // отзывчивый старт ходьбы.
         input.on('pressstart', (e) => {
+          pointerDown = true;
           if (state === 'walk') walking = true;
           idleT = 0;
           holdPrevY = e.y;
           holdPrevMs = 0;
         }),
-        input.on('pressend', () => { walking = false; idleT = 0; }),
+        input.on('pressend', () => { pointerDown = false; walking = false; idleT = 0; }),
         // Короткий тап — один «шаг» (авто-ходьба на TAP_STEP). Выбор
         // игрока: тап ИЛИ удержание (правка в чате 2026-08-30).
         input.on('tap', () => {
@@ -535,9 +542,14 @@ export function createLeapScreen({ input, images, goto }) {
           holdPrevMs = e.duration;
           if (state !== 'walk' || !walking || dtMs < 8) return;
           const vUp = (prevY - e.y) / dtMs; // px/мс, >0 = вверх
-          if (vUp > 0.7) {
+          if (vUp > 0.35) {
             walking = false;
-            beginJump(Math.max(0.2, Math.min(1.3, vUp * 0.6)), Math.min(1, Math.abs(e.dx) / 140));
+            // Флик с уже лежащего пальца — тот же жест, что свежий свайп:
+            // сила нормируется как множитель 1.0 (был 0.6 — прыжок выходил
+            // слабее). Горизонталь у вертикального дёрга ≈ 0, поэтому порог
+            // снизу 0.35 — читается как прыжок с разбега (BUILD-SPEC-04 задача 1).
+            const sidePow = Math.max(0.35, Math.min(1, Math.abs(e.dx) / 140));
+            beginJump(Math.max(0.2, Math.min(1.3, vUp * 1.0)), sidePow);
           }
         }),
         input.on('holdend', () => {
@@ -857,23 +869,23 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
-      // Подсказки (правка в чате 2026-08-30): текст ВЫСОКИЙ И УЗКИЙ —
-      // слова в столбик, чуть ВЫШЕ головы, с миганием как на других
-      // экранах. Стрелка свайпа — вплотную справа от столбика.
+      // Подсказки (BUILD-SPEC-04 задача 3): каждая — две строки-фразы, чуть
+      // ВЫШЕ головы, с миганием как на других экранах. Стрелка свайпа — справа
+      // от нижней строки, на её уровне, с заметным зазором.
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
       const headTop = Math.round(player.y - camY - PLAYER_H);
       const figX = Math.round(player.x - camX);
 
-      // Рисует слова в столбик по центру фигуры (клэмп в поля), низ
-      // столбика на 18px выше головы. Возвращает геометрию для стрелки.
+      // Рисует строки по центру фигуры (клэмп в поля), низ стека на
+      // 34px выше макушки. Возвращает геометрию для стрелки.
       const hintStack = (words, fadeIn) => {
         const lineH = Math.round(24 * scale);
         setFont(ctx, 'menuOption', scale);
         ctx.textAlign = 'center';
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = clamp01(fadeIn) * blinkAlpha(t);
-        const bottom = headTop - Math.round(18 * scale);
+        const bottom = headTop - Math.round(34 * scale);
         let widest = 0;
         words.forEach((word, i) => {
           const wy = bottom - (words.length - 1 - i) * lineH;
@@ -893,15 +905,16 @@ export function createLeapScreen({ input, images, goto }) {
         const sweep = 0.5 - 0.5 * Math.cos(t * 2.2);
         drawHoldRing(ctx, figX + 30, headTop - 30, sweep, clamp01((idleT - 6) / 0.8), 6);
       } else if (state === 'walk' && !movedEver) {
-        hintStack(['TAP', 'OR', 'HOLD', 'TO', 'WALK'], (t - 0.3) / 0.5);
-      } else if (state === 'walk' && !walking && walkImpulse <= 0 && !swipeGlyphDone && idleT > 0.5) {
+        hintStack(['TAP OR HOLD', 'TO WALK'], (t - 0.3) / 0.5);
+      } else if (state === 'walk' && !walking && walkImpulse <= 0 && idleT > 0.5) {
         const p = platforms[idx];
         const nearGap = p !== last && (p.x + p.w - player.x) < 90;
         if (nearGap) {
           const a = clamp01((idleT - 0.5) / 0.4);
-          const box = hintStack(['SWIPE', 'UP'], a);
-          const ay = box.bottom - (box.count - 1) * box.lineH / 2 + 4;
-          drawSwipeTick(ctx, Math.round(figX + box.widest / 2 + 14), Math.round(ay), a, t);
+          const box = hintStack(['SWIPE UP', 'TO JUMP'], a);
+          // Центр знака — на базовой линии нижней строки, не по середине стека.
+          const ay = box.bottom;
+          drawSwipeTick(ctx, Math.round(figX + box.widest / 2 + 28), Math.round(ay), a, t);
         }
       }
 
