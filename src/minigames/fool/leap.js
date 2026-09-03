@@ -74,27 +74,11 @@ const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
 const FALL_DUR = 4.0;     // такт 2 — полёт (правка в чате 2026-08-31: 2.8 → 4, «медленнее»)
 const ARRIVE_DUR = 1.4;   // такт 3 — проявление земли (мягче, правка 2026-08-30)
 
-// Полёт «сквозь миры» (правка в чате 2026-08-31): фон — Bayer-дизер двумя
-// тонами ЧБ, ступенчато сменяется по фазе (проходишь один мир за другим).
-// Плюс пролетающие пласты, звёзды, луна, молнии, искры — «приколы».
+// Финальное падение — кадры «сквозь миры» (правки в чате 2026-08-31):
+// мягкий фон-дизер + звёзды, а по фазе полёта — молния (открывает) →
+// месяц (крупный, вертится) → солнце → облака. Bayer 4×4 для дизера.
 const FALL_BAYER = [
   [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
-];
-// Пары тонов миров, через которые падаешь: тьма → светлеет к середине →
-// снова к тьме под прибытие. Все — из таблицы палитры.
-const FALL_WORLDS = [
-  ['#000000', '#161616'],
-  ['#161616', '#252525'],
-  ['#1C1C1C', '#4A4A4A'],
-  ['#2E2E2E', '#808080'],
-  ['#1C1C1C', '#2E2E2E'],
-  ['#000000', '#161616'],
-];
-// Пролетающие пласты других миров — дизер-полосы на разной глубине.
-const FALL_SLABS = [
-  { pal: ['#1C1C1C', '#4A4A4A'], bandH: 96, mult: 0.55, period: 440 },
-  { pal: ['#252525', '#808080'], bandH: 64, mult: 0.85, period: 560 },
-  { pal: ['#2E2E2E', '#B8B8B8'], bandH: 40, mult: 1.2,  period: 680 },
 ];
 // Звёздное поле — стабильный псевдослучай, слабый параллакс, мерцание.
 const FALL_STARS = [];
@@ -301,11 +285,10 @@ export function createLeapScreen({ input, images, goto }) {
   /** Три такта финального падения (задача 7): 'brace' (стоп-кадр) → 'fall'
    * (полёт) → 'arrive' (проявление земли). Фон уже залит #111111.
    *
-   * Переделано в чате 2026-08-31: полёт 4 с, «сквозь миры» — фон-дизер
-   * двумя тонами ЧБ ступенчато сменяется по фазе, поверх летят пласты
-   * других миров, звёзды, луна-серп, молнии в двух окнах, искры на стыках.
-   * Пара Шут+пёс видна ВСЁ время — без затемнения и повторного проявления,
-   * — и плавно опускается на плиту, которая проступает под ней. */
+   * Переделано в чате 2026-08-31: полёт 4 с, кадрами. Мягкий фон-дизер +
+   * звёзды, а по фазе: молния открывает → крупный вертящийся месяц →
+   * солнце с лучами → облака поверх солнца; на 'arrive' небо держится, и
+   * предсказание проявляется поверх него. Пара Шут+пёс видна ВСЁ время. */
   function drawFallSequence(ctx, w, h) {
     // Линия прибытия и точка, где встаёт пара — общие для 'fall' и
     // 'arrive', чтобы снижение шло без скачка.
@@ -332,12 +315,15 @@ export function createLeapScreen({ input, images, goto }) {
     if (state === 'fall') {
       const prog = clamp01(stateT / FALL_DUR);
 
-      // Фон — мир, через который падаешь (дизер двумя тонами ЧБ, сменяется
-      // по фазе); поверх — звёзды, луна, пролетающие пласты других миров.
+      // Кадры падения (правка в чате 2026-08-31): мягкий фон + звёзды, а
+      // по фазе — молния (открывает) → месяц (крупный, вертится) → солнце
+      // → облака поверх солнца. Пласты-миры и жёсткая смедена убраны.
       drawFallWorld(ctx, w, h, prog, fallScroll);
       drawFallStars(ctx, w, h, fallScroll, t);
-      drawFallMoon(ctx, w, h, prog, fallScroll);
-      drawFallSlabs(ctx, w, h, fallScroll);
+      drawFallBolts(ctx, w, h, prog, t);
+      drawFallMoon(ctx, w, h, prog);
+      drawFallSun(ctx, w, h, prog);
+      drawFallClouds(ctx, w, h, prog);
 
       // Плита, с которой шагнул — уходит вверх и растворяется.
       const enterRaw = clamp01(stateT / 0.45);
@@ -351,7 +337,6 @@ export function createLeapScreen({ input, images, goto }) {
       }
 
       drawDebris();
-      drawFallBolts(ctx, w, h, prog, t);
 
       // Пара: въезжает из точки срыва к центру за ~0.45 с, парит, а в
       // последней трети полёта плавно опускается к линии прибытия — без
@@ -379,12 +364,19 @@ export function createLeapScreen({ input, images, goto }) {
       return;
     }
 
-    // arrive — земля дотягивает проявление, пара доседает и встаёт. Без
-    // чёрного кадра и повторного «появления»: пара всё время на экране
-    // (правка в чате 2026-08-31). Верх кадра чистый под слова предсказания.
+    // arrive — земля дотягивает проявление, пара доседает и встаёт. Небо
+    // из полёта (солнце + облака) держится фоном и медленно гаснет —
+    // предсказание проявляется ПОВЕРХ него (правка в чате 2026-08-31).
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
     const p = clamp01(stateT / ARRIVE_DUR);
+
+    // Солнце и облака держатся с конца полёта, гаснут за первые ~0.7 такта.
+    const skyA = 1 - clamp01(p / 0.7);
+    if (skyA > 0) {
+      drawFallSun(ctx, w, h, 0.62, skyA);   // фаза 0.62 — солнце в полной силе
+      drawFallClouds(ctx, w, h, 1, skyA);   // облака осели
+    }
 
     // Основная плита — с 0.8 (осталось от полёта) до 1 за первые ~0.4 такта.
     const mainP = clamp01(0.8 + 0.2 * (p / 0.4));
@@ -653,13 +645,13 @@ export function createLeapScreen({ input, images, goto }) {
             });
           }
         }
-        // Искры — яркие белые крупицы навстречу, гуще на стыке миров.
-        const wfNow = prog * (FALL_WORLDS.length - 1);
-        const nearBoundary = Math.abs(wfNow - Math.round(wfNow)) < 0.06 && prog > 0.05 && prog < 0.95;
+        // Искры — яркие белые крупицы навстречу; ливень в момент удара
+        // молнии (начало), дальше редкий ручеёк.
+        const boltBurst = prog < 0.12;
         sparkT -= dt;
         if (sparkT <= 0) {
-          sparkT = nearBoundary ? 0.02 : 0.10 + Math.random() * 0.12;
-          for (let i = 0, n = nearBoundary ? 5 : 1; i < n; i++) {
+          sparkT = boltBurst ? 0.02 : 0.12 + Math.random() * 0.14;
+          for (let i = 0, n = boltBurst ? 6 : 1; i < n; i++) {
             dust.push({
               x: camX + Math.random() * (w || 430),
               y: camY + (h || 844) * (0.28 + Math.random() * 0.72),
@@ -1015,35 +1007,24 @@ function drawClouds(ctx, w, h, camX, camY, t) {
 
 // ── Визуал финального падения «сквозь миры» (правка в чате 2026-08-31) ──
 
-/** Фон текущего мира — Bayer-дизер двумя тонами ЧБ. Ступенчато сменяется
- * по фазе полёта, на стыке — короткий диссолв в следующий мир + вспышка.
- * Узор ползёт вверх вместе с fallScroll. */
+/** Фон полёта — МЯГКИЙ (правка в чате 2026-08-31): один спокойный дизер
+ * двумя близкими тонами тьмы, к середине едва светлеет и обратно. Без
+ * вспышек и резкой смены миров — «кадры» несут месяц/солнце, не фон. */
 function drawFallWorld(ctx, w, h, prog, scroll) {
-  const N = FALL_WORLDS.length;
-  const wf = prog * (N - 1);
-  const wi = Math.min(N - 1, Math.floor(wf));
-  const frac = wf - wi;
-  const cur = FALL_WORLDS[wi];
-  const nxt = FALL_WORLDS[Math.min(N - 1, wi + 1)];
   const CELL = 8;
-  const yoff = ((Math.round(scroll) % CELL) + CELL) % CELL;
+  const yoff = ((Math.round(scroll * 0.4) % CELL) + CELL) % CELL;
   for (let cy = -CELL + yoff, row = 0; cy < h; cy += CELL, row++) {
     const brow = FALL_BAYER[((row % 4) + 4) % 4];
     for (let cx = 0, col = 0; cx < w; cx += CELL, col++) {
-      const thr = brow[col & 3] / 16;
-      let pair = cur;
-      if (frac > 0.72 && thr < (frac - 0.72) / 0.28) pair = nxt; // диссолв в след. мир
-      ctx.fillStyle = thr < 0.5 ? pair[0] : pair[1];
+      ctx.fillStyle = brow[col & 3] / 16 < 0.5 ? '#000000' : '#161616';
       ctx.fillRect(cx, cy, CELL, CELL);
     }
   }
-  // Вспышка на стыке миров.
-  const flash = frac > 0.86 ? (frac - 0.86) / 0.14
-    : (frac < 0.12 && wi > 0 ? 1 - frac / 0.12 : 0);
-  if (flash > 0) {
+  const swell = Math.sin(clamp01(prog) * Math.PI); // 0→1→0, плавно
+  if (swell > 0.02) {
     ctx.save();
-    ctx.globalAlpha = 0.2 * flash;
-    ctx.fillStyle = '#B8B8B8';
+    ctx.globalAlpha = 0.14 * swell;
+    ctx.fillStyle = '#2E2E2E';
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
@@ -1063,59 +1044,108 @@ function drawFallStars(ctx, w, h, scroll, t) {
   ctx.globalAlpha = 1;
 }
 
-/** Луна — пиксельный серп. Проявляется к середине полёта, медленно плывёт. */
-function drawFallMoon(ctx, w, h, prog, scroll) {
-  const a = clamp01((prog - 0.26) / 0.16) * (1 - clamp01((prog - 0.7) / 0.2));
+/** Месяц (правка в чате 2026-08-31): БОЛЬШОЙ крупнопиксельный шар на фоне,
+ * быстрое появление и уход, терминатор света/тени качается по фазе —
+ * «словно шар вертится». Окно ~prog 0.14…0.44. */
+function drawFallMoon(ctx, w, h, prog) {
+  const P0 = 0.14, P1 = 0.44;
+  if (prog < P0 || prog > P1) return;
+  const local = (prog - P0) / (P1 - P0);
+  const a = clamp01(local / 0.14) * (1 - clamp01((local - 0.82) / 0.18));
   if (a <= 0) return;
-  const R = 16;
-  const cx = Math.round((w * 0.68 - scroll * 0.05) / 2) * 2;
-  const cy = Math.round(h * 0.22 / 2) * 2;
+  const CELL = 12;                                 // КРУПНЫЙ пиксель
+  const R = Math.round((Math.min(w, h) * 0.26) / CELL) * CELL;
+  const cx = Math.round(w / 2 / CELL) * CELL;
+  const cy = Math.round((h * 0.34) / CELL) * CELL;
+  const spin = local * Math.PI * 3;               // несколько «оборотов» за окно
+  const term = Math.cos(spin) * R;               // граница тени по x
+  const litLeft = Math.cos(spin) >= 0;
   ctx.save();
   ctx.globalAlpha = a;
-  for (let dy = -R; dy <= R; dy += 2) {
-    const dx = Math.floor(Math.sqrt(Math.max(0, R * R - dy * dy)) / 2) * 2;
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(cx - dx, cy + dy, dx * 2 + 2, 2);
-    ctx.fillStyle = '#2E2E2E';                       // серп-тень справа
-    ctx.fillRect(cx + dx - 10, cy + dy, 12, 2);
-    if (dy <= 2) {                                   // светлая кромка слева-сверху
-      ctx.fillStyle = '#B8B8B8';
-      ctx.fillRect(cx - dx, cy + dy, 4, 2);
+  for (let dy = -R; dy <= R; dy += CELL) {
+    const hw = Math.floor(Math.sqrt(Math.max(0, R * R - dy * dy)) / CELL) * CELL;
+    for (let dx = -hw; dx <= hw; dx += CELL) {
+      const lit = litLeft ? dx <= term : dx >= term;
+      ctx.fillStyle = lit ? '#B8B8B8' : '#2E2E2E';
+      ctx.fillRect(cx + dx, cy + dy, CELL, CELL);
     }
   }
   ctx.restore();
 }
 
-/** Пролетающие пласты других миров — дизер-полосы разной глубины, вверх,
- * зациклены. Это «текстуры красиво сменяются». */
-function drawFallSlabs(ctx, w, h, scroll) {
-  const CELL = 8;
-  for (const L of FALL_SLABS) {
-    const off = ((scroll * L.mult) % L.period + L.period) % L.period;
-    for (let top = h - off; top > -L.bandH; top -= L.period) {
-      for (let r = 0; r < L.bandH; r += CELL) {
-        const edge = Math.min(r, L.bandH - CELL - r) / CELL; // 0 у кромки
-        const dens = edge >= 2 ? 1 : edge === 1 ? 0.6 : 0.24;
-        const brow = FALL_BAYER[(((top + r) / CELL | 0) % 4 + 4) % 4];
-        for (let c = 0, col = 0; c < w; c += CELL, col++) {
-          const th = brow[col & 3] / 16;
-          if (th > dens) continue;
-          ctx.fillStyle = th < dens * 0.5 ? L.pal[0] : L.pal[1];
-          ctx.fillRect(c, Math.round(top + r), CELL, CELL);
-        }
-      }
+/** Солнце (правка в чате 2026-08-31): крупнопиксельный яркий диск с
+ * вращающимися лучами-спицами. Окно ~prog 0.44…0.82, после месяца. */
+function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
+  const P0 = 0.44, P1 = 0.82;
+  if (prog < P0 || prog > P1) return;
+  const local = (prog - P0) / (P1 - P0);
+  const a = clamp01(local / 0.18) * (1 - clamp01((local - 0.85) / 0.15)) * alphaMul;
+  if (a <= 0) return;
+  const CELL = 10;
+  const R = Math.round((Math.min(w, h) * 0.16) / CELL) * CELL;
+  const cx = Math.round(w / 2 / CELL) * CELL;
+  const cy = Math.round((h * 0.36) / CELL) * CELL;
+  ctx.save();
+  ctx.globalAlpha = a;
+  const rot = local * Math.PI * 0.8;
+  ctx.fillStyle = '#808080';
+  for (let i = 0; i < 12; i++) {
+    const ang = rot + i * Math.PI / 6;
+    for (let rr = R + CELL * 2; rr < R + CELL * 6; rr += CELL) {
+      ctx.fillRect(
+        Math.round((cx + Math.cos(ang) * rr) / CELL) * CELL,
+        Math.round((cy + Math.sin(ang) * rr) / CELL) * CELL,
+        CELL, CELL,
+      );
     }
   }
+  for (let dy = -R; dy <= R; dy += CELL) {
+    const hw = Math.floor(Math.sqrt(Math.max(0, R * R - dy * dy)) / CELL) * CELL;
+    ctx.fillStyle = '#B8B8B8';
+    ctx.fillRect(cx - hw, cy + dy, hw * 2 + CELL, CELL);
+    if (dy > -R + CELL && dy < 0) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(cx - hw + CELL, cy + dy, CELL * 2, CELL);
+    }
+  }
+  ctx.restore();
 }
 
-/** Молнии — два коротких окна за полёт. Ломаная сверху вниз: 2px белое
- * ядро + смещённый серый призрак + одна ветка. Резкая вспышка → спад. */
+/** Облака в финале — блочные силуэты въезжают с боков и оседают в нижней
+ * трети поверх солнца (правка в чате 2026-08-31). Окно prog 0.68…1. */
+function drawFallClouds(ctx, w, h, prog, alphaMul = 1) {
+  const P0 = 0.68;
+  if (prog < P0) return;
+  const local = clamp01((prog - P0) / (1 - P0));
+  const ease = local * local * (3 - 2 * local);
+  const CELL = 8;
+  const defs = [
+    { fromX: -180, toX: w * 0.24, y: h * 0.60, rows: [3, 6, 8, 5] },
+    { fromX: w + 200, toX: w * 0.74, y: h * 0.50, rows: [2, 5, 6, 4] },
+    { fromX: -260, toX: w * 0.52, y: h * 0.70, rows: [4, 7, 9, 6] },
+  ];
+  ctx.save();
+  ctx.globalAlpha = clamp01(local / 0.3) * alphaMul;
+  ctx.fillStyle = '#4A4A4A';
+  for (const d of defs) {
+    const x = d.fromX + (d.toX - d.fromX) * ease;
+    d.rows.forEach((cells, r) => {
+      const rowW = cells * CELL;
+      ctx.fillRect(Math.round(x - rowW / 2), Math.round(d.y + r * CELL), rowW, CELL);
+    });
+  }
+  ctx.restore();
+}
+
+/** Молния — открывает падение (правка в чате 2026-08-31: «сначала ударяет
+ * молния»). Два коротких удара в первые ~0.1 prog. Ломаная сверху вниз:
+ * 2px белое ядро + смещённый серый призрак + одна ветка. */
 function drawFallBolts(ctx, w, h, prog, t) {
-  const WINDOWS = [0.30, 0.62];
+  const WINDOWS = [0.01, 0.07];
   for (let k = 0; k < WINDOWS.length; k++) {
     const d = prog - WINDOWS[k];
-    if (d < 0 || d > 0.12) continue;
-    const life = d / 0.12;
+    if (d < 0 || d > 0.10) continue;
+    const life = d / 0.10;
     const alpha = life < 0.15 ? 1 : (1 - life) * 0.5;
     const seed = (k * 0x9E3779B1 + 0x51ED2F) >>> 0;
     let bx = 60 + (seed % Math.max(1, w - 120));
@@ -1139,6 +1169,12 @@ function drawFallBolts(ctx, w, h, prog, t) {
       }
     };
     ctx.save();
+    // короткая вспышка кадра в момент удара
+    if (life < 0.18) {
+      ctx.globalAlpha = 0.28 * (1 - life / 0.18);
+      ctx.fillStyle = '#B8B8B8';
+      ctx.fillRect(0, 0, w, h);
+    }
     ctx.globalAlpha = alpha * 0.5;
     stroke(4, '#B8B8B8');
     ctx.globalAlpha = alpha;

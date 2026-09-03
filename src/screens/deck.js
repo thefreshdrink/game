@@ -18,6 +18,7 @@ import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
 } from '../core/oracle.js';
 import { CARD_W, CARD_H } from '../core/cardRender.js';
+import { drawVoidGradient } from '../core/voidGradient.js';
 
 // Число карт в вере — чисто визуальное (правка в чате: сначала 5
 // читалось «мало для колоды», подняли до 9, потом ещё раз попросили
@@ -43,6 +44,12 @@ const SUBTITLE_FADE = 0.35;
 const ORACLE_CONCEAL_START = 0;
 const ORACLE_CONCEAL = 1.2;
 const ORACLE_CELL_SIZE = 4;
+
+// Фон-градиент пустоты пришёл с экрана 1 на полной прозрачности и гаснет
+// ЗДЕСЬ — медленно, уже после того как Предсказатель стянулся к глазам
+// (правка в чате 2026-08-31: «пусть исчезает медленно после исчезновения
+// предсказателя», не мгновенно по тапу на категорию).
+const BG_FADE_OUT = 1.6;
 
 // Каскад карт — «как в Виндовс-Косынке при победе» (правка в чате). Первая
 // версия поднимала каждую карту локально, вдоль её же угла — выглядело
@@ -344,6 +351,11 @@ export function createDeckScreen({ input, images, goto }) {
     draw(ctx, w, h) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
+
+      // Фон-градиент с экрана 1: держится полным, пока Предсказатель
+      // стягивается (ORACLE_CONCEAL), затем медленно гаснет за BG_FADE_OUT.
+      const bgA = 1 - clamp01((t - ORACLE_CONCEAL) / BG_FADE_OUT);
+      drawVoidGradient(ctx, w, h, bgA, t);
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);

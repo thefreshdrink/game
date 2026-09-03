@@ -19,6 +19,7 @@ import { layoutWords, visibleWordCount, revealDuration } from '../core/textRevea
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY,
 } from '../core/oracle.js';
+import { drawVoidGradient } from '../core/voidGradient.js';
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
@@ -221,24 +222,13 @@ export function createQuestionScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      // Фон-градиент: медленно проявляется из темноты снизу вверх, только
-      // после полного проявления фигуры (на возврате — сразу). Плавный
-      // линейный градиент из тонов пустоты, без пиксельного дизера.
+      // Фон-градиент: ПИКСЕЛЬНЫЙ дизер пустоты, как пропасть в мини-игре
+      // (правка в чате 2026-08-31). Само появление — плавное по alpha за
+      // BG_FADE_DUR, только после полного проявления фигуры (на возврате —
+      // сразу). Тот же фон тянется на экран 2 и гаснет там (см. deck.js).
       const bgStart = shortMode ? 0 : TEXT2_START;
       const bgA = clamp01((t - bgStart) / BG_FADE_DUR);
-      if (bgA > 0) {
-        const gTop = Math.round(h * 0.52);
-        const grad = ctx.createLinearGradient(0, gTop, 0, h);
-        grad.addColorStop(0, '#111111');
-        grad.addColorStop(0.45, '#1C1C1C');
-        grad.addColorStop(0.75, '#252525');
-        grad.addColorStop(1, '#2E2E2E');
-        ctx.save();
-        ctx.globalAlpha = bgA;
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, gTop, w, h - gTop);
-        ctx.restore();
-      }
+      drawVoidGradient(ctx, w, h, bgA, t);
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
