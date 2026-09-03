@@ -719,6 +719,10 @@ export function createLeapScreen({ input, images, goto }) {
       }
 
       const last = platforms[platforms.length - 1];
+      // Пиксельные облака — далёкий фон в пустом небе над дорогой (правка в
+      // чате 2026-08-31: занять пустое пространство, дать ориентир масштаба).
+      // За дорогой, тусклым тоном дальней детали, лёгкий параллакс.
+      drawClouds(ctx, w, h, camX, camY, t);
       // Пропасть — едва заметный дизер-градиент у САМОГО низа кадра, далеко
       // под дорогой (задача 4; правка в чате 2026-08-31: отодвинута ниже,
       // «подманивание» после обрушения плиты убрано).
@@ -914,6 +918,42 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0, f
   }
   ctx.drawImage(img, x, y, w, h);
   ctx.restore();
+}
+
+// Пиксельные облака (правка в чате 2026-08-31). Далёкий фон в небе над
+// дорогой — блочные силуэты тоном «дальней детали» #4A4A4A, без сглаживания.
+// Живут в world-x: параллакс ×0.26 от камеры + собственный медленный снос;
+// экранный y почти не ведётся за камерой (небо стоит). Форма — 4 ряда
+// блоков 8px, тапер кверху, чуть шире книзу — блочный силуэт, не овал.
+// Тайлятся с шагом CLOUD_PERIOD, каждое рисуется во всех видимых копиях.
+const CLOUD_CELL = 8;
+const CLOUD_PERIOD = 1200; // world-px между повторами набора облаков
+const CLOUDS = [
+  { bx: 60,   y: 84,  rows: [3, 6, 8, 5] },
+  { bx: 360,  y: 176, rows: [2, 5, 6, 4] },
+  { bx: 610,  y: 52,  rows: [4, 7, 9, 6] },
+  { bx: 900,  y: 212, rows: [2, 4, 5, 3] },
+  { bx: 1120, y: 128, rows: [3, 6, 7, 4] },
+];
+
+function drawClouds(ctx, w, h, camX, camY, t) {
+  ctx.fillStyle = '#4A4A4A';
+  const skyY = camY * 0.1; // чуть ведётся за камерой, но не скачет со ступенями
+  for (const c of CLOUDS) {
+    const drift = c.bx - camX * 0.26 - t * 5;
+    let base = ((drift % CLOUD_PERIOD) + CLOUD_PERIOD) % CLOUD_PERIOD;
+    for (let sx = base - CLOUD_PERIOD; sx < w + 120; sx += CLOUD_PERIOD) {
+      if (sx < -120) continue;
+      c.rows.forEach((cells, r) => {
+        const rowW = cells * CLOUD_CELL;
+        ctx.fillRect(
+          Math.round(sx - rowW / 2),
+          Math.round(c.y - skyY + r * CLOUD_CELL),
+          rowW, CLOUD_CELL,
+        );
+      });
+    }
+  }
 }
 
 function drawDog(ctx, images, d, camX, camY, dogPlat) {
