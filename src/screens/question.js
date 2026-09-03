@@ -72,6 +72,12 @@ const BODY_START = TEXT1_START + TEXT1_REVEAL + TEXT1_READ_HOLD;
 // Вторая реплика ждёт, пока силуэт проступит ПОЛНОСТЬЮ — не раньше
 // (правка в чате), не просто пока погаснет первая реплика.
 const TEXT2_START = BODY_START + BODY_REVEAL;
+
+// Фон-градиент (правка в чате 2026-08-31): та же идея, что пропасть в
+// мини-игре Leap — тёмные тона пустоты снизу, — но НЕ пиксельный дизер, а
+// плавный линейный градиент, и проявляется медленно из темноты только
+// ПОСЛЕ того, как фигура Предсказателя проступила целиком.
+const BG_FADE_DUR = 3.0;
 const OPTIONS_START = TEXT2_START + TEXT2_REVEAL + TEXT2_READ_HOLD;
 
 // Короткий вход на возврате (BUILD-SPEC-02, задача 2): полное интро — ~9с
@@ -214,6 +220,25 @@ export function createQuestionScreen({ input, images, goto }) {
     draw(ctx, w, h) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
+
+      // Фон-градиент: медленно проявляется из темноты снизу вверх, только
+      // после полного проявления фигуры (на возврате — сразу). Плавный
+      // линейный градиент из тонов пустоты, без пиксельного дизера.
+      const bgStart = shortMode ? 0 : TEXT2_START;
+      const bgA = clamp01((t - bgStart) / BG_FADE_DUR);
+      if (bgA > 0) {
+        const gTop = Math.round(h * 0.52);
+        const grad = ctx.createLinearGradient(0, gTop, 0, h);
+        grad.addColorStop(0, '#111111');
+        grad.addColorStop(0.45, '#1C1C1C');
+        grad.addColorStop(0.75, '#252525');
+        grad.addColorStop(1, '#2E2E2E');
+        ctx.save();
+        ctx.globalAlpha = bgA;
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, gTop, w, h - gTop);
+        ctx.restore();
+      }
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
