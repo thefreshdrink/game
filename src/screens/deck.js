@@ -64,18 +64,40 @@ const ORACLE_CELL_SIZE = 4;
 // предсказателя», не мгновенно по тапу на категорию).
 const BG_FADE_OUT = 1.6;
 
-// Каскад карт — «как в Виндовс-Косынке при победе» (правка в чате). Первая
-// версия поднимала каждую карту локально, вдоль её же угла — выглядело
-// как лёгкий подскок на месте, а не тасовка. По новой правке (2026-08-23:
-// «карты пролетают через экран, своеобразная тасовка») все карты стартуют
-// из ОДНОЙ и той же точки — угол и радиус животного момента появления
-// (elapsed=0) у всех совпадают, так что визуально это одна стопка в
-// центре, которая раздаёт себя веером по одной карте (см. CASCADE_STAGGER
-// ниже и цикл отрисовки).
+// Каскад карт — «как в Виндовс-Косынке при победе» (правка в чате). История:
+// (1) карта подпрыгивала на месте вдоль своего угла — читалось как подскок,
+// не тасовка; (2) все стартовали из одной точки и разворачивались веером
+// одним easeOutBack — «раздача из стопки». (3) Правка в чате 2026-09-11
+// (мок «Тасовка колоды», одобрен): полноценный ФИЗИЧЕСКИЙ каскад. Каждая
+// карта по очереди вылетает из СВОЕЙ точки вверху, летит большой дугой и
+// отскакивает от нижней кромки: первый отскок размашистый, второй — слабее
+// и по случайной траектории (лёгкий разброс vx), а на ТРЕТЬЕМ контакте с
+// полом уходит одной большой плавной дугой сразу в свой слот веера — без
+// лежания на дне. За картой тянется призрачный след, гаснущий после
+// посадки. В свободном полёте карта НЕ повёрнута; в свой угол веера
+// доворачивается только на этом финальном отскоке.
+//
+// Раскладка веера (layoutCards, cardCenterAt), ховер, волна-подсказка,
+// вылет выбранной карты — БЕЗ изменений: меняется только вход.
 const CARDS_START = SUBTITLE_START + SUBTITLE_FADE + 0.3;
-const CASCADE_STAGGER = 0.09;
-const CASCADE_DURATION = 0.6;
-const CASCADE_STACK_OFFSET = 260; // насколько «стопка» ближе к оси, чем FAN_RADIUS
+const CASCADE_STAGGER = 0.06;    // запуск карт друг за другом, сек (было 0.09)
+const CASCADE_MAX_BOUNCES = 3;   // третий контакт с полом = уход в веер
+const CASCADE_FLOOR_FRAC = 0.9;  // «пол» для отскока — доля высоты экрана (карта уходит низом за кадр, это ок)
+const CASCADE_GRAV_FRAC = 2.6;   // гравитация = h * этого; подобрано под ощущение дуги из мока
+const CASCADE_LAUNCH_TOP_FRAC = 0.12; // откуда карты вылетают — доля высоты, у верхней кромки
+const PLACE_DUR = 0.62;          // длительность финального отскока в слот, сек (плавный, небыстрый)
+const PLACE_ARC_FRAC = 0.16;     // высота горба этого отскока над прямой к слоту — доля высоты
+const TRAIL_MAX = 3;             // точек следа на карту — совсем короткий, только намёк
+const TRAIL_EVERY = 0.03;        // как часто копим точку следа, сек
+const TRAIL_ALPHA = 0.18;        // след едва различим на фоне
+
+// Карта в свободном полёте УМЕНЬШЕНА и рисуется простой рубашкой (чёрное
+// тело + тонкая белая рамка), без арта PNG: 20 полноразмерных карт с
+// «бабочкой» на рубашке в полёте залепляют весь экран шумом. На финальном
+// отскоке карта дорастает до 1.0 и садится в веер уже полного размера и с
+// настоящим артом, поэтому канон «размер карты постоянен на переходе 2→3»
+// не нарушается — уменьшение только транзитное (decisions-log 2026-09-11).
+const CASCADE_FLY_SCALE = 0.24;
 
 // Карта в вере — тот же ФИКСИРОВАННЫЙ размер CARD_W×CARD_H (224×384), что
 // и на экранах 3–4 (BUILD-SPEC-03 задача 2). Один визуальный объект держит
@@ -196,6 +218,15 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+// Детерминированный псевдослучай [0..1) по паре целых — тот же приём, что в
+// моке «Тасовка колоды»: каскад раскладывается ОДИНАКОВО каждый заход, без
+// генератора состояния. Служит только для разброса стартовых точек и
+// траекторий отскока.
+function pseudoRnd(i, s) {
+  const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 // Авто-фит текстовой подписи (BUILD-SPEC-02, задача 3): пробуем базовый
 // кегль, потом уменьшаем шагами до 0.8 от базового; если и на 0.8 не
 // влезло в maxWidth — переносим на две строки на этом же (0.8) кегле.
@@ -235,6 +266,7 @@ export function createDeckScreen({ input, images, goto }) {
   let flying = false;
   let flyStartT = 0;
   let flyFrom = null; // {x, y, rotation} — позиция и угол карты в момент выбора
+  let cascadePrevT = 0; // прошлый t — для шага физики каскада в draw()
 
   function layoutCards(w, h) {
     const cardW = CARD_W;
@@ -313,6 +345,7 @@ export function createDeckScreen({ input, images, goto }) {
       flyFrom = null;
       waveStart = -1;
       firstTouch = false;
+      cascadePrevT = 0;
 
       offHandlers = [
         input.on('pressstart', (e) => {
@@ -363,7 +396,7 @@ export function createDeckScreen({ input, images, goto }) {
       }
 
       const allLanded = cards.length === CARD_COUNT
-        && cards.every((c) => t >= c.delay + CASCADE_DURATION);
+        && cards.every((c) => c.placed);
       if (allLanded) cardsSettled = true;
 
       // Волна-подсказка: первая — через 0.4 с после того как карты улеглись;
@@ -521,55 +554,167 @@ export function createDeckScreen({ input, images, goto }) {
         return;
       }
 
-      // Карты — каскадом влетают (разворачиваясь из центра в свой угол на
-      // дуге), потом лежат веером полукругом внизу. Рисуем строго в
-      // порядке индекса (естественный порядок стопки): карта правее лежит
-      // «спереди» и рисуется позже, поэтому продолжает частично перекрывать
-      // наведённую, если та приподнята недостаточно, чтобы выйти из-под
-      // неё — так и должно быть (правка в чате: «она должна быть закрыта
-      // всё равно спереди лежащей картой»).
-      const stackRadius = FAN_RADIUS - CASCADE_STACK_OFFSET;
-      // Волна идёт по очереди: задний ряд (row 0) слева направо за WAVE_DUR,
-      // пауза WAVE_GAP, потом передний ряд (row 1). Плавный широкий горб.
+      // Волна-подсказка идёт по очереди: задний ряд (row 0) слева направо за
+      // WAVE_DUR, пауза WAVE_GAP, потом передний ряд (row 1). Плавный горб.
+      // Применяется только к уже приземлившимся картам (см. ниже).
       const waveTotal = WAVE_DUR * 2 + WAVE_GAP;
       const waveLocal = waveStart >= 0 ? t - waveStart : -99;
       const waveActive = !firstTouch && waveLocal >= 0 && waveLocal < waveTotal + 0.1;
+
+      // ── ВХОД: физический каскад (мок «Тасовка колоды», одобрен 2026-09-11).
+      // Каждая карта по очереди вылетает из своей точки вверху, отскакивает
+      // от нижней кромки два раза (первый размашисто, второй слабее и со
+      // случайным разбросом vx), а на ТРЕТЬЕМ контакте уходит одной большой
+      // плавной дугой прямо в свой слот веера — без лежания на дне. В полёте
+      // карта НЕ повёрнута; доворачивается в свой угол только на финальном
+      // отскоке. За картой тянется призрачный контур-след, гаснущий после
+      // посадки. Шаг физики привязан к dt кадра (cascadePrevT), значения —
+      // доли высоты экрана, поэтому дуга одинаково читается на любом вьюпорте.
+      //
+      // Рисуем строго по индексу (карта правее — «спереди», рисуется позже и
+      // продолжает частично перекрывать наведённую — правка в чате).
+      const cascDt = Math.min(Math.max(t - cascadePrevT, 0), 0.033);
+      cascadePrevT = t;
+      const floorY = h * CASCADE_FLOOR_FRAC;
+      const grav = h * CASCADE_GRAV_FRAC;
+
+      // Масштаб карты по фазе: мелкая в полёте, дорастает на финальном отскоке.
+      const flyScaleOf = (c) => {
+        if (c.placed) return 1;
+        if (c.placing) {
+          const pp = clamp01((t - c.placeT) / PLACE_DUR);
+          return CASCADE_FLY_SCALE + (1 - CASCADE_FLY_SCALE) * easeInOutQuad(pp);
+        }
+        return CASCADE_FLY_SCALE;
+      };
+
+      // 1) Шаг физики + накопление следа (по картам, ещё не севшим в веер).
       cards.forEach((c, i) => {
-        const elapsed = t - c.delay;
-        let alpha = 1;
-        let waveLift = 0;
-        if (waveActive) {
-          const rowStart = c.row === 0 ? 0 : WAVE_DUR + WAVE_GAP;
-          const rp = (waveLocal - rowStart) / WAVE_DUR; // 0..1 проход по этому ряду
-          if (rp > -0.05 && rp < 1.08) {
-            const head = rp * 1.2 - 0.1; // от -0.1 до 1.1 по вееру
-            const dd = Math.abs(head - c.fx);
-            if (dd < WAVE_SPAN) waveLift = Math.cos((dd / WAVE_SPAN) * Math.PI * 0.5) * WAVE_LIFT;
+        if (t < c.delay || c.placed) return;
+
+        if (c.cx === undefined) {
+          // Стартовый X — не случайный, а перестановка шагом 7 по всей
+          // ширине: соседние по времени карты вылетают из ДАЛЁКИХ друг от
+          // друга точек, а не выстраиваются в диагональную цепочку.
+          const col = (i * 7) % CARD_COUNT;
+          c.cx = w * (0.06 + 0.88 * (col / (CARD_COUNT - 1)));
+          c.cy = h * CASCADE_LAUNCH_TOP_FRAC + pseudoRnd(i, 5) * h * 0.04;
+          const home = cardCenterAt(c.angle, c.radius);
+          // Тяга к своему слоту (0.7) + боковой пинок в сторону: дуги
+          // расходятся «в разные стороны, весь экран» (мок).
+          c.vx = (home.x - c.cx) * 0.7 + (pseudoRnd(i, 7) - 0.5) * w * 0.7;
+          // Сила броска сильно разная: одни карты уходят высокой дугой,
+          // другие — низом.
+          c.vy = h * (0.03 + pseudoRnd(i, 2) * 0.16 + pseudoRnd(i, 6) * 0.06);
+          c.bounces = 0;
+          c.placing = false;
+          c.placeT = 0;
+          c.trail = [];
+          c.trailAcc = 0;
+        }
+
+        if (c.placing) {
+          const pp = clamp01((t - c.placeT) / PLACE_DUR);
+          const home = cardCenterAt(c.angle, c.radius);
+          c.cx = c.px + (home.x - c.px) * easeInOutQuad(pp);
+          c.cy = c.py + (home.y - c.py) * easeOutBack(pp)
+            - PLACE_ARC_FRAC * h * 4 * pp * (1 - pp);
+          if (pp >= 1) c.placed = true;
+        } else {
+          c.vy += grav * cascDt;
+          c.cx += c.vx * cascDt;
+          c.cy += c.vy * cascDt;
+          const halfW = (c.w * CASCADE_FLY_SCALE) / 2;
+          if (c.cx < halfW) { c.cx = halfW; c.vx = Math.abs(c.vx) * 0.6; }
+          if (c.cx > w - halfW) { c.cx = w - halfW; c.vx = -Math.abs(c.vx) * 0.6; }
+          if (c.cy >= floorY) {
+            c.cy = floorY;
+            c.bounces += 1;
+            if (c.bounces >= CASCADE_MAX_BOUNCES) {
+              c.placing = true; c.placeT = t; c.px = c.cx; c.py = c.cy;
+            } else {
+              const e = c.bounces === 1 ? 0.6 : 0.32;
+              c.vy = -Math.abs(c.vy) * e;
+              c.vx = c.vx * 0.5 + (pseudoRnd(i, 10 + c.bounces) - 0.5) * w * 0.7 * e;
+            }
           }
         }
-        let radius = c.radius + c.spreadR + waveLift;
-        let angle = c.angle;
-        let rotation = c.angle;
 
-        if (elapsed < 0) {
-          alpha = 0;
-        } else if (elapsed < CASCADE_DURATION) {
-          // Angle и radius растут из ОБЩЕЙ точки стопки (angle=0,
-          // stackRadius) до своих финальных значений одним и тем же p —
-          // карта едет по прямой в полярных координатах, разворачиваясь
-          // ровно по ходу движения, как будто её выкладывают веером из
-          // руки, а не просто телепортируют с поворотом на месте.
-          const p = easeOutBack(clamp01(elapsed / CASCADE_DURATION));
-          radius = stackRadius + (c.radius - stackRadius) * p;
-          angle = c.angle * p;
-          rotation = angle;
+        c.trailAcc += cascDt;
+        if (c.trailAcc >= TRAIL_EVERY) {
+          c.trailAcc = 0;
+          c.trail.push({ x: c.cx, y: c.cy });
+          if (c.trail.length > TRAIL_MAX) c.trail.shift();
+        }
+      });
+
+      // 2) След — призрачный полый контур карты (без поворота, дешёвыми
+      //    полосками, не PNG). У каждой карты гаснет за 0.5 с после посадки.
+      function drawGhostCard(gx, gy, gw, gh) {
+        const dx = Math.round(gx - gw / 2);
+        const dy = Math.round(gy - gh / 2);
+        ctx.fillStyle = '#2A2A2A';
+        ctx.fillRect(dx, dy, gw, 3);
+        ctx.fillRect(dx, dy + gh - 3, gw, 3);
+        ctx.fillRect(dx, dy, 3, gh);
+        ctx.fillRect(dx + gw - 3, dy, 3, gh);
+      }
+      // Простая рубашка для карты в свободном полёте — тело + белая рамка,
+      // без арта PNG (тот в мелком масштабе только шумит). Без поворота.
+      function drawPlainCard(px, py, pw, ph) {
+        const dx = Math.round(px - pw / 2);
+        const dy = Math.round(py - ph / 2);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(dx, dy, pw, ph);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(dx, dy, pw, 2);
+        ctx.fillRect(dx, dy + ph - 2, pw, 2);
+        ctx.fillRect(dx, dy, 2, ph);
+        ctx.fillRect(dx + pw - 2, dy, 2, ph);
+      }
+      cards.forEach((c) => {
+        if (!c.trail || c.trail.length === 0) return;
+        const ta = c.placed ? 1 - clamp01((t - (c.placeT + PLACE_DUR)) / 0.5) : 1;
+        if (ta <= 0) return;
+        const gs = flyScaleOf(c);
+        ctx.globalAlpha = ta * TRAIL_ALPHA;
+        for (let k = 0; k < c.trail.length; k++) {
+          drawGhostCard(c.trail[k].x, c.trail[k].y, c.w * gs, c.h * gs);
+        }
+        ctx.globalAlpha = 1;
+      });
+
+      // 3) Сами карты. До запуска — не рисуем. В свободном полёте — по физике,
+      //    без поворота. На финальном отскоке — по дуге, доворачиваясь в свой
+      //    угол. После посадки — обычная жизнь веера (радиальный ховер-подъём
+      //    + волна-подсказка), та же формула, что раньше.
+      cards.forEach((c, i) => {
+        if (t < c.delay || c.cx === undefined) return;
+
+        if (c.placed) {
+          let waveLift = 0;
+          if (waveActive) {
+            const rowStart = c.row === 0 ? 0 : WAVE_DUR + WAVE_GAP;
+            const rp = (waveLocal - rowStart) / WAVE_DUR; // 0..1 проход по этому ряду
+            if (rp > -0.05 && rp < 1.08) {
+              const head = rp * 1.2 - 0.1; // от -0.1 до 1.1 по вееру
+              const dd = Math.abs(head - c.fx);
+              if (dd < WAVE_SPAN) waveLift = Math.cos((dd / WAVE_SPAN) * Math.PI * 0.5) * WAVE_LIFT;
+            }
+          }
+          const p = cardCenterAt(c.angle, c.radius + c.spreadR + waveLift);
+          drawCard(p.x, p.y, c.w, c.h, c.angle, i === hoveredIndex);
+          return;
         }
 
-        if (alpha <= 0) return;
-        const pos = cardCenterAt(angle, radius);
-        ctx.globalAlpha = alpha;
-        drawCard(pos.x, pos.y, c.w, c.h, rotation, i === hoveredIndex);
-        ctx.globalAlpha = 1;
+        if (c.placing) {
+          const pp = clamp01((t - c.placeT) / PLACE_DUR);
+          const s = flyScaleOf(c);
+          drawCard(c.cx, c.cy, c.w * s, c.h * s, c.angle * easeInOutQuad(pp), false);
+          return;
+        }
+
+        drawPlainCard(c.cx, c.cy, c.w * CASCADE_FLY_SCALE, c.h * CASCADE_FLY_SCALE);
       });
     },
   };
