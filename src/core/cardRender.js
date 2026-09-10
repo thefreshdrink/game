@@ -2,9 +2,11 @@
 // раскрытая (экран 4). Общее для обоих экранов, чтобы не держать одну и ту
 // же композицию в двух местах.
 //
-// Рамка (`card_frame_fool.png`) — отдельный ассет без персонажа: место под
-// номер и под имя уже размечено бирками художника, портрет
-// (`fool_on_the_card.png`) кладётся отдельным слоем поверх и умеет
+// Рамка (`card_frame_fool.png`) — отдельный ассет без персонажа и ОБЩИЙ для
+// всех карт: имя файла историческое, ничего от Шута в нём нет. Место под
+// номер и под имя размечено бирками художника, а сами номер и имя рисуются
+// текстом из `cards.js`. Портрет у каждой карты свой (`card.art` — ключ
+// IMAGE_MANIFEST) — кладётся отдельным слоем поверх и умеет
 // проступать пикселями (revealProgress 0→1, core/pixelReveal.js) — тем же
 // эффектом, что и силуэт оракула на экранах 1–2 (правка в чате 2026-08-19:
 // «появляй дурака так же, как силуэт»). Раньше пробовали и цельную
@@ -17,6 +19,7 @@
 
 import { setFont } from './text.js';
 import { drawPixelReveal } from './pixelReveal.js';
+import { ART_BY_NUMERAL } from '../data/cards.js';
 
 // Карта — экранные пиксели, множитель ×1, фиксированный размер во всех
 // сценах (BUILD-SPEC-03 задача 2): рамка `card_frame_fool.png` ровно
@@ -53,7 +56,7 @@ export function drawCardBlank(ctx, images, x, y, w, h) {
 
 export function drawCardFace(
   ctx, images, x, y, w, h, name, scale,
-  { numeral = null, revealProgress = 1, cellSize = 4 } = {},
+  { numeral = null, revealProgress = 1, cellSize = 4, art = null } = {},
 ) {
   const s = w / 224; // всегда 1 (карта фиксирована 224, см. CARD_W) — оставлен
   // для читаемости смещений внутри рамки в её собственных пикселях.
@@ -77,14 +80,20 @@ export function drawCardFace(
   }
 
   if (revealProgress > 0) {
-    // Портрет — тоже экранные пиксели, множитель ×1 (BUILD-SPEC-03 задача 2):
-    // рисуем в натуральном размере ассета, не 150-в-что-то.
-    const art = images.foolOnCard;
-    const artW = art.width;
-    const artH = art.height;
+    // Портрет — экранные пиксели, множитель ×1 (BUILD-SPEC-03 задача 2):
+    // рисуем в натуральном размере ассета, не 150-в-что-то. Свой у каждой
+    // карты (ключ манифеста в `card.art`). Пока
+    // экраны полируются параллельно и не передают `art`, ключ достаётся
+    // мостом по номеру карты — номер уже приходит сюда и он данные, а не
+    // отображаемая строка. Когда reveal.js освободится, туда добавляется
+    // `art: card.art`, и мост с ART_BY_NUMERAL удаляется.
+    const artKey = art ?? ART_BY_NUMERAL[numeral] ?? 'foolOnCard';
+    const sprite = images[artKey] ?? images.foolOnCard;
+    const artW = sprite.width;
+    const artH = sprite.height;
     const artX = Math.round(x + (w - artW) / 2);
     const artY = Math.round(y + 96);
-    drawPixelReveal(ctx, art, artX, artY, artW, artH, revealProgress, cellSize, 0.5, 0.3);
+    drawPixelReveal(ctx, sprite, artX, artY, artW, artH, revealProgress, cellSize, 0.5, 0.3);
   }
 
   setFont(ctx, 'cardName', scale);

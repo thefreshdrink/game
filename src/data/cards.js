@@ -11,6 +11,7 @@ export const CARDS = {
     numeral: '0',
     name: 'The Fool',
     minigame: 'leap',
+    art: 'foolOnCard',        // ключ IMAGE_MANIFEST (main.js)
 
     upright: 'beginnings, faith, the open road',
     shadow: 'recklessness, avoidance, the un-looked leap',
@@ -57,13 +58,65 @@ export const CARDS = {
     },
   },
 
-  // --- Остальные четыре карты MVP -------------------------------------
+  tower: {
+    id: 'tower',
+    numeral: 'XVI',
+    name: 'The Tower',
+    minigame: 'release',      // глагол карты, GDD §8.2. Сцены ещё нет —
+                              // поэтому карта не в PLAYABLE (см. ниже)
+    art: 'towerOnCard',
+
+    upright: 'sudden collapse, release, the necessary ruin',
+    shadow: 'clinging, the propped-up thing, ruin refused',
+    symbolism: 'the crown knocked off first, the crack already there, the quiet after',
+
+    intro: 'The crack was there before the storm. The storm only asked it a question.',
+
+    arrival: 'The Tower answers you.',
+
+    reading: {
+      work:
+        'Something you built at work has been cracked for a while now, and you ' +
+        'have been standing inside it holding the ceiling up with both arms. ' +
+        'That is where the tiredness comes from. Not the work.' +
+        '\n\n' +
+        'Let the thing come down. What is still standing afterward was the part ' +
+        'that was holding you, and you will see it for the first time. Ruin is ' +
+        'not the same as failure. Only do not rebuild the same walls out of habit.',
+
+      love:
+        'There is something between you and another person that stands only ' +
+        'because you keep propping it up. You know which hour of your day is ' +
+        'the tired one. It is the hour you spend holding it.' +
+        '\n\n' +
+        'Take your hands away and let it fall. What is real between two people ' +
+        'survives being dropped. What does not survive was never the thing you ' +
+        'loved, only the shape of it. Grief is allowed here. It is not a verdict.',
+
+      mental:
+        'You have kept a story about yourself in good repair for years — the ' +
+        'one that explains why you are the way you are. Lately you have seen ' +
+        'the cracks and gone on painting over them.' +
+        '\n\n' +
+        'Let the story come down. You will not be less yourself without it. You ' +
+        'will be quieter. The noise you have been calling thinking was the sound ' +
+        'of walls being held. Do not hurry to build the next explanation.',
+    },
+  },
+
+  // --- Оставшиеся три карты MVP ---------------------------------------
   // Мини-игры не спроектированы (только строчки в GDD §8.2), тексты не
   // написаны. В веере они видны, но пока не выбираются — см. BUILD-SPEC.
-  // Заполнять только после тестов вертикального среза.
   //
-  // magician, empress, wheel, tower
+  // magician, empress, wheel
 };
+
+/** Портрет по номеру карты — временный мост для `cardRender.drawCardFace`,
+ * пока экраны полируются параллельно и не передают `art` параметром.
+ * Удаляется вместе с добавлением `art: card.art` в reveal.js. */
+export const ART_BY_NUMERAL = Object.fromEntries(
+  Object.values(CARDS).map((c) => [c.numeral, c.art]),
+);
 
 export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
 

@@ -143,6 +143,7 @@ const IMAGE_MANIFEST = {
   cardSelectFrame: 'assets/card/select_frame.png',
   cardFront: 'assets/card/card_frame_fool.png',
   foolOnCard: 'assets/card/fool_on_the_card.png',
+  towerOnCard: 'assets/card/tower_on_the_card.png',
   foolIdleStrip: 'assets/fool/strips/fool_idle_4f_44x48.png',
   foolRise: 'assets/fool/strips/fool_rise_1f_44x48.png',
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
