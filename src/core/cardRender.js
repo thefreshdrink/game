@@ -26,7 +26,17 @@ export const CARD_W = 224;
 export const CARD_H = 384;
 
 export function drawCardBack(ctx, images, x, y, w, h) {
-  ctx.drawImage(images.cardBack, Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  // Подложка — тело объекта #000000, как плиты дороги (BUILD-SPEC-05
+  // задачи 2a/3a, вариант A). У рубашки прозрачный фон (только линии);
+  // раньше подкладывали воздух #111111, из-за чего карта сливалась с
+  // фоном. Один и тот же вид карты во всех сценах.
+  const rx = Math.round(x);
+  const ry = Math.round(y);
+  const rw = Math.round(w);
+  const rh = Math.round(h);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(rx, ry, rw, rh);
+  ctx.drawImage(images.cardBack, rx, ry, rw, rh);
 }
 
 /** Пустая карта — только рамка, без лика. Момент флипа на экране 3, пока
@@ -36,7 +46,7 @@ export function drawCardBlank(ctx, images, x, y, w, h) {
   const ry = Math.round(y);
   const rw = Math.round(w);
   const rh = Math.round(h);
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = '#000000'; // тело объекта, как плиты (BUILD-SPEC-05 3a)
   ctx.fillRect(rx, ry, rw, rh);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 }
@@ -52,7 +62,7 @@ export function drawCardFace(
   const rw = Math.round(w);
   const rh = Math.round(h);
 
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = '#000000'; // тело объекта, как плиты (BUILD-SPEC-05 3a)
   ctx.fillRect(rx, ry, rw, rh);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 

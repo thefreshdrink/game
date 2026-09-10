@@ -4,16 +4,24 @@
 import { setFont } from '../core/text.js';
 import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
 import { blinkAlpha } from '../core/textReveal.js';
+import { drawTapStar } from '../core/gestureGlyph.js';
+import { easeInOutQuad } from '../core/ease.js';
 
-const FLIP_DURATION = 0.8; // сек — «не быстрее ~0.8 сек», это ритуал (BUILD-SPEC)
+// «Не быстрее ~0.8 сек» — это ритуал (BUILD-SPEC). BUILD-SPEC-05 задача 3c:
+// 0.8 → 1.1 и через easing, а не линейно, — переворот как жест, не как
+// переключение кадра.
+const FLIP_DURATION = 1.1;
+const STAR_DELAY = 0.6;   // сек после появления карты — знак тапа проступает
+const STAR_PERIOD = 1.4;  // сек — период пульса знака
+const STAR_FADE = 0.15;   // сек — знак гаснет с началом переворота
 
 export function createDrawScreen({ input, images, goto }) {
   let offTap = null;
   let state = 'waiting'; // waiting | flipping
   let t = 0;
   // Отдельный от t таймер: t стоит на 0, пока не начался флип (используется
-  // только для прогресса переворота), а мигать CLICK TO DRAW должен всё
-  // время ожидания тапа.
+  // только для прогресса переворота), а мигать CLICK TO DRAW и пульсировать
+  // звёздочка должны всё время ожидания тапа.
   let idleT = 0;
   let box = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -73,9 +81,9 @@ export function createDrawScreen({ input, images, goto }) {
       if (state === 'waiting') {
         // Тот же стиль/размер, что у вспомогательного текста на экране 1
         // (правка в чате: «вспомогательный текст по размеру как на первом»).
-        // Отступ считаем от ПЕРВОЙ строки заголовка на всю высоту двух
-        // строк — иначе подпись налезает на вторую строку (баг, пойман
-        // вживую при проверке).
+        // Текст ОСТАЁТСЯ (BUILD-SPEC-05 3b: он объясняет, звёздочка
+        // показывает куда). Отступ считаем от ПЕРВОЙ строки заголовка на
+        // всю высоту двух строк — иначе подпись налезает на вторую строку.
         setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = blinkAlpha(idleT);
@@ -84,7 +92,10 @@ export function createDrawScreen({ input, images, goto }) {
       }
 
       layout(w, h);
-      const progress = state === 'flipping' ? Math.min(t / FLIP_DURATION, 1) : 0;
+      // Прогресс переворота через easing — разгон и торможение, без жёсткой
+      // смены стороны ровно на середине по времени (BUILD-SPEC-05 3c).
+      const rawP = state === 'flipping' ? Math.min(t / FLIP_DURATION, 1) : 0;
+      const progress = easeInOutQuad(rawP);
       const scaleX = state === 'flipping' ? Math.abs(Math.cos(progress * Math.PI)) : 1;
       const cx = box.x + box.w / 2;
       const cy = box.y + box.h / 2;
@@ -103,6 +114,28 @@ export function createDrawScreen({ input, images, goto }) {
         drawCardBlank(ctx, images, box.x, box.y, box.w, box.h);
       }
       ctx.restore();
+
+      // Кромка ловит свет: когда карта стоит почти ребром (scaleX → 0) —
+      // короткая вспышка белой вертикалью (BUILD-SPEC-05 3c).
+      if (state === 'flipping' && scaleX < 0.14) {
+        ctx.save();
+        ctx.globalAlpha = 1 - scaleX / 0.14;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(Math.round(cx - 1), box.y - 6, 2, box.h + 12);
+        ctx.restore();
+      }
+
+      // Знак тапа — пиксельная искра в центре рубашки, проступает через
+      // STAR_DELAY после появления карты, пульсирует, гаснет с началом
+      // переворота (BUILD-SPEC-05 3b).
+      let starA = 0;
+      if (state === 'waiting' && idleT > STAR_DELAY) {
+        const pulse = 0.3 + 0.7 * (0.5 - 0.5 * Math.cos((idleT - STAR_DELAY) / STAR_PERIOD * Math.PI * 2));
+        starA = Math.min(1, (idleT - STAR_DELAY) / 0.4) * pulse;
+      } else if (state === 'flipping') {
+        starA = Math.max(0, 1 - t / STAR_FADE) * 0.7;
+      }
+      if (starA > 0) drawTapStar(ctx, cx, cy, starA);
     },
   };
 }

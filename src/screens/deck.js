@@ -19,6 +19,7 @@ import {
 } from '../core/oracle.js';
 import { CARD_W, CARD_H } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
+import { easeInOutQuad } from '../core/ease.js';
 
 // Число карт в вере — чисто визуальное (правка в чате: сначала 5
 // читалось «мало для колоды», подняли до 9, потом ещё раз попросили
@@ -32,6 +33,19 @@ const CARD_COUNT = 20;
 const OLD_TEXT = 'What is your question about?';
 const NEW_TITLE = 'The deck offers itself…';
 const SUBTITLE = 'PICK THE CARD. TRUST THE POOL.';
+// Вторая строка подписи — про РУКУ, а не про судьбу (BUILD-SPEC-05 2b.3).
+// Приглушённее, исчезает навсегда после первого касания веера.
+const DRAG_HINT = 'DRAG ACROSS THE DECK.';
+
+// Волна-подсказка (BUILD-SPEC-05 2b.1): один раз после того как карты
+// улеглись, карты по очереди слева направо коротко поднимаются на своей
+// дуге и опускаются — «как под невидимым пальцем». Задний ряд ведёт чуть
+// раньше переднего, чтобы волна читалась как одна по обоим рядам, а не две.
+// Повтор через WAVE_HOLD, пока игрок не тронул веер.
+const WAVE_DUR = 0.62;   // сколько «горб» едет через весь веер, сек
+const WAVE_HOLD = 5.0;   // покой перед повтором, сек
+const WAVE_LIFT = 26;    // радиальный подъём на гребне, px
+const WAVE_BACK_LEAD = 0.06; // насколько задний ряд опережает передний (в долях веера)
 
 const OLD_FADE_OUT = 0.5;
 const TITLE_START = OLD_FADE_OUT; // новый текст ждёт, пока старый погаснет — без нахлёста
@@ -201,10 +215,6 @@ function fitLabel(ctx, text, maxWidth, baseScale) {
   return { scale, lines: wrapLines(ctx, text, maxWidth), lineHeight };
 }
 
-function easeInOutQuad(x) {
-  return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
-}
-
 // Лёгкий перелёт с притормаживанием в конце — «приземление» карты.
 function easeOutBack(x) {
   const c1 = 1.70158;
@@ -221,6 +231,8 @@ export function createDeckScreen({ input, images, goto }) {
   let hoveredIndex = null;
   let cardsSettled = false;
   let selected = false; // выбор сделан, дальше не реагируем на ввод
+  let waveStart = -1;   // время начала текущей волны-подсказки; -1 — ещё не было
+  let firstTouch = false; // игрок коснулся веера — волна и вторая строка больше не нужны
   let flying = false;
   let flyStartT = 0;
   let flyFrom = null; // {x, y, rotation} — позиция и угол карты в момент выбора
@@ -250,6 +262,9 @@ export function createDeckScreen({ input, images, goto }) {
       const slot = i % ROW_COUNT;
       const row = Math.floor(i / ROW_COUNT); // 0 — задний, 1 — передний
       const backRowOffset = row === 0 ? angleStep * 0.35 : 0; // мягче зубца (правка 2026-08-30: «чуть криво»)
+      cards[i].slot = slot;
+      cards[i].row = row;
+      cards[i].fx = ROW_COUNT > 1 ? slot / (ROW_COUNT - 1) : 0; // 0..1 слева направо по вееру
       cards[i].angle = (slot - centerIndex) * angleStep + backRowOffset;
       cards[i].radius = FAN_RADIUS + (ROWS - 1 - row) * rowGap;
       cards[i].w = cardW;
@@ -297,16 +312,29 @@ export function createDeckScreen({ input, images, goto }) {
       selected = false;
       flying = false;
       flyFrom = null;
+      waveStart = -1;
+      firstTouch = false;
 
       offHandlers = [
         input.on('pressstart', (e) => {
           if (!cardsSettled || selected) return;
+          firstTouch = true;
           hoveredIndex = cardIndexAt(e.x, e.y);
         }),
         input.on('pressmove', (e) => {
           if (!cardsSettled || selected) return;
+          firstTouch = true;
           hoveredIndex = cardIndexAt(e.x, e.y);
         }),
+        // Десктоп: подсветка карты под КУРСОРОМ до нажатия (BUILD-SPEC-05
+        // 2b.2). На тач-устройствах hover дублирует pressmove и сам затихает.
+        input.on('hover', (e) => {
+          if (!cardsSettled || selected) return;
+          const idx = cardIndexAt(e.x, e.y);
+          if (idx !== null) firstTouch = true;
+          hoveredIndex = idx;
+        }),
+        input.on('hoverend', () => { hoveredIndex = null; }),
         input.on('pressend', () => {
           if (!cardsSettled || selected || hoveredIndex === null) return;
           selected = true;
@@ -338,6 +366,13 @@ export function createDeckScreen({ input, images, goto }) {
       const allLanded = cards.length === CARD_COUNT
         && cards.every((c) => t >= c.delay + CASCADE_DURATION);
       if (allLanded) cardsSettled = true;
+
+      // Волна-подсказка: первая — через 0.4 с после того как карты улеглись;
+      // дальше повтор каждые WAVE_HOLD, пока игрок не тронул веер.
+      if (cardsSettled && !firstTouch && !selected) {
+        if (waveStart < 0) waveStart = t + 0.4;
+        else if (t - waveStart > WAVE_DUR + WAVE_HOLD) waveStart = t;
+      }
 
       cards.forEach((c, i) => {
         // Только радиальный подъём наведённой карты (вдоль её же угла на
@@ -407,6 +442,13 @@ export function createDeckScreen({ input, images, goto }) {
         subtitleFit.lines.forEach((line, i) => {
           ctx.fillText(line, marginX, headerBottomY + i * subtitleFit.lineHeight);
         });
+        // Вторая строка — про руку (BUILD-SPEC-05 2b.3): тем же кеглем,
+        // приглушённее, исчезает навсегда после первого касания веера.
+        if (!firstTouch) {
+          const hintY = headerBottomY + subtitleFit.lines.length * subtitleFit.lineHeight;
+          ctx.globalAlpha = subtitleAlpha * 0.5;
+          ctx.fillText(DRAG_HINT, marginX, hintY);
+        }
         ctx.globalAlpha = 1;
       }
       // Оракул уходит обратно в темноту — тот же слой, что и на экране 1.
@@ -425,13 +467,9 @@ export function createDeckScreen({ input, images, goto }) {
       layoutCards(w, h);
 
       // Рисует рубашку карты с центром в (cx,cy), повёрнутую на rotation
-      // (радианы). Подложка — воздух сцены #111111, не тело #000000
-      // (правка в чате, 2026-08-23): у рубашки прозрачный фон (только
-      // линии), нужна какая-то заливка, чтобы карты не просвечивали друг
-      // сквозь друга, но для самой карты фон должен сливаться со сценой,
-      // не выделяться отдельным тёмным телом — тот же принцип, что уже
-      // применён к лицевой стороне на экране 4. Рамка выбора — готовый
-      // ассет (select_frame.png), не нарисованный ctx.strokeRect: она
+      // (радианы). Подложка — тело объекта #000000 (BUILD-SPEC-05 2a,
+      // вариант A; отменяет правку 2026-08-23 про #111111): карта была
+      // неотличима от фона. Рамка выбора — готовый ассет (select_frame.png),
       // чуть крупнее самой карты (228×388 против 224×384), обводка идёт
       // СНАРУЖИ, не по кромке.
       function drawCard(cx, cy, cw, ch, rotation, accent) {
@@ -440,7 +478,7 @@ export function createDeckScreen({ input, images, goto }) {
         ctx.rotate(rotation);
         const dx = Math.round(-cw / 2);
         const dy = Math.round(-ch / 2);
-        ctx.fillStyle = '#111111';
+        ctx.fillStyle = '#000000';
         ctx.fillRect(dx, dy, cw, ch);
         // Точечное исключение из «imageSmoothingEnabled = false везде,
         // всегда» (CLAUDE.md) — сказано вслух, не втихую. Правило рассчитано
@@ -497,10 +535,22 @@ export function createDeckScreen({ input, images, goto }) {
       // неё — так и должно быть (правка в чате: «она должна быть закрыта
       // всё равно спереди лежащей картой»).
       const stackRadius = FAN_RADIUS - CASCADE_STACK_OFFSET;
+      // Позиция гребня волны: едет от -0.1 до 1.1 по вееру за WAVE_DUR.
+      const waveActive = waveStart >= 0 && t >= waveStart && (t - waveStart) < WAVE_DUR + 0.1 && !firstTouch;
+      const waveHead = waveActive ? ((t - waveStart) / WAVE_DUR) * 1.2 - 0.1 : -99;
       cards.forEach((c, i) => {
         const elapsed = t - c.delay;
         let alpha = 1;
-        let radius = c.radius + c.spreadR;
+        // Волна: узкий плавный горб радиального подъёма, бежит слева направо;
+        // задний ряд опережает передний на WAVE_BACK_LEAD — читается одной
+        // волной по обоим рядам (BUILD-SPEC-05 2b.1).
+        let waveLift = 0;
+        if (waveActive) {
+          const fxEff = c.fx + (c.row === 0 ? -WAVE_BACK_LEAD : 0);
+          const dd = Math.abs(waveHead - fxEff);
+          if (dd < 0.13) waveLift = Math.cos((dd / 0.13) * Math.PI * 0.5) * WAVE_LIFT;
+        }
+        let radius = c.radius + c.spreadR + waveLift;
         let angle = c.angle;
         let rotation = c.angle;
 

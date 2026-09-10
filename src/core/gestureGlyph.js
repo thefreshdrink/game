@@ -96,6 +96,35 @@ export function drawSwipeTick(ctx, cx, cy, alpha = 1, phase = 0) {
   ctx.restore();
 }
 
+/** Знак тапа по карте (экран 3, BUILD-SPEC-05 задача 3b) — четырёхлучевая
+ * пиксельная искра из целых арт-пикселей (ячейка 2 экранных px),
+ * акцентным #EBA331. Пульс задаёт вызывающий через `alpha`. Лучи с
+ * пропуском — «искра», не крест. Центр (cx, cy) в экранных px. */
+export function drawTapStar(ctx, cx, cy, alpha = 1, reach = 7) {
+  const acx = Math.round(cx / 2);
+  const acy = Math.round(cy / 2);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  // Ядро 2×2 арт-px.
+  cell(ctx, acx, acy, FILL);
+  cell(ctx, acx + 1, acy, FILL);
+  cell(ctx, acx, acy + 1, FILL);
+  cell(ctx, acx + 1, acy + 1, FILL);
+  // Четыре луча; чётные шаги дальше третьего пропускаем — искристость.
+  for (let d = 2; d <= reach; d++) {
+    if (d > 3 && d % 2 === 0) continue;
+    cell(ctx, acx, acy - d, FILL);
+    cell(ctx, acx + 1, acy - d, FILL);
+    cell(ctx, acx, acy + 1 + d, FILL);
+    cell(ctx, acx + 1, acy + 1 + d, FILL);
+    cell(ctx, acx - d, acy, FILL);
+    cell(ctx, acx - d, acy + 1, FILL);
+    cell(ctx, acx + 1 + d, acy, FILL);
+    cell(ctx, acx + 1 + d, acy + 1, FILL);
+  }
+  ctx.restore();
+}
+
 /** Точка — знак тапа (для других мини-игр; в Leap тапа нет). Центр
  * (cx, cy) в экранных px. */
 export function drawTapDot(ctx, cx, cy, alpha = 1) {

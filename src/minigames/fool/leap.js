@@ -25,6 +25,7 @@ import {
   ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
+import { drawArrivalSun, drawArrivalLife } from './arrivalScene.js';
 
 // Спрайты — 44×48 и 18×14 арт-px (ASSETS.md). Правило сетки CLAUDE.md —
 // 1 арт-пиксель = ровно 2 экранных. Значения ниже уже удвоены и рисуются
@@ -364,26 +365,20 @@ export function createLeapScreen({ input, images, goto }) {
       return;
     }
 
-    // arrive — земля дотягивает проявление, пара доседает и встаёт. Небо
-    // из полёта (солнце + облака) держится фоном и медленно гаснет —
-    // предсказание проявляется ПОВЕРХ него (правка в чате 2026-08-31).
+    // arrive — «другой мир»: земля дотягивает проявление, над ней большое
+    // солнце, на плите трава и кустик; вторая плита убрана (правка в чате
+    // 2026-09-10). Предсказание проявляется поверх верхней части кадра.
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
     const p = clamp01(stateT / ARRIVE_DUR);
 
-    // Солнце и облака держатся с конца полёта, гаснут за первые ~0.7 такта.
-    const skyA = 1 - clamp01(p / 0.7);
-    if (skyA > 0) {
-      drawFallSun(ctx, w, h, 0.62, skyA);   // фаза 0.62 — солнце в полной силе
-      drawFallClouds(ctx, w, h, 1, skyA);   // облака осели
-    }
+    drawArrivalSun(ctx, w * 0.75, h * 0.20, t, clamp01(p / 0.5));
 
     // Основная плита — с 0.8 (осталось от полёта) до 1 за первые ~0.4 такта.
-    // Второй плиты НАД парой больше нет (правка в чате 2026-09-10): она
-    // читалась как «дорога продолжается» и люди снова пытались прыгнуть —
-    // прибытие должно ощущаться концом.
     const mainP = clamp01(0.8 + 0.2 * (p / 0.4));
     drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, PLATE_H, mainP, 4, 0.42, 0.4);
+    // Жизнь на плите проступает следом за самой плитой.
+    drawArrivalLife(ctx, groundX, gw, groundY, clamp01((p - 0.25) / 0.5));
 
     // Пара: первые ~0.3 такта ещё во «влётном» спрайте у самой земли, потом
     // встаёт — Шут дышит, пёс садится, с коротким доседанием.
@@ -829,6 +824,12 @@ export function createLeapScreen({ input, images, goto }) {
       // состояниях, включая стоп-кадр 'brace', пёс рисуется.
       drawDog(ctx, images, dog, camX, camY, dogPlat);
 
+      // Моросящий дождик — всю дорогу до финального прыжка (правка в чате
+      // 2026-09-10). На стоп-кадре 'brace' и дальше в падении его нет.
+      if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
+        drawDrizzle(ctx, w, h, t, camX);
+      }
+
       // Подсказки (BUILD-SPEC-04 задача 3 + правки в чате 2026-08-31): каждая —
       // две строки-фразы, чуть ВЫШЕ головы, с миганием как на других экранах.
       // WALK — сразу на старте; SWIPE — сразу после первого шага и держится по
@@ -958,6 +959,39 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0, f
     ctx.translate(-(x + w / 2), -(y + h));
   }
   ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+}
+
+// Моросящий дождик (правка в чате 2026-09-10) — редкие короткие
+// диагональные штрихи тоном дальней детали, низкий контраст, падают с
+// лёгким ветром и зациклены по кадру. Экранное пространство, не world:
+// лёгкий снос по camX, чтобы дождь не «ехал» с камерой намертво.
+const DRIZZLE_N = 46;
+const DRIZZLE = [];
+for (let i = 0; i < DRIZZLE_N; i++) {
+  const r = (i * 2246822519 + 0x9e37) >>> 0;
+  DRIZZLE.push({
+    x: (r % 1000) / 1000,
+    y: ((r >>> 10) % 1000) / 1000,
+    v: 0.8 + ((r >>> 20) % 100) / 100 * 0.7, // разброс скорости
+    len: 5 + ((r >>> 5) & 3) * 3,
+  });
+}
+
+function drawDrizzle(ctx, w, h, t, camX) {
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = '#4A4A4A';
+  const span = h + 40;
+  const wind = 2; // наклон штриха, px вправо на каждый px вниз... мягко
+  for (const d of DRIZZLE) {
+    let y = (d.y * span + t * 260 * d.v) % span - 20;
+    let x = (d.x * w - camX * 0.06 + t * 24) % w;
+    if (x < 0) x += w;
+    for (let s = 0; s < d.len; s += 2) {
+      ctx.fillRect(Math.round(x + s / wind), Math.round(y + s), 1, 2);
+    }
+  }
   ctx.restore();
 }
 
