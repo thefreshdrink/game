@@ -117,7 +117,7 @@ export function createPredictionScreen({ input, images, goto }) {
         // «Другой мир»: солнце в верхнем углу, трава и кустик на плите
         // (правка в чате 2026-09-10). Солнце проступает вместе с заголовком.
         // Второй плиты над Шутом нет — конец пути, одна плита, пришли и всё.
-        drawArrivalSun(ctx, w - 6, 22, t, Math.min(1, t / 0.8));
+        drawArrivalSun(ctx, w - 6, 22, t, Math.min(1, t / 0.3));
         ctx.drawImage(groundMain, gx, gy);
         drawArrivalLife(ctx, gx, gw, gy);
         const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
