@@ -19,8 +19,7 @@ import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import {
-  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W,
-  ARRIVE_STEP_UP, ARRIVE_STEP_DX,
+  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W,
 } from '../minigames/fool/platforms.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
@@ -39,8 +38,7 @@ export function createPredictionScreen({ input, images, goto }) {
   let offTap = null;
   let t = 0;
   let promptZone = null; // хит-зона ›ONE MORE QUESTION (textButton.js)
-  let groundMain = null; // полосы дороги под текстом — та же, что в такте 3 падения
-  let groundSide = null;
+  let groundMain = null; // полоса дороги под текстом — та же, что в такте 3 падения
   // Тексты банка приходят одной строкой; `\n\n` (пустая строка) делит их
   // на абзацы (задача 10). Одиночные переводы строки внутри абзаца
   // схлопываем в пробел — wrapLines рвёт только по пробелам.
@@ -84,7 +82,6 @@ export function createPredictionScreen({ input, images, goto }) {
         .filter(Boolean);
 
       if (!groundMain) groundMain = buildRoadStrip(images, ARRIVE_MAIN_W);
-      if (!groundSide) groundSide = buildRoadStrip(images, ARRIVE_SIDE_W);
 
       offTap = input.on('tap', (e) => {
         if (!typingDone()) { t = totalTime(); return; }
@@ -117,7 +114,9 @@ export function createPredictionScreen({ input, images, goto }) {
         const gx = Math.round(w / 2 - gw / 2 - 28);
         const fcx = gx + Math.round(gw * 0.44);
         ctx.drawImage(groundMain, gx, gy);
-        ctx.drawImage(groundSide, gx + gw - ARRIVE_STEP_DX, gy - ARRIVE_STEP_UP); // следующая плита над Шутом
+        // Второй плиты над Шутом больше нет (правка в чате 2026-09-10): она
+        // читалась как «дорога продолжается», игроки снова пытались прыгать.
+        // Экран предсказания = конец пути, одна плита, на неё пришли и всё.
         const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
         ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
         const fr = images.foolIdleFrames;

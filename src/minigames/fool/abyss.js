@@ -1,73 +1,46 @@
-// Пропасть — едва заметный пиксельный градиент у НИЖНЕГО края экрана
-// (BUILD-SPEC-03 задача 4; уточнено в чате 2026-08-29: «градиент внизу
-// экрана, не близко к платформам; градиент = плавный едва заметный
-// переход между цветами; большие пиксели, как появление предсказателя»).
+// Пропасть под дорогой — дизер-градиент у нижней кромки кадра + пиксельные
+// ОБЛАКА В ПРОПАСТИ (BUILD-SPEC-05 задача 4.4: облака внизу, не над
+// дорогой — «облака внизу, медленно плывущие, говорят „ты очень высоко“»).
 //
-// Не полосы, а СПЛОШНОЙ упорядоченный дизер крупными ячейками (как эффект
-// проявления оракула, `core/pixelReveal.js`): цвет непрерывно ползёт
-// через палитру пустоты сверху вниз, а матрица Bayer 4×4 решает для
-// каждой КРУПНОЙ ячейки, какой из двух соседних тонов взять. Переход
-// выходит плавным на глаз, но собран из больших пикселей. Антиалиаса нет.
+// Сам градиент — единый `core/voidGradient.js` (правка в чате 2026-09-10:
+// была копия здесь). Здесь только параметры пропасти и слои облаков.
 
-// Сверху (сливается с воздухом #111111) вниз к самому светлому тону
-// пустоты. Ярче #2E2E2E ничего — пропасть не спорит с дорогой и Шутом.
-const PALETTE = ['#111111', '#161616', '#1C1C1C', '#212121', '#252525', '#2A2A2A', '#2E2E2E'];
+import { drawVoidGradient } from '../../core/voidGradient.js';
 
-// Крупная ячейка дизера — 8 экранных px (4 арт-px), заметно крупнее
-// обычного пикселя, в духе проявления оракула (там cellSize 4 экранных).
-const CELL = 8;
+// Доля высоты экрана, с которой начинается градиент. НИЗКО — камера ведёт
+// плиту на ~0.45h, между дорогой и пропастью нужен широкий зазор воздуха.
+const ABYSS_TOP_FRAC = 0.80;
 
-// Доля высоты экрана, с которой начинается градиент. Держим НИЗКО —
-// камера ведёт текущую плиту на ~0.45h, а между дорогой и пропастью
-// должен быть широкий зазор чистого воздуха (правка в чате 2026-08-31:
-// пропасть была слишком близко к дороге).
-const TOP_FRAC = 0.80;
-
-// Матрица Bayer 4×4, порог 0..15 → 0..1 после /16.
-const BAYER = [
-  [0, 8, 2, 10],
-  [12, 4, 14, 6],
-  [3, 11, 1, 9],
-  [15, 7, 13, 5],
+// Слои облаков в полосе пропасти: доля высоты, скорость сноса (px/с),
+// тон (внутри «градаций пустоты», очень близко к фону — глубина, не
+// рисунок), блок-карта рядов, период повтора, фазовый сдвиг.
+const PIT_CELL = 8;
+const PIT_CLOUDS = [
+  { yFrac: 0.85, speed: 6,  tone: '#212121', period: 540, phase: 0,   rows: [4, 8, 5] },
+  { yFrac: 0.91, speed: 11, tone: '#252525', period: 470, phase: 220, rows: [3, 6, 9, 4] },
+  { yFrac: 0.96, speed: 17, tone: '#2A2A2A', period: 400, phase: 90,  rows: [2, 5, 3] },
 ];
 
-const BREATHE_AMP = 24;   // «дыхание» фазы градиента, экранных px
-const BREATHE_PERIOD = 7; // секунд
-
-/**
- * @param t  общее время сцены, сек — для «дыхания»
- */
 export function drawAbyss(ctx, w, h, t) {
-  const top = Math.round(h * TOP_FRAC / CELL) * CELL;
-  const span = h - top;
-  if (span <= 0) return;
+  drawVoidGradient(ctx, w, h, {
+    t,
+    topFrac: ABYSS_TOP_FRAC,
+    breatheAmp: 24,
+    breathePeriod: 7,
+  });
 
-  // «Дыхание»: фаза градиента медленно ползёт вверх-вниз. Округляем до
-  // целой ячейки, иначе край дрожит.
-  const breathe = Math.round(Math.sin((t / BREATHE_PERIOD) * Math.PI * 2) * BREATHE_AMP / CELL) * CELL;
-  const last = PALETTE.length - 1;
-
-  for (let cy = top, row = 0; cy < h; cy += CELL, row++) {
-    let p = (cy - top + breathe + CELL / 2) / span;
-    p = p < 0 ? 0 : p > 1 ? 1 : p;
-
-    const idx = p * last;
-    const lo = Math.floor(idx);
-    const hi = lo < last ? lo + 1 : last;
-    const frac = idx - lo;
-    const bh = Math.min(CELL, h - cy);
-
-    if (frac === 0 || lo === hi) {
-      ctx.fillStyle = PALETTE[lo];
-      ctx.fillRect(0, cy, w, bh);
-      continue;
-    }
-    const brow = BAYER[row & 3];
-    const loC = PALETTE[lo];
-    const hiC = PALETTE[hi];
-    for (let cx = 0, col = 0; cx < w; cx += CELL, col++) {
-      ctx.fillStyle = brow[col & 3] / 16 < frac ? hiC : loC;
-      ctx.fillRect(cx, cy, Math.min(CELL, w - cx), bh);
+  // Облака поверх градиента, внутри полосы пропасти. Разная скорость =
+  // параллакс; тон близок к фону = очень низкий контраст.
+  for (const L of PIT_CLOUDS) {
+    ctx.fillStyle = L.tone;
+    const y0 = Math.round(h * L.yFrac);
+    const base = (((L.phase - t * L.speed) % L.period) + L.period) % L.period;
+    for (let sx = base - L.period; sx < w + 100; sx += L.period) {
+      if (sx < -100) continue;
+      L.rows.forEach((cells, r) => {
+        const rowW = cells * PIT_CELL;
+        ctx.fillRect(Math.round(sx - rowW / 2), y0 + r * PIT_CELL, rowW, PIT_CELL);
+      });
     }
   }
 }

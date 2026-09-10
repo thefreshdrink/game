@@ -22,7 +22,7 @@ import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, PLATE_H,
-  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W, ARRIVE_SIDE_W, ARRIVE_STEP_UP, ARRIVE_STEP_DX,
+  ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
 
@@ -97,7 +97,7 @@ for (let i = 0; i < 26; i++) {
 // а не обрыв (правка 2026-08-29: «падение обрывистое, хочется красивого
 // полёта»).
 const FALL_V0 = 100;      // экранных px/с в начале и в конце
-const FALL_VPEAK = 820;   // на пике в середине
+const FALL_VPEAK = 480;   // на пике в середине (BUILD-SPEC-05 задача 5: 820→480, «падение перестаёт быть рывком»)
 const GHOST_W = 160;      // призрачная плита за краем (кратно 32), задача 5
 const ARRIVE_W = ARRIVE_MAIN_W; // плита прибытия — 256 (правка 2026-08-30: «поменьше»)
 
@@ -379,15 +379,11 @@ export function createLeapScreen({ input, images, goto }) {
     }
 
     // Основная плита — с 0.8 (осталось от полёта) до 1 за первые ~0.4 такта.
+    // Второй плиты НАД парой больше нет (правка в чате 2026-09-10): она
+    // читалась как «дорога продолжается» и люди снова пытались прыгнуть —
+    // прибытие должно ощущаться концом.
     const mainP = clamp01(0.8 + 0.2 * (p / 0.4));
     drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, PLATE_H, mainP, 4, 0.42, 0.4);
-
-    // Следующая плита — НАД парой, ступенькой вправо-вверх, проступает позже.
-    const upP = clamp01((p - 0.3) / 0.6);
-    if (upP > 0) {
-      drawPixelReveal(ctx, ghostStrip, groundX + gw - ARRIVE_STEP_DX, groundY - ARRIVE_STEP_UP,
-        ghostStrip.width, PLATE_H, upP, 4, 0.2, 1);
-    }
 
     // Пара: первые ~0.3 такта ещё во «влётном» спрайте у самой земли, потом
     // встаёт — Шут дышит, пёс садится, с коротким доседанием.
@@ -768,13 +764,9 @@ export function createLeapScreen({ input, images, goto }) {
       }
 
       const last = platforms[platforms.length - 1];
-      // Пиксельные облака — далёкий фон в пустом небе над дорогой (правка в
-      // чате 2026-08-31: занять пустое пространство, дать ориентир масштаба).
-      // За дорогой, тусклым тоном дальней детали, лёгкий параллакс.
-      drawClouds(ctx, w, h, camX, camY, t);
-      // Пропасть — едва заметный дизер-градиент у САМОГО низа кадра, далеко
-      // под дорогой (задача 4; правка в чате 2026-08-31: отодвинута ниже,
-      // «подманивание» после обрушения плиты убрано).
+      // Пропасть под дорогой: дизер-градиент у нижней кромки + пиксельные
+      // облака В ПРОПАСТИ, не над дорогой (BUILD-SPEC-05 задача 4.4,
+      // правка в чате 2026-09-10: «облака вернуть вниз»). Всё внутри abyss.js.
       drawAbyss(ctx, w, h, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       // Призрачное продолжение дороги за краем — ТА ЖЕ плита (тайлсет), не
@@ -969,42 +961,6 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0, f
   ctx.restore();
 }
 
-// Пиксельные облака (правка в чате 2026-08-31). Далёкий фон в небе над
-// дорогой — блочные силуэты тоном «дальней детали» #4A4A4A, без сглаживания.
-// Живут в world-x: параллакс ×0.26 от камеры + собственный медленный снос;
-// экранный y почти не ведётся за камерой (небо стоит). Форма — 4 ряда
-// блоков 8px, тапер кверху, чуть шире книзу — блочный силуэт, не овал.
-// Тайлятся с шагом CLOUD_PERIOD, каждое рисуется во всех видимых копиях.
-const CLOUD_CELL = 8;
-const CLOUD_PERIOD = 1200; // world-px между повторами набора облаков
-const CLOUDS = [
-  { bx: 60,   y: 84,  rows: [3, 6, 8, 5] },
-  { bx: 360,  y: 176, rows: [2, 5, 6, 4] },
-  { bx: 610,  y: 52,  rows: [4, 7, 9, 6] },
-  { bx: 900,  y: 212, rows: [2, 4, 5, 3] },
-  { bx: 1120, y: 128, rows: [3, 6, 7, 4] },
-];
-
-function drawClouds(ctx, w, h, camX, camY, t) {
-  ctx.fillStyle = '#4A4A4A';
-  const skyY = camY * 0.1; // чуть ведётся за камерой, но не скачет со ступенями
-  for (const c of CLOUDS) {
-    const drift = c.bx - camX * 0.26 - t * 5;
-    let base = ((drift % CLOUD_PERIOD) + CLOUD_PERIOD) % CLOUD_PERIOD;
-    for (let sx = base - CLOUD_PERIOD; sx < w + 120; sx += CLOUD_PERIOD) {
-      if (sx < -120) continue;
-      c.rows.forEach((cells, r) => {
-        const rowW = cells * CLOUD_CELL;
-        ctx.fillRect(
-          Math.round(sx - rowW / 2),
-          Math.round(c.y - skyY + r * CLOUD_CELL),
-          rowW, CLOUD_CELL,
-        );
-      });
-    }
-  }
-}
-
 // ── Визуал финального падения «сквозь миры» (правка в чате 2026-08-31) ──
 
 /** Фон полёта — МЯГКИЙ (правка в чате 2026-08-31): один спокойный дизер
@@ -1044,9 +1000,10 @@ function drawFallStars(ctx, w, h, scroll, t) {
   ctx.globalAlpha = 1;
 }
 
-/** Месяц (правка в чате 2026-08-31): БОЛЬШОЙ крупнопиксельный шар на фоне,
- * быстрое появление и уход, терминатор света/тени качается по фазе —
- * «словно шар вертится». Окно ~prog 0.14…0.44. */
+/** Месяц: крупнопиксельный шар в ВЕРХНЕЙ части кадра, быстрое появление и
+ * уход, терминатор света/тени качается по фазе — «словно шар вертится».
+ * Окно ~prog 0.14…0.44. Правка в чате 2026-09-10: меньше и выше, чтобы
+ * пара Шут+пёс его не загораживала. */
 function drawFallMoon(ctx, w, h, prog) {
   const P0 = 0.14, P1 = 0.44;
   if (prog < P0 || prog > P1) return;
@@ -1054,9 +1011,9 @@ function drawFallMoon(ctx, w, h, prog) {
   const a = clamp01(local / 0.14) * (1 - clamp01((local - 0.82) / 0.18));
   if (a <= 0) return;
   const CELL = 12;                                 // КРУПНЫЙ пиксель
-  const R = Math.round((Math.min(w, h) * 0.26) / CELL) * CELL;
+  const R = Math.round((Math.min(w, h) * 0.15) / CELL) * CELL;
   const cx = Math.round(w / 2 / CELL) * CELL;
-  const cy = Math.round((h * 0.34) / CELL) * CELL;
+  const cy = Math.round((h * 0.19) / CELL) * CELL;
   const spin = local * Math.PI * 3;               // несколько «оборотов» за окно
   const term = Math.cos(spin) * R;               // граница тени по x
   const litLeft = Math.cos(spin) >= 0;
@@ -1073,8 +1030,9 @@ function drawFallMoon(ctx, w, h, prog) {
   ctx.restore();
 }
 
-/** Солнце (правка в чате 2026-08-31): крупнопиксельный яркий диск с
- * вращающимися лучами-спицами. Окно ~prog 0.44…0.82, после месяца. */
+/** Солнце: крупнопиксельный яркий диск с вращающимися лучами. Окно ~prog
+ * 0.44…0.82, после месяца. Правка в чате 2026-09-10: меньше и выше —
+ * пара его не загораживает. */
 function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
   const P0 = 0.44, P1 = 0.82;
   if (prog < P0 || prog > P1) return;
@@ -1082,16 +1040,16 @@ function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
   const a = clamp01(local / 0.18) * (1 - clamp01((local - 0.85) / 0.15)) * alphaMul;
   if (a <= 0) return;
   const CELL = 10;
-  const R = Math.round((Math.min(w, h) * 0.16) / CELL) * CELL;
+  const R = Math.round((Math.min(w, h) * 0.10) / CELL) * CELL;
   const cx = Math.round(w / 2 / CELL) * CELL;
-  const cy = Math.round((h * 0.36) / CELL) * CELL;
+  const cy = Math.round((h * 0.20) / CELL) * CELL;
   ctx.save();
   ctx.globalAlpha = a;
   const rot = local * Math.PI * 0.8;
   ctx.fillStyle = '#808080';
   for (let i = 0; i < 12; i++) {
     const ang = rot + i * Math.PI / 6;
-    for (let rr = R + CELL * 2; rr < R + CELL * 6; rr += CELL) {
+    for (let rr = R + CELL * 1.5; rr < R + CELL * 4.5; rr += CELL) {
       ctx.fillRect(
         Math.round((cx + Math.cos(ang) * rr) / CELL) * CELL,
         Math.round((cy + Math.sin(ang) * rr) / CELL) * CELL,

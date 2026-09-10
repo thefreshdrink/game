@@ -355,7 +355,7 @@ export function createDeckScreen({ input, images, goto }) {
       // Фон-градиент с экрана 1: держится полным, пока Предсказатель
       // стягивается (ORACLE_CONCEAL), затем медленно гаснет за BG_FADE_OUT.
       const bgA = 1 - clamp01((t - ORACLE_CONCEAL) / BG_FADE_OUT);
-      drawVoidGradient(ctx, w, h, bgA, t);
+      drawVoidGradient(ctx, w, h, { alpha: bgA, t, topFrac: 0.54, maxLevel: 4 });
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);

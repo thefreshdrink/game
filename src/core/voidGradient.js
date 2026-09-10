@@ -1,33 +1,46 @@
-// Пиксельный градиент пустоты — тот же графический язык, что пропасть в
-// мини-игре Leap (`minigames/fool/abyss.js`): Bayer-дизер крупными
-// ячейками 8px, тона из «градаций пустоты» палитры, без сглаживания.
+// Пиксельный градиент пустоты — ЕДИНЫЙ источник (правка в чате 2026-09-10:
+// была копия в minigames/fool/abyss.js). Bayer-дизер крупными ячейками
+// 8px, тона из «градаций пустоты» палитры, без сглаживания: цвет ползёт
+// через палитру сверху вниз, матрица решает для каждой ячейки, какой из
+// двух соседних тонов взять. На глаз плавно, собрано из больших пикселей.
 //
-// Отдельный модуль, потому что фон общий для экрана 1 (question) и
-// экрана 2 (deck): он тянется между ними и медленно гаснет уже на deck,
-// после того как Предсказатель ушёл (правка в чате 2026-08-31). Общая
-// прозрачность (проявление / затухание) задаётся вызывающим через alpha.
+// Пропасть в мини-игре (abyss.js) — тонкая обёртка над этой функцией.
+// Экран 1 (question) и экран 2 (deck) зовут её напрямую с alpha для
+// проявления/затухания.
 
 const PALETTE = ['#111111', '#161616', '#1C1C1C', '#212121', '#252525', '#2A2A2A', '#2E2E2E'];
-const CELL = 8;             // крупная ячейка дизера, как в abyss.js
-const TOP_FRAC = 0.5;       // с какой доли высоты начинается градиент
+const CELL = 8; // крупная ячейка дизера, 4 арт-px
 const BAYER = [
   [0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5],
 ];
 
 /**
  * Рисует дизер-градиент пустоты снизу вверх.
- * @param alpha 0..1 — общая прозрачность (анимацию появления/ухода ведёт вызывающий)
- * @param t     сек — для едва заметного «дыхания» фазы
+ * @param opts.alpha         0..1 — общая прозрачность (анимацию ведёт вызывающий)
+ * @param opts.t             сек — для «дыхания» фазы
+ * @param opts.topFrac       с какой доли высоты начинается градиент
+ * @param opts.breatheAmp    амплитуда «дыхания», экранных px (0 — выключить)
+ * @param opts.breathePeriod период «дыхания», сек
+ * @param opts.maxLevel      верхний индекс палитры (кламп яркости; по умолчанию весь диапазон)
  */
-export function drawVoidGradient(ctx, w, h, alpha, t = 0) {
+export function drawVoidGradient(ctx, w, h, {
+  alpha = 1,
+  t = 0,
+  topFrac = 0.5,
+  breatheAmp = 16,
+  breathePeriod = 8,
+  maxLevel = PALETTE.length - 1,
+} = {}) {
   const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
   if (a <= 0) return;
-  const top = Math.round((h * TOP_FRAC) / CELL) * CELL;
+  const top = Math.round((h * topFrac) / CELL) * CELL;
   const span = h - top;
   if (span <= 0) return;
 
-  const breathe = Math.round((Math.sin((t / 8) * Math.PI * 2) * 16) / CELL) * CELL;
-  const last = PALETTE.length - 1;
+  const breathe = breatheAmp
+    ? Math.round((Math.sin((t / breathePeriod) * Math.PI * 2) * breatheAmp) / CELL) * CELL
+    : 0;
+  const last = Math.max(1, Math.min(PALETTE.length - 1, maxLevel));
 
   ctx.save();
   ctx.globalAlpha = a;

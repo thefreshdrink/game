@@ -228,7 +228,9 @@ export function createQuestionScreen({ input, images, goto }) {
       // сразу). Тот же фон тянется на экран 2 и гаснет там (см. deck.js).
       const bgStart = shortMode ? 0 : TEXT2_START;
       const bgA = clamp01((t - bgStart) / BG_FADE_DUR);
-      drawVoidGradient(ctx, w, h, bgA, t);
+      // Ниже и слабее, чем пропасть в мини-игре (BUILD-SPEC-05 задача 1):
+      // старт чуть ниже, яркость капнута на #252525 — не спорит с фигурой.
+      drawVoidGradient(ctx, w, h, { alpha: bgA, t, topFrac: 0.54, maxLevel: 4 });
 
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
       const marginX = Math.round(53 * scale);
