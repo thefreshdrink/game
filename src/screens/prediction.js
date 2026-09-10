@@ -115,9 +115,9 @@ export function createPredictionScreen({ input, images, goto }) {
         const gx = Math.round(w / 2 - gw / 2 - 28);
         const fcx = gx + Math.round(gw * 0.44);
         // «Другой мир»: солнце в верхнем углу, трава и кустик на плите
-        // (правка в чате 2026-09-10). Второй плиты над Шутом больше нет —
-        // конец пути, одна плита, на неё пришли и всё.
-        drawArrivalSun(ctx, w - 10, 24, t);
+        // (правка в чате 2026-09-10). Солнце проступает вместе с заголовком.
+        // Второй плиты над Шутом нет — конец пути, одна плита, пришли и всё.
+        drawArrivalSun(ctx, w - 6, 22, t, Math.min(1, t / 0.8));
         ctx.drawImage(groundMain, gx, gy);
         drawArrivalLife(ctx, gx, gw, gy);
         const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
@@ -181,6 +181,11 @@ export function createPredictionScreen({ input, images, goto }) {
         // подсвечивать нечего (в отличие от мигающей ›KEEP GOING и
         // перебора категорий).
         promptZone = textButtonZone(marginX, promptY, width, lineHeight);
+
+        // SHARE — пока НЕ активно (правка в чате 2026-09-10): затемнённая
+        // подпись-заглушка под ›ONE MORE QUESTION, логики шаринга ещё нет.
+        ctx.fillStyle = '#808080';
+        ctx.fillText('SHARE', marginX, promptY + lineHeight + Math.round(6 * scale));
       }
     },
   };

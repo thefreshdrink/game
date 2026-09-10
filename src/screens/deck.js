@@ -32,20 +32,19 @@ const CARD_COUNT = 20;
 // же высоте, будто это один непрерывный текст, а не новый экран.
 const OLD_TEXT = 'What is your question about?';
 const NEW_TITLE = 'The deck offers itself…';
-const SUBTITLE = 'PICK THE CARD. TRUST THE POOL.';
-// Вторая строка подписи — про РУКУ, а не про судьбу (BUILD-SPEC-05 2b.3).
-// Приглушённее, исчезает навсегда после первого касания веера.
-const DRAG_HINT = 'DRAG ACROSS THE DECK.';
+// Две строки подписи (правка в чате 2026-09-10): сначала про руку, потом
+// про доверие и выбор. Одинаковой насыщенности, чуть меньше кеглем.
+const SUBTITLE_LINES = ['DRAG ACROSS THE DECK.', 'TRUST THE POOL. PICK THE CARD'];
 
-// Волна-подсказка (BUILD-SPEC-05 2b.1): один раз после того как карты
-// улеглись, карты по очереди слева направо коротко поднимаются на своей
-// дуге и опускаются — «как под невидимым пальцем». Задний ряд ведёт чуть
-// раньше переднего, чтобы волна читалась как одна по обоим рядам, а не две.
-// Повтор через WAVE_HOLD, пока игрок не тронул веер.
-const WAVE_DUR = 0.62;   // сколько «горб» едет через весь веер, сек
+// Волна-подсказка (BUILD-SPEC-05 2b.1; правка в чате 2026-09-10: не
+// одновременно по двум рядам, а ПО ОЧЕРЕДИ — сперва задний ряд слева
+// направо, потом передний, — и медленнее/плавнее). Один раз после того
+// как карты улеглись; повтор через WAVE_HOLD, пока игрок не тронул веер.
+const WAVE_DUR = 0.95;   // проход волны по ОДНОМУ ряду, сек
+const WAVE_GAP = 0.18;   // пауза между рядами, сек
 const WAVE_HOLD = 5.0;   // покой перед повтором, сек
-const WAVE_LIFT = 26;    // радиальный подъём на гребне, px
-const WAVE_BACK_LEAD = 0.06; // насколько задний ряд опережает передний (в долях веера)
+const WAVE_LIFT = 24;    // радиальный подъём на гребне, px
+const WAVE_SPAN = 0.17;  // ширина «горба» в долях веера — шире = плавнее
 
 const OLD_FADE_OUT = 0.5;
 const TITLE_START = OLD_FADE_OUT; // новый текст ждёт, пока старый погаснет — без нахлёста
@@ -371,7 +370,7 @@ export function createDeckScreen({ input, images, goto }) {
       // дальше повтор каждые WAVE_HOLD, пока игрок не тронул веер.
       if (cardsSettled && !firstTouch && !selected) {
         if (waveStart < 0) waveStart = t + 0.4;
-        else if (t - waveStart > WAVE_DUR + WAVE_HOLD) waveStart = t;
+        else if (t - waveStart > WAVE_DUR * 2 + WAVE_GAP + WAVE_HOLD) waveStart = t;
       }
 
       cards.forEach((c, i) => {
@@ -423,32 +422,27 @@ export function createDeckScreen({ input, images, goto }) {
         for (let i = 0; i < shown; i++) ctx.fillText(words[i].text, words[i].x, words[i].y);
       }
 
-      // Подпись — авто-фит по ширине (BUILD-SPEC-02, задача 3): на узких
-      // экранах одной строкой на базовом кегле не влезала и обрезалась.
-      // Уменьшаем кегль шагами до 0.8 от базового; если и это не помогло —
-      // переносим на две строки (wrapLines).
-      const subtitleFit = fitLabel(ctx, SUBTITLE, textMaxWidth, scale);
+      // Подпись — две строки, одинаковой насыщенности, чуть меньше кеглем
+      // (правка в чате 2026-09-10). Первая — про руку («проведи по
+      // колоде»), вторая — про доверие и выбор. Обе держатся, мигают
+      // вместе; авто-фит по ширине у каждой отдельно.
+      const subScale = scale * 0.9;
+      const subLines = SUBTITLE_LINES.map((s) => fitLabel(ctx, s, textMaxWidth, subScale));
       const subtitleFadeIn = clamp01((t - SUBTITLE_START) / SUBTITLE_FADE);
       if (subtitleFadeIn > 0) {
-        // Мигать начинаем только после фейд-ина, не поверх него (правка
-        // в чате: подпись «не читается», нужно мигание, чтобы удерживать
-        // взгляд, — но не в момент, когда она и так проявляется).
         const subtitleAlpha = subtitleFadeIn >= 1
           ? blinkAlpha(t - (SUBTITLE_START + SUBTITLE_FADE))
           : subtitleFadeIn;
-        setFont(ctx, 'menuOption', subtitleFit.scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = subtitleAlpha;
-        subtitleFit.lines.forEach((line, i) => {
-          ctx.fillText(line, marginX, headerBottomY + i * subtitleFit.lineHeight);
+        let subY = headerBottomY;
+        subLines.forEach((fit) => {
+          setFont(ctx, 'menuOption', fit.scale);
+          fit.lines.forEach((line) => {
+            ctx.fillText(line, marginX, subY);
+            subY += fit.lineHeight;
+          });
         });
-        // Вторая строка — про руку (BUILD-SPEC-05 2b.3): тем же кеглем,
-        // приглушённее, исчезает навсегда после первого касания веера.
-        if (!firstTouch) {
-          const hintY = headerBottomY + subtitleFit.lines.length * subtitleFit.lineHeight;
-          ctx.globalAlpha = subtitleAlpha * 0.5;
-          ctx.fillText(DRAG_HINT, marginX, hintY);
-        }
         ctx.globalAlpha = 1;
       }
       // Оракул уходит обратно в темноту — тот же слой, что и на экране 1.
@@ -535,20 +529,23 @@ export function createDeckScreen({ input, images, goto }) {
       // неё — так и должно быть (правка в чате: «она должна быть закрыта
       // всё равно спереди лежащей картой»).
       const stackRadius = FAN_RADIUS - CASCADE_STACK_OFFSET;
-      // Позиция гребня волны: едет от -0.1 до 1.1 по вееру за WAVE_DUR.
-      const waveActive = waveStart >= 0 && t >= waveStart && (t - waveStart) < WAVE_DUR + 0.1 && !firstTouch;
-      const waveHead = waveActive ? ((t - waveStart) / WAVE_DUR) * 1.2 - 0.1 : -99;
+      // Волна идёт по очереди: задний ряд (row 0) слева направо за WAVE_DUR,
+      // пауза WAVE_GAP, потом передний ряд (row 1). Плавный широкий горб.
+      const waveTotal = WAVE_DUR * 2 + WAVE_GAP;
+      const waveLocal = waveStart >= 0 ? t - waveStart : -99;
+      const waveActive = !firstTouch && waveLocal >= 0 && waveLocal < waveTotal + 0.1;
       cards.forEach((c, i) => {
         const elapsed = t - c.delay;
         let alpha = 1;
-        // Волна: узкий плавный горб радиального подъёма, бежит слева направо;
-        // задний ряд опережает передний на WAVE_BACK_LEAD — читается одной
-        // волной по обоим рядам (BUILD-SPEC-05 2b.1).
         let waveLift = 0;
         if (waveActive) {
-          const fxEff = c.fx + (c.row === 0 ? -WAVE_BACK_LEAD : 0);
-          const dd = Math.abs(waveHead - fxEff);
-          if (dd < 0.13) waveLift = Math.cos((dd / 0.13) * Math.PI * 0.5) * WAVE_LIFT;
+          const rowStart = c.row === 0 ? 0 : WAVE_DUR + WAVE_GAP;
+          const rp = (waveLocal - rowStart) / WAVE_DUR; // 0..1 проход по этому ряду
+          if (rp > -0.05 && rp < 1.08) {
+            const head = rp * 1.2 - 0.1; // от -0.1 до 1.1 по вееру
+            const dd = Math.abs(head - c.fx);
+            if (dd < WAVE_SPAN) waveLift = Math.cos((dd / WAVE_SPAN) * Math.PI * 0.5) * WAVE_LIFT;
+          }
         }
         let radius = c.radius + c.spreadR + waveLift;
         let angle = c.angle;

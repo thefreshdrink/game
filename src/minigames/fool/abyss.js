@@ -12,13 +12,14 @@ import { drawVoidGradient } from '../../core/voidGradient.js';
 const ABYSS_TOP_FRAC = 0.80;
 
 // Слои облаков в полосе пропасти: доля высоты, скорость сноса (px/с),
-// тон (внутри «градаций пустоты», очень близко к фону — глубина, не
-// рисунок), блок-карта рядов, период повтора, фазовый сдвиг.
+// тон, блок-карта рядов, период повтора, фазовый сдвиг. Правка в чате
+// 2026-09-10: чуть светлее (#2E2E2E / #4A4A4A — иначе сливались с
+// градиентом), мельче и изящнее, ближе к платформам (yFrac меньше).
 const PIT_CELL = 8;
 const PIT_CLOUDS = [
-  { yFrac: 0.85, speed: 6,  tone: '#212121', period: 540, phase: 0,   rows: [4, 8, 5] },
-  { yFrac: 0.91, speed: 11, tone: '#252525', period: 470, phase: 220, rows: [3, 6, 9, 4] },
-  { yFrac: 0.96, speed: 17, tone: '#2A2A2A', period: 400, phase: 90,  rows: [2, 5, 3] },
+  { yFrac: 0.80, speed: 5,  tone: '#2E2E2E', period: 380, phase: 0,   rows: [3, 5, 3] },
+  { yFrac: 0.87, speed: 9,  tone: '#4A4A4A', period: 320, phase: 160, rows: [2, 4, 2] },
+  { yFrac: 0.93, speed: 14, tone: '#4A4A4A', period: 280, phase: 70,  rows: [2, 3] },
 ];
 
 export function drawAbyss(ctx, w, h, t) {

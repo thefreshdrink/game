@@ -87,7 +87,7 @@ export function createDrawScreen({ input, images, goto }) {
         setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = blinkAlpha(idleT);
-        ctx.fillText('CLICK TO DRAW', marginX, ty + 2 * titleLH + Math.round(9 * scale));
+        ctx.fillText('TAP THE CARD', marginX, ty + 2 * titleLH + Math.round(9 * scale));
         ctx.globalAlpha = 1;
       }
 
@@ -125,17 +125,26 @@ export function createDrawScreen({ input, images, goto }) {
         ctx.restore();
       }
 
-      // Знак тапа — пиксельная искра в центре рубашки, проступает через
-      // STAR_DELAY после появления карты, пульсирует, гаснет с началом
-      // переворота (BUILD-SPEC-05 3b).
+      // Знак тапа — пиксельная искра на рубашке, ЧУТЬ ВЫШЕ центра (правка
+      // в чате 2026-09-10: ровно посередине смотрелось тупо). Лучи
+      // «расходятся» — длина по циклу растёт и убывает, вертикальные
+      // длиннее. Проступает через STAR_DELAY, гаснет с началом переворота.
+      const starCy = box.y + Math.round(box.h * 0.40);
       let starA = 0;
+      let grow = 1;
       if (state === 'waiting' && idleT > STAR_DELAY) {
-        const pulse = 0.3 + 0.7 * (0.5 - 0.5 * Math.cos((idleT - STAR_DELAY) / STAR_PERIOD * Math.PI * 2));
+        const ph = (idleT - STAR_DELAY) / STAR_PERIOD;
+        const pulse = 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2));
+        grow = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
         starA = Math.min(1, (idleT - STAR_DELAY) / 0.4) * pulse;
       } else if (state === 'flipping') {
         starA = Math.max(0, 1 - t / STAR_FADE) * 0.7;
       }
-      if (starA > 0) drawTapStar(ctx, cx, cy, starA);
+      if (starA > 0) {
+        const reachV = 5 + Math.round(grow * 7);  // 5..12 арт-px
+        const reachH = 4 + Math.round(grow * 4);  // 4..8
+        drawTapStar(ctx, cx, starCy, starA, reachV, reachH);
+      }
     },
   };
 }

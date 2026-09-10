@@ -316,15 +316,15 @@ export function createLeapScreen({ input, images, goto }) {
     if (state === 'fall') {
       const prog = clamp01(stateT / FALL_DUR);
 
-      // Кадры падения (правка в чате 2026-08-31): мягкий фон + звёзды, а
-      // по фазе — молния (открывает) → месяц (крупный, вертится) → солнце
-      // → облака поверх солнца. Пласты-миры и жёсткая смедена убраны.
+      // Кадры падения (правка в чате 2026-09-10): фон — дизер, где ОТТЕНКИ
+      // ПУСТОТЫ сменяются по фазе, «мир перетекает в другой мир» (вернули
+      // прежнее поведение — так было лучше). По фазе: молния открывает →
+      // месяц (крупный, вертится) → солнце. Облака в конце падения убраны.
       drawFallWorld(ctx, w, h, prog, fallScroll);
       drawFallStars(ctx, w, h, fallScroll, t);
       drawFallBolts(ctx, w, h, prog, t);
       drawFallMoon(ctx, w, h, prog);
       drawFallSun(ctx, w, h, prog);
-      drawFallClouds(ctx, w, h, prog);
 
       // Плита, с которой шагнул — уходит вверх и растворяется.
       const enterRaw = clamp01(stateT / 0.45);
@@ -372,7 +372,8 @@ export function createLeapScreen({ input, images, goto }) {
     ctx.fillRect(0, 0, w, h);
     const p = clamp01(stateT / ARRIVE_DUR);
 
-    drawArrivalSun(ctx, w * 0.75, h * 0.20, t, clamp01(p / 0.5));
+    // Солнце проступает ПОСЛЕ того как плита построилась (правка в чате 2026-09-10).
+    drawArrivalSun(ctx, w * 0.78, h * 0.19, t, clamp01((p - 0.35) / 0.4));
 
     // Основная плита — с 0.8 (осталось от полёта) до 1 за первые ~0.4 такта.
     const mainP = clamp01(0.8 + 0.2 * (p / 0.4));
@@ -759,9 +760,9 @@ export function createLeapScreen({ input, images, goto }) {
       }
 
       const last = platforms[platforms.length - 1];
-      // Пропасть под дорогой: дизер-градиент у нижней кромки + пиксельные
-      // облака В ПРОПАСТИ, не над дорогой (BUILD-SPEC-05 задача 4.4,
-      // правка в чате 2026-09-10: «облака вернуть вниз»). Всё внутри abyss.js.
+      // Дождевые облака наверху (там идёт морось) + пропасть с мелкими
+      // облачками внизу у самых платформ (abyss.js). Правка в чате 2026-09-10.
+      drawRainClouds(ctx, w, h, camX, t);
       drawAbyss(ctx, w, h, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       // Призрачное продолжение дороги за краем — ТА ЖЕ плита (тайлсет), не
@@ -962,6 +963,42 @@ function drawPlayer(ctx, images, p, camX, camY, state, t, standPlat, lean = 0, f
   ctx.restore();
 }
 
+// Дождевые облака НАВЕРХУ (правка в чате 2026-09-10: «там же дождь идёт»).
+// Крупные блочные силуэты группами, тон #4A4A4A с более тёмным низом и
+// светлой кромкой сверху — объёмнее прежних; медленный параллакс.
+const RAIN_CELL = 8;
+const RAIN_CLOUDS = [
+  // group A
+  { bx: 40,   y: 40,  blocks: [[0, 0, 7, 3], [5, -1, 6, 3], [10, 1, 5, 2]] },
+  { bx: 150,  y: 96,  blocks: [[0, 0, 5, 2], [3, -1, 5, 3]] },
+  // group B
+  { bx: 620,  y: 30,  blocks: [[0, 0, 8, 3], [6, 1, 6, 2], [11, -1, 5, 3]] },
+  { bx: 760,  y: 110, blocks: [[0, 0, 5, 2], [4, 0, 6, 3]] },
+  // group C
+  { bx: 1180, y: 56,  blocks: [[0, 0, 7, 3], [5, -1, 6, 2]] },
+];
+const RAIN_PERIOD = 1500;
+
+function drawRainClouds(ctx, w, h, camX, t) {
+  for (const c of RAIN_CLOUDS) {
+    const drift = c.bx - camX * 0.18 - t * 3;
+    const base = ((drift % RAIN_PERIOD) + RAIN_PERIOD) % RAIN_PERIOD;
+    for (let sx = base - RAIN_PERIOD; sx < w + 160; sx += RAIN_PERIOD) {
+      if (sx < -160) continue;
+      for (const [ox, oy, bw, bh] of c.blocks) {
+        const x = Math.round(sx + ox * RAIN_CELL);
+        const y = Math.round(c.y + oy * RAIN_CELL);
+        ctx.fillStyle = '#4A4A4A';
+        ctx.fillRect(x, y, bw * RAIN_CELL, bh * RAIN_CELL);
+        ctx.fillStyle = '#2E2E2E';                       // тёмный низ
+        ctx.fillRect(x, y + (bh - 1) * RAIN_CELL, bw * RAIN_CELL, RAIN_CELL);
+        ctx.fillStyle = '#808080';                       // светлая кромка сверху
+        ctx.fillRect(x + RAIN_CELL, y, (bw - 2) * RAIN_CELL, 2);
+      }
+    }
+  }
+}
+
 // Моросящий дождик (правка в чате 2026-09-10) — редкие короткие
 // диагональные штрихи тоном дальней детали, низкий контраст, падают с
 // лёгким ветром и зациклены по кадру. Экранное пространство, не world:
@@ -995,28 +1032,40 @@ function drawDrizzle(ctx, w, h, t, camX) {
   ctx.restore();
 }
 
-// ── Визуал финального падения «сквозь миры» (правка в чате 2026-08-31) ──
+// ── Визуал финального падения «сквозь миры» ──
 
-/** Фон полёта — МЯГКИЙ (правка в чате 2026-08-31): один спокойный дизер
- * двумя близкими тонами тьмы, к середине едва светлеет и обратно. Без
- * вспышек и резкой смены миров — «кадры» несут месяц/солнце, не фон. */
+// Пары тонов «миров», через которые падаешь (правка в чате 2026-09-10:
+// вернули смену оттенков — «так было лучше»). Все — из «градаций
+// пустоты» палитры. Тьма → чуть светлеет к середине → снова к тьме.
+const FALL_WORLDS = [
+  ['#000000', '#161616'],
+  ['#161616', '#1C1C1C'],
+  ['#1C1C1C', '#252525'],
+  ['#212121', '#2E2E2E'],
+  ['#161616', '#212121'],
+  ['#000000', '#161616'],
+];
+
+/** Фон полёта — Bayer-дизер, где ОТТЕНКИ сменяются по фазе: текущий мир
+ * плавно «перетекает» в следующий (диссолвом по порогу Bayer, без
+ * вспышек и резкого шага). Узор ползёт вверх вместе с fallScroll. */
 function drawFallWorld(ctx, w, h, prog, scroll) {
+  const N = FALL_WORLDS.length;
+  const wf = clamp01(prog) * (N - 1);
+  const wi = Math.min(N - 1, Math.floor(wf));
+  const frac = wf - wi;               // 0..1 — доля перехода в следующий мир
+  const cur = FALL_WORLDS[wi];
+  const nxt = FALL_WORLDS[Math.min(N - 1, wi + 1)];
   const CELL = 8;
   const yoff = ((Math.round(scroll * 0.4) % CELL) + CELL) % CELL;
   for (let cy = -CELL + yoff, row = 0; cy < h; cy += CELL, row++) {
     const brow = FALL_BAYER[((row % 4) + 4) % 4];
     for (let cx = 0, col = 0; cx < w; cx += CELL, col++) {
-      ctx.fillStyle = brow[col & 3] / 16 < 0.5 ? '#000000' : '#161616';
+      const thr = brow[col & 3] / 16;
+      const pair = thr < frac ? nxt : cur;  // диссолв: чем дальше frac, тем больше ячеек из nxt
+      ctx.fillStyle = thr < 0.5 ? pair[0] : pair[1];
       ctx.fillRect(cx, cy, CELL, CELL);
     }
-  }
-  const swell = Math.sin(clamp01(prog) * Math.PI); // 0→1→0, плавно
-  if (swell > 0.02) {
-    ctx.save();
-    ctx.globalAlpha = 0.14 * swell;
-    ctx.fillStyle = '#2E2E2E';
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
   }
 }
 
@@ -1103,31 +1152,6 @@ function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
   ctx.restore();
 }
 
-/** Облака в финале — блочные силуэты въезжают с боков и оседают в нижней
- * трети поверх солнца (правка в чате 2026-08-31). Окно prog 0.68…1. */
-function drawFallClouds(ctx, w, h, prog, alphaMul = 1) {
-  const P0 = 0.68;
-  if (prog < P0) return;
-  const local = clamp01((prog - P0) / (1 - P0));
-  const ease = local * local * (3 - 2 * local);
-  const CELL = 8;
-  const defs = [
-    { fromX: -180, toX: w * 0.24, y: h * 0.60, rows: [3, 6, 8, 5] },
-    { fromX: w + 200, toX: w * 0.74, y: h * 0.50, rows: [2, 5, 6, 4] },
-    { fromX: -260, toX: w * 0.52, y: h * 0.70, rows: [4, 7, 9, 6] },
-  ];
-  ctx.save();
-  ctx.globalAlpha = clamp01(local / 0.3) * alphaMul;
-  ctx.fillStyle = '#4A4A4A';
-  for (const d of defs) {
-    const x = d.fromX + (d.toX - d.fromX) * ease;
-    d.rows.forEach((cells, r) => {
-      const rowW = cells * CELL;
-      ctx.fillRect(Math.round(x - rowW / 2), Math.round(d.y + r * CELL), rowW, CELL);
-    });
-  }
-  ctx.restore();
-}
 
 /** Молния — открывает падение (правка в чате 2026-08-31: «сначала ударяет
  * молния»). Два коротких удара в первые ~0.1 prog. Ломаная сверху вниз:

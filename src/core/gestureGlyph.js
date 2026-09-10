@@ -96,11 +96,13 @@ export function drawSwipeTick(ctx, cx, cy, alpha = 1, phase = 0) {
   ctx.restore();
 }
 
-/** Знак тапа по карте (экран 3, BUILD-SPEC-05 задача 3b) — четырёхлучевая
- * пиксельная искра из целых арт-пикселей (ячейка 2 экранных px),
- * акцентным #EBA331. Пульс задаёт вызывающий через `alpha`. Лучи с
- * пропуском — «искра», не крест. Центр (cx, cy) в экранных px. */
-export function drawTapStar(ctx, cx, cy, alpha = 1, reach = 7) {
+/** Знак тапа по карте (экран 3, BUILD-SPEC-05 задача 3b; правка в чате
+ * 2026-09-10: вертикальные лучи длиннее горизонтальных, длина лучей
+ * задаётся вызывающим и анимируется — «расходятся постепенно»).
+ * Четырёхлучевая пиксельная искра целыми арт-пикселями (ячейка 2 экранных
+ * px), акцентным #EBA331. Через один шаг к концу — искристость, не крест.
+ * Центр (cx, cy) в экранных px. */
+export function drawTapStar(ctx, cx, cy, alpha = 1, reachV = 9, reachH = 6) {
   const acx = Math.round(cx / 2);
   const acy = Math.round(cy / 2);
   ctx.save();
@@ -110,13 +112,17 @@ export function drawTapStar(ctx, cx, cy, alpha = 1, reach = 7) {
   cell(ctx, acx + 1, acy, FILL);
   cell(ctx, acx, acy + 1, FILL);
   cell(ctx, acx + 1, acy + 1, FILL);
-  // Четыре луча; чётные шаги дальше третьего пропускаем — искристость.
-  for (let d = 2; d <= reach; d++) {
+  // Вертикальные лучи — длиннее.
+  for (let d = 2; d <= reachV; d++) {
     if (d > 3 && d % 2 === 0) continue;
     cell(ctx, acx, acy - d, FILL);
     cell(ctx, acx + 1, acy - d, FILL);
     cell(ctx, acx, acy + 1 + d, FILL);
     cell(ctx, acx + 1, acy + 1 + d, FILL);
+  }
+  // Горизонтальные лучи — короче.
+  for (let d = 2; d <= reachH; d++) {
+    if (d > 3 && d % 2 === 0) continue;
     cell(ctx, acx - d, acy, FILL);
     cell(ctx, acx - d, acy + 1, FILL);
     cell(ctx, acx + 1 + d, acy, FILL);

@@ -31,16 +31,17 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
     }
   }
 
-  // лучи
+  // лучи — длинные / короткие через один, к концу разрежаются (правка в
+  // чате 2026-09-10: длиннее)
   const rot = t * 0.15;
   ctx.fillStyle = '#808080';
   for (let k = 0; k < 16; k++) {
     const ang = rot + (k * Math.PI) / 8;
     const long = k % 2 === 0;
     const start = R + C * 2;
-    const len = long ? C * 8 : C * 3;
+    const len = long ? C * 12 : C * 4;
     for (let rr = start, step = 0; rr < start + len; rr += C, step++) {
-      if (rr > start + len * 0.5 && step % 2 === 1) continue; // к концу через одну
+      if (rr > start + len * 0.45 && step % 2 === 1) continue; // к концу через одну
       const px = acx + Math.round((Math.cos(ang) * rr) / C) * C;
       const py = acy + Math.round((Math.sin(ang) * rr) / C) * C;
       ctx.fillRect(px, py, C, C);
