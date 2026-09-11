@@ -186,10 +186,14 @@ export function createPredictionScreen({ input, images, goto }) {
         // перебора категорий).
         promptZone = textButtonZone(marginX, promptY, width, lineHeight);
 
-        // SHARE — пока НЕ активно (правка в чате 2026-09-10): затемнённая
-        // подпись-заглушка под ›ONE MORE QUESTION, логики шаринга ещё нет.
-        ctx.fillStyle = '#808080';
-        ctx.fillText('SHARE', marginX, promptY + lineHeight + Math.round(6 * scale));
+        // SHARE — пока НЕ активно, но правка в чате 2026-09-11: тот же
+        // акцент и та же «›»-галочка, что у ›ONE MORE QUESTION (не серая
+        // заглушка), только притушенный альфой — читается как «кнопка того
+        // же рода», не разжалованная в текстуру. Логики шаринга ещё нет.
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#EBA331';
+        ctx.fillText('›SHARE', marginX, promptY + lineHeight + Math.round(6 * scale));
+        ctx.globalAlpha = 1;
       }
     },
   };

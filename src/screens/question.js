@@ -25,11 +25,10 @@ const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
 // Без пальца/курсора на экране пункты сами по очереди загораются —
 // динамика, о которой просили в чате. Резкое переключение, без fade
-// (тот же стиль, что и у точек — «плавно» не понравилось). Но это
-// ХОЛОСТОЙ перебор: акцент в полсилы (globalAlpha 0.55), полный акцент
-// только под пальцем или курсором (BUILD-SPEC-03 задача 9).
+// (тот же стиль, что и у точек — «плавно» не понравилось). Холостой
+// перебор полным акцентом (BUILD-SPEC-03 задача 9 сажала его в полсилы —
+// отменено правкой в чате 2026-09-11, тускло читалось).
 const MENU_ITEM_ON = 0.8;
-const IDLE_CYCLE_ALPHA = 0.55;
 
 // Тайминги интро, секунды.
 //
@@ -316,19 +315,15 @@ export function createQuestionScreen({ input, images, goto }) {
         const autoIndex = t >= allShownT
           ? Math.floor((t - allShownT) / MENU_ITEM_ON) % items.length
           : null;
-        // Приоритет: палец > курсор > холостой перебор. Первые два — полный
-        // акцент; перебор — акцент в полсилы (задача 9).
+        // Приоритет: палец > курсор > холостой перебор — все три полным
+        // акцентом (правка в чате 2026-09-11: перебор в полсилы читался
+        // тускло, отменяет притушенный акцент из задачи 9).
         const active = pressedIndex !== null ? pressedIndex : hoverIndex;
         items.forEach((it, i) => {
           if (t < optionsStart + i * OPTION_ITEM_STAGGER) return;
-          if (i === active) {
+          if (i === active || (active === null && i === autoIndex)) {
             ctx.fillStyle = '#EBA331';
             ctx.fillText(it.label, it.x, it.y);
-          } else if (active === null && i === autoIndex) {
-            ctx.fillStyle = '#EBA331';
-            ctx.globalAlpha = IDLE_CYCLE_ALPHA;
-            ctx.fillText(it.label, it.x, it.y);
-            ctx.globalAlpha = 1;
           } else {
             ctx.fillStyle = '#FFFFFF';
             ctx.fillText(it.label, it.x, it.y);

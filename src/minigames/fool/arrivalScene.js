@@ -90,29 +90,6 @@ export function drawArrivalBush(ctx, x, groundY, a = 1) {
   ctx.restore();
 }
 
-/** Цветочки — светло-серые (правка в чате 2026-09-10: НЕ жёлтый акцент,
- * канон #EBA331 держим). Стебель + пять лепестков + светлая серединка. */
-export function drawArrivalFlowers(ctx, plateX, plateW, groundY, a = 1) {
-  if (a <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, a));
-  for (let i = 0, fx = plateX + 26; fx < plateX + plateW - 26; fx += 46, i++) {
-    const h = 9 + (i % 2) * 3;
-    ctx.fillStyle = '#4A4A4A';                 // стебель
-    ctx.fillRect(fx, groundY - h, 2, h);
-    const cx = fx + 1;
-    const cy = groundY - h - 3;
-    ctx.fillStyle = '#808080';                 // лепестки
-    ctx.fillRect(cx - 4, cy, 3, 2);
-    ctx.fillRect(cx + 2, cy, 3, 2);
-    ctx.fillRect(cx - 1, cy - 3, 2, 3);
-    ctx.fillRect(cx - 1, cy + 2, 2, 3);
-    ctx.fillStyle = '#B8B8B8';                 // серединка
-    ctx.fillRect(cx - 1, cy, 2, 2);
-  }
-  ctx.restore();
-}
-
 /** Лесенка из блоков вверх-вправо за правым краем плиты — «дальше будет
  * рост» (правка в чате 2026-09-10). Каменные тона тайлсета дороги. */
 export function drawArrivalStairs(ctx, x0, groundY, a = 1) {
@@ -132,10 +109,10 @@ export function drawArrivalStairs(ctx, x0, groundY, a = 1) {
   ctx.restore();
 }
 
-/** Трава + цветочки + кустик на плите, и лесенка-рост за её правым краем. */
+/** Трава + кустик на плите, и лесенка-рост за её правым краем. Цветочки
+ * были здесь (BUILD-SPEC-05/2026-09-10) — убраны правкой в чате 2026-09-11. */
 export function drawArrivalLife(ctx, plateX, plateW, groundY, a = 1) {
   drawArrivalGrass(ctx, plateX, plateW, groundY, a);
-  drawArrivalFlowers(ctx, plateX, plateW, groundY, a);
   drawArrivalBush(ctx, plateX + plateW - 44, groundY, a);
   drawArrivalStairs(ctx, plateX + plateW, groundY, a);
 }
