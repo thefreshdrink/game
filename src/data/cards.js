@@ -120,8 +120,22 @@ export const ART_BY_NUMERAL = Object.fromEntries(
 
 export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
 
-/** Карты, которые реально играются в текущей сборке. */
+/** Карты, которые реально ПРОХОДЯТСЯ: у них есть своя сцена мини-игры.
+ * У Башни `minigame: 'release'`, сцены нет — поэтому её здесь нет. */
 export const PLAYABLE = ['fool'];
+
+/** Карта для выдачи на экране 2. Берёт любую, у которой есть запись в банке
+ * (портрет, имя, номер, три текста) — список растёт сам по мере наполнения
+ * CARDS, отдельный перечень вести не надо.
+ *
+ * ВРЕМЕННО: выпавшая карта показывается и отдаёт своё предсказание, но
+ * дорога у всех одна — `reveal.js` жёстко уводит в 'leap'. Когда появятся
+ * остальные сцены, там встанет `goto(card.minigame)`, и выбор здесь можно
+ * будет сузить до PLAYABLE. */
+export function pickCardId() {
+  const ids = Object.keys(CARDS);
+  return ids[Math.floor(Math.random() * ids.length)];
+}
 
 export function getReading(cardId, category) {
   const card = CARDS[cardId];
