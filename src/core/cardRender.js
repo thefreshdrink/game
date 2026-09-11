@@ -28,30 +28,18 @@ import { ART_BY_NUMERAL } from '../data/cards.js';
 export const CARD_W = 224;
 export const CARD_H = 384;
 
-// Тело карты — «дыра в воздухе», как плиты дороги (BUILD-SPEC-05 2a/3a).
-// У рубашки и рамки прозрачный фон (только линии — ~83% пикселей PNG
-// прозрачны), поэтому цвет подложки полностью определяет то, что видно.
-// Сплошной #000000 (вариант A BUILD-SPEC-05) на живом проходе читался
-// плоско («карты чёрные это не оч» — правка в чате 2026-09-11). Пробуем
-// вариант B из того же мокапа (mockups.html): крупная шашечка в два тона
-// внутри чёрного, ячейка 16px (не мельче — иначе шумит на пиксель-арте).
-// Раньше эта заливка была продублирована в трёх местах здесь плюс отдельно
-// в deck.js — теперь один общий хелпер на все четыре.
-const CARD_CHECKER_CELL = 16;
+// Тело карты — подложка под рубашку и рамку, у которых прозрачный фон
+// (только линии — ~83% пикселей PNG прозрачны), поэтому цвет подложки
+// полностью определяет то, что видно. История: воздух #111111 (карта
+// сливалась с фоном) → сплошной #000000, «дыра в воздухе», как плиты
+// дороги (BUILD-SPEC-05 2a/3a) → шашечка в два тона, вариант B из того же
+// мокапа (тоже не понравилась — «шашечка не оч»). Правка в чате
+// 2026-09-11: назад к воздуху #111111, сознательно — на этот раз не
+// забытый баг, а выбор. Раньше эта заливка была продублирована в трёх
+// местах здесь плюс отдельно в deck.js — один общий хелпер на все четыре.
 export function fillCardBody(ctx, x, y, w, h) {
-  const rx = Math.round(x);
-  const ry = Math.round(y);
-  const rw = Math.round(w);
-  const rh = Math.round(h);
-  for (let iy = 0; iy < rh; iy += CARD_CHECKER_CELL) {
-    const ch = Math.min(CARD_CHECKER_CELL, rh - iy);
-    for (let ix = 0; ix < rw; ix += CARD_CHECKER_CELL) {
-      const cw = Math.min(CARD_CHECKER_CELL, rw - ix);
-      const odd = ((ix / CARD_CHECKER_CELL) + (iy / CARD_CHECKER_CELL)) & 1;
-      ctx.fillStyle = odd ? '#161616' : '#000000';
-      ctx.fillRect(rx + ix, ry + iy, cw, ch);
-    }
-  }
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
 export function drawCardBack(ctx, images, x, y, w, h) {
