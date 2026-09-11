@@ -18,7 +18,7 @@ import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
 } from '../core/oracle.js';
 import { pickCardId } from '../data/cards.js';
-import { CARD_W, CARD_H } from '../core/cardRender.js';
+import { CARD_W, CARD_H, fillCardBody } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { easeInOutQuad } from '../core/ease.js';
 
@@ -48,9 +48,12 @@ const WAVE_LIFT = 24;    // радиальный подъём на гребне,
 const WAVE_SPAN = 0.17;  // ширина «горба» в долях веера — шире = плавнее
 
 const OLD_FADE_OUT = 0.5;
-const TITLE_START = OLD_FADE_OUT; // новый текст ждёт, пока старый погаснет — без нахлёста
+// Заголовок и подпись ждут не фиксированное время, а момент, когда карты
+// начинают садиться в веер (правка в чате 2026-09-11: «до этого никакого
+// текста на экране» — пока карты просто падают с неба, экран пуст). Момент
+// берётся из самого каскада — firstPlaceT, время, когда ПЕРВАЯ карта дошла
+// до третьего отскока и пошла дугой в свой слот (см. ниже, физика в draw()).
 const TITLE_REVEAL = revealDuration(NEW_TITLE.split(' ').length);
-const SUBTITLE_START = TITLE_START + TITLE_REVEAL + 0.25;
 const SUBTITLE_FADE = 0.35;
 
 // Фигура уходит в темноту тем же слоем, что проявлялась на экране 1 —
@@ -69,23 +72,30 @@ const BG_FADE_OUT = 1.6;
 // своего угла — читалось как подскок; (2) все стартовали из одной точки и
 // разворачивались веером одним easeOutBack — «раздача из стопки»; (3) мок
 // «Тасовка колоды» 2026-09-11 — карты вылетали из разных точек в разные
-// стороны, отскакивали дугами, за ними тянулся призрачный след.
-// (4) Правка в чате 2026-09-11: с 20 полноразмерными картами это суматошно.
-// Оставляем ПРОСТОЕ: карты полного размера, в обычной рубашке, ПАДАЮТ С
-// НЕБА (сверху за кадром) каждая примерно над своим местом в вере,
-// отскакивают от нижней кромки, и на третьем контакте уходят одной плавной
-// дугой в свой слот веера. Без следа, без броска в стороны. В полёте карта
-// не повёрнута; доворачивается в свой угол только на финальном отскоке.
+// стороны, отскакивали дугами, за ними тянулся призрачный след — на 20
+// полноразмерных картах суматошно; (4) правка в чате: карты ПАДАЮТ С НЕБА
+// каждая примерно над своим местом в вере, без броска в стороны; (5) правка
+// в чате 2026-09-11: совсем без дуги и следа — плоско, вернули лёгкую дугу
+// (широкий разброс точки старта + снос к своей X) и короткий тусклый след.
+//
+// Карты стартуют СРАЗУ, как погасла старая реплика (CARDS_START), пока
+// экран ещё пуст — заголовок и подпись ждут не фиксированное время, а
+// firstPlaceT (см. физику ниже): момент, когда ПЕРВАЯ карта на третьем
+// отскоке начала уходить в свой слот. До этого момента на экране нет
+// текста вообще (правка в чате: «до этого никакого текста на экране»).
 //
 // Раскладка веера (layoutCards, cardCenterAt), ховер, волна-подсказка,
 // вылет выбранной карты — БЕЗ изменений: меняется только вход.
-const CARDS_START = SUBTITLE_START + SUBTITLE_FADE + 0.3;
+const CARDS_START = OLD_FADE_OUT;
 const CASCADE_STAGGER = 0.06;    // запуск карт друг за другом, сек
 const CASCADE_MAX_BOUNCES = 3;   // третий контакт с полом = уход в веер
 const CASCADE_FLOOR_FRAC = 0.9;  // «пол» для отскока — доля высоты экрана (карта уходит низом за кадр, это ок)
 const CASCADE_GRAV_FRAC = 2.6;   // гравитация = h * этого
 const PLACE_DUR = 0.62;          // длительность финального отскока в слот, сек (плавный, небыстрый)
 const PLACE_ARC_FRAC = 0.16;     // высота горба этого отскока над прямой к слоту — доля высоты
+const TRAIL_MAX = 4;             // точек следа на карту — короткий, только намёк
+const TRAIL_EVERY = 0.035;       // как часто копим точку следа, сек
+const TRAIL_ALPHA = 0.2;         // след едва различим на фоне
 
 // Карта в вере — тот же ФИКСИРОВАННЫЙ размер CARD_W×CARD_H (224×384), что
 // и на экранах 3–4 (BUILD-SPEC-03 задача 2). Один визуальный объект держит
@@ -255,6 +265,7 @@ export function createDeckScreen({ input, images, goto }) {
   let flyStartT = 0;
   let flyFrom = null; // {x, y, rotation} — позиция и угол карты в момент выбора
   let cascadePrevT = 0; // прошлый t — для шага физики каскада в draw()
+  let firstPlaceT = -1; // t, когда первая карта вошла в финальный отскок; -1 = ещё не было
 
   function layoutCards(w, h) {
     const cardW = CARD_W;
@@ -334,6 +345,7 @@ export function createDeckScreen({ input, images, goto }) {
       waveStart = -1;
       firstTouch = false;
       cascadePrevT = 0;
+      firstPlaceT = -1;
 
       offHandlers = [
         input.on('pressstart', (e) => {
@@ -436,7 +448,12 @@ export function createDeckScreen({ input, images, goto }) {
         oldLines.forEach((line, i) => ctx.fillText(line, marginX, ty + i * titleLH));
         ctx.globalAlpha = 1;
       }
-      const elapsedTitle = t - TITLE_START;
+      // Заголовок/подпись ждут firstPlaceT — момент, когда первая карта
+      // каскада вошла в финальный отскок (физика ниже, в блоке карт).
+      // firstPlaceT === -1, пока такого момента не было — тогда titleStart
+      // уходит в бесконечность и ни заголовок, ни подпись не показываются.
+      const titleStart = firstPlaceT < 0 ? Infinity : firstPlaceT;
+      const elapsedTitle = t - titleStart;
       if (elapsedTitle >= 0) {
         const words = layoutWords(ctx, newLines, marginX, ty, titleLH);
         const shown = visibleWordCount(elapsedTitle, words.length);
@@ -449,10 +466,11 @@ export function createDeckScreen({ input, images, goto }) {
       // вместе; авто-фит по ширине у каждой отдельно.
       const subScale = scale * 0.9;
       const subLines = SUBTITLE_LINES.map((s) => fitLabel(ctx, s, textMaxWidth, subScale));
-      const subtitleFadeIn = clamp01((t - SUBTITLE_START) / SUBTITLE_FADE);
+      const subtitleStart = titleStart + TITLE_REVEAL + 0.25;
+      const subtitleFadeIn = clamp01((t - subtitleStart) / SUBTITLE_FADE);
       if (subtitleFadeIn > 0) {
         const subtitleAlpha = subtitleFadeIn >= 1
-          ? blinkAlpha(t - (SUBTITLE_START + SUBTITLE_FADE))
+          ? blinkAlpha(t - (subtitleStart + SUBTITLE_FADE))
           : subtitleFadeIn;
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = subtitleAlpha;
@@ -482,9 +500,9 @@ export function createDeckScreen({ input, images, goto }) {
       layoutCards(w, h);
 
       // Рисует рубашку карты с центром в (cx,cy), повёрнутую на rotation
-      // (радианы). Подложка — тело объекта #000000 (BUILD-SPEC-05 2a,
-      // вариант A; отменяет правку 2026-08-23 про #111111): карта была
-      // неотличима от фона. Рамка выбора — готовый ассет (select_frame.png),
+      // (радианы). Подложка — та же шашечка, что в cardRender.js
+      // (fillCardBody, правка в чате 2026-09-11 — сплошной #000000 читался
+      // плоско). Рамка выбора — готовый ассет (select_frame.png),
       // чуть крупнее самой карты (228×388 против 224×384), обводка идёт
       // СНАРУЖИ, не по кромке.
       function drawCard(cx, cy, cw, ch, rotation, accent) {
@@ -493,8 +511,7 @@ export function createDeckScreen({ input, images, goto }) {
         ctx.rotate(rotation);
         const dx = Math.round(-cw / 2);
         const dy = Math.round(-ch / 2);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(dx, dy, cw, ch);
+        fillCardBody(ctx, dx, dy, cw, ch);
         // Точечное исключение из «imageSmoothingEnabled = false везде,
         // всегда» (CLAUDE.md) — сказано вслух, не втихую. Правило рассчитано
         // на спрайты, кратные родному арт-пикселю; эта карта — растровый PNG
@@ -550,10 +567,14 @@ export function createDeckScreen({ input, images, goto }) {
       const waveActive = !firstTouch && waveLocal >= 0 && waveLocal < waveTotal + 0.1;
 
       // ── ВХОД: карты падают с неба (правка в чате 2026-09-11). Каждая
-      // карта появляется НАД кадром примерно над своим местом в вере, падает
-      // вниз с лёгким сносом к своему X, отскакивает от нижней кромки, и на
-      // третьем контакте с полом уходит одной плавной дугой в свой слот.
-      // Без броска в стороны, без следа. Шаг физики привязан к dt кадра
+      // карта появляется НАД кадром на разной высоте, с широким разбросом
+      // точки старта по X, и летит лёгкой ДУГОЙ (постоянный снос к своей
+      // цели + гравитация по Y — кривая, не прямая линия), отскакивает от
+      // нижней кромки, и на третьем контакте с полом уходит одной плавной
+      // дугой в свой слот. За картой тянется короткий тусклый след. Совсем
+      // прямое падение без дуги и следа пробовали — читалось плоско, правка
+      // в чате вернула и то, и другое, но сдержанно (короткий след, дуга
+      // мягкая, не размашистый бросок). Шаг физики привязан к dt кадра
       // (cascadePrevT), значения — доли высоты, поэтому падение одинаково на
       // любом вьюпорте. Рисуем строго по индексу (карта правее — «спереди»).
       const cascDt = Math.min(Math.max(t - cascadePrevT, 0), 0.033);
@@ -567,15 +588,18 @@ export function createDeckScreen({ input, images, goto }) {
 
         if (c.cx === undefined) {
           const home = cardCenterAt(c.angle, c.radius);
-          // Появляется над кадром, примерно над своим слотом (± небольшой
-          // разброс по X), с разной высоты «неба» — падают не в линию.
-          c.cx = home.x + (pseudoRnd(i, 1) - 0.5) * w * 0.16;
-          c.cy = -c.h * (0.4 + pseudoRnd(i, 5) * 0.7);
-          c.vx = (home.x - c.cx) * 0.4;      // мягкий снос к своему X, без пинка
-          c.vy = h * (0.04 + pseudoRnd(i, 2) * 0.05);
+          // Появляется над кадром на разной высоте, с широким разбросом по
+          // X (не строго над своим слотом) — постоянный снос к цели плюс
+          // ускоряющееся падение по Y дают видимую дугу, а не прямую линию.
+          c.cx = home.x + (pseudoRnd(i, 1) - 0.5) * w * 0.5;
+          c.cy = -c.h * (0.35 + pseudoRnd(i, 5) * 0.6);
+          c.vx = (home.x - c.cx) * 0.8;
+          c.vy = h * (0.03 + pseudoRnd(i, 2) * 0.05);
           c.bounces = 0;
           c.placing = false;
           c.placeT = 0;
+          c.trail = [];
+          c.trailAcc = 0;
         }
 
         if (c.placing) {
@@ -597,17 +621,49 @@ export function createDeckScreen({ input, images, goto }) {
             c.bounces += 1;
             if (c.bounces >= CASCADE_MAX_BOUNCES) {
               c.placing = true; c.placeT = t; c.px = c.cx; c.py = c.cy;
+              // Заголовок/подпись ждали именно этого момента — первая
+              // карта дошла до финального отскока (см. блок текста выше).
+              if (firstPlaceT < 0) firstPlaceT = t;
             } else {
-              // Отскоки почти вертикальные, каждый следующий слабее.
+              // Отскок почти вертикальный, каждый следующий слабее.
               const e = c.bounces === 1 ? 0.5 : 0.28;
               c.vy = -Math.abs(c.vy) * e;
               c.vx *= 0.6;
             }
           }
         }
+
+        c.trailAcc += cascDt;
+        if (c.trailAcc >= TRAIL_EVERY) {
+          c.trailAcc = 0;
+          c.trail.push({ x: c.cx, y: c.cy });
+          if (c.trail.length > TRAIL_MAX) c.trail.shift();
+        }
       });
 
-      // 2) Сами карты. До запуска — не рисуем. В свободном полёте — по физике,
+      // 2) След — короткий тусклый полый контур карты (без поворота).
+      //    Гаснет за 0.5с после того, как карта села в веер.
+      function drawGhostCard(gx, gy, gw, gh) {
+        const dx = Math.round(gx - gw / 2);
+        const dy = Math.round(gy - gh / 2);
+        ctx.fillStyle = '#2A2A2A';
+        ctx.fillRect(dx, dy, gw, 3);
+        ctx.fillRect(dx, dy + gh - 3, gw, 3);
+        ctx.fillRect(dx, dy, 3, gh);
+        ctx.fillRect(dx + gw - 3, dy, 3, gh);
+      }
+      cards.forEach((c) => {
+        if (!c.trail || c.trail.length === 0) return;
+        const ta = c.placed ? 1 - clamp01((t - (c.placeT + PLACE_DUR)) / 0.5) : 1;
+        if (ta <= 0) return;
+        ctx.globalAlpha = ta * TRAIL_ALPHA;
+        for (let k = 0; k < c.trail.length; k++) {
+          drawGhostCard(c.trail[k].x, c.trail[k].y, c.w, c.h);
+        }
+        ctx.globalAlpha = 1;
+      });
+
+      // 3) Сами карты. До запуска — не рисуем. В свободном полёте — по физике,
       //    без поворота. На финальном отскоке — по дуге, доворачиваясь в свой
       //    угол. После посадки — обычная жизнь веера (радиальный ховер-подъём
       //    + волна-подсказка), та же формула, что раньше.

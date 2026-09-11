@@ -28,30 +28,42 @@ import { ART_BY_NUMERAL } from '../data/cards.js';
 export const CARD_W = 224;
 export const CARD_H = 384;
 
-export function drawCardBack(ctx, images, x, y, w, h) {
-  // Подложка — тело объекта #000000, как плиты дороги (BUILD-SPEC-05
-  // задачи 2a/3a, вариант A). У рубашки прозрачный фон (только линии);
-  // раньше подкладывали воздух #111111, из-за чего карта сливалась с
-  // фоном. Один и тот же вид карты во всех сценах.
+// Тело карты — «дыра в воздухе», как плиты дороги (BUILD-SPEC-05 2a/3a).
+// У рубашки и рамки прозрачный фон (только линии — ~83% пикселей PNG
+// прозрачны), поэтому цвет подложки полностью определяет то, что видно.
+// Сплошной #000000 (вариант A BUILD-SPEC-05) на живом проходе читался
+// плоско («карты чёрные это не оч» — правка в чате 2026-09-11). Пробуем
+// вариант B из того же мокапа (mockups.html): крупная шашечка в два тона
+// внутри чёрного, ячейка 16px (не мельче — иначе шумит на пиксель-арте).
+// Раньше эта заливка была продублирована в трёх местах здесь плюс отдельно
+// в deck.js — теперь один общий хелпер на все четыре.
+const CARD_CHECKER_CELL = 16;
+export function fillCardBody(ctx, x, y, w, h) {
   const rx = Math.round(x);
   const ry = Math.round(y);
   const rw = Math.round(w);
   const rh = Math.round(h);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(rx, ry, rw, rh);
-  ctx.drawImage(images.cardBack, rx, ry, rw, rh);
+  for (let iy = 0; iy < rh; iy += CARD_CHECKER_CELL) {
+    const ch = Math.min(CARD_CHECKER_CELL, rh - iy);
+    for (let ix = 0; ix < rw; ix += CARD_CHECKER_CELL) {
+      const cw = Math.min(CARD_CHECKER_CELL, rw - ix);
+      const odd = ((ix / CARD_CHECKER_CELL) + (iy / CARD_CHECKER_CELL)) & 1;
+      ctx.fillStyle = odd ? '#161616' : '#000000';
+      ctx.fillRect(rx + ix, ry + iy, cw, ch);
+    }
+  }
+}
+
+export function drawCardBack(ctx, images, x, y, w, h) {
+  fillCardBody(ctx, x, y, w, h);
+  ctx.drawImage(images.cardBack, Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
 /** Пустая карта — только рамка, без лика. Момент флипа на экране 3, пока
  * сам портрет ещё не время открывать (материализуется на экране 4). */
 export function drawCardBlank(ctx, images, x, y, w, h) {
-  const rx = Math.round(x);
-  const ry = Math.round(y);
-  const rw = Math.round(w);
-  const rh = Math.round(h);
-  ctx.fillStyle = '#000000'; // тело объекта, как плиты (BUILD-SPEC-05 3a)
-  ctx.fillRect(rx, ry, rw, rh);
-  ctx.drawImage(images.cardFront, rx, ry, rw, rh);
+  fillCardBody(ctx, x, y, w, h);
+  ctx.drawImage(images.cardFront, Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
 export function drawCardFace(
@@ -65,8 +77,7 @@ export function drawCardFace(
   const rw = Math.round(w);
   const rh = Math.round(h);
 
-  ctx.fillStyle = '#000000'; // тело объекта, как плиты (BUILD-SPEC-05 3a)
-  ctx.fillRect(rx, ry, rw, rh);
+  fillCardBody(ctx, x, y, w, h);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 
   if (numeral !== null) {
