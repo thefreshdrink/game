@@ -71,11 +71,14 @@ export function drawCardFace(
 
   if (numeral !== null) {
     // Тот же кегль, что у имени (Figma: Alagard Medium 30, обоим).
+    // 32 — геометрический центр верхней бирки: она лежит между сплошными
+    // линиями рамки y 4…7 и y 56…59, то есть нутро y 8…55, центр 31.5.
+    // Было 37 — номер сидел на 5.5 px ниже центра коробки.
     setFont(ctx, 'cardName', scale);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(numeral, Math.round(x + w / 2), Math.round(y + 37 * s));
+    ctx.fillText(numeral, Math.round(x + w / 2), Math.round(y + 32 * s));
     ctx.textBaseline = 'alphabetic';
   }
 
@@ -100,6 +103,9 @@ export function drawCardFace(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#EBA331';
-  ctx.fillText(name, Math.round(x + w / 2), Math.round(y + 338 * s));
+  // Нижняя бирка — нутро y 312…365, геометрический центр 338.5. Имя опущено
+  // на 2 px ниже центра по просьбе в чате: у Alagard прописные оптически
+  // сидят выше середины em-бокса, и строго по центру читается как приподнятая.
+  ctx.fillText(name, Math.round(x + w / 2), Math.round(y + 340 * s));
   ctx.textBaseline = 'alphabetic';
 }
