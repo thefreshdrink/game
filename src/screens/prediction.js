@@ -14,7 +14,7 @@
 // проявляй поверх фона верхней части»): экраны 5→6 склеиваются без
 // скачка, дорога просто остаётся под словами.
 
-import { CARDS, getReading } from '../data/cards.js';
+import { CARDS, PLAYABLE, getReading } from '../data/cards.js';
 import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
@@ -101,6 +101,7 @@ export function createPredictionScreen({ input, images, goto }) {
     },
 
     draw(ctx, w, h) {
+      const card = CARDS[session.cardId] ?? CARDS.fool;
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
@@ -109,7 +110,11 @@ export function createPredictionScreen({ input, images, goto }) {
       // (правка в чате 2026-08-30). Статична — «прибытие» уже отыграно.
       // Рисуем ДО текста: слова лягут поверх чистого воздуха верхней части.
       const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
-      if (groundMain) {
+      // Сцена прибытия принадлежит мини-игре, с которой пришли. У карты без
+      // своей сцены прибытия не было — низ остаётся пустым, ровно как на
+      // docs/interfaces/The prediction.png (дорога там появилась правкой
+      // 2026-08-30 специально под склейку 5→6 у Шута).
+      if (groundMain && PLAYABLE.includes(card.id)) {
         const gy = Math.round(h * ARRIVE_GROUND_FRAC);
         const gw = groundMain.width;
         const gx = Math.round(w / 2 - gw / 2 - 28);
@@ -128,7 +133,6 @@ export function createPredictionScreen({ input, images, goto }) {
 
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
-      const card = CARDS[session.cardId] ?? CARDS.fool;
 
       const titleLH = setFont(ctx, 'title', scale);
       ctx.textAlign = 'left';

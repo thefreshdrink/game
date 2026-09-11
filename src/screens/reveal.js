@@ -9,7 +9,7 @@
 //
 // CONTINUE ведёт в мини-игру «Leap» (экран 5).
 
-import { CARDS } from '../data/cards.js';
+import { CARDS, PLAYABLE } from '../data/cards.js';
 import { session } from '../core/session.js';
 import { setFont, wrapLines } from '../core/text.js';
 import {
@@ -66,7 +66,12 @@ export function createRevealScreen({ input, images, goto }) {
         input.on('tap', (e) => {
           if (!continueReady()) return;
           if (!zoneHit(continueZone, e.x, e.y)) return;
-          goto('leap');
+          // У карты своя сцена мини-игры (`card.minigame`). Пока она есть
+          // только у Шута — остальные карты идут сразу к предсказанию, а не
+          // на чужую дорогу (правка в чате). PLAYABLE и есть список карт,
+          // у которых сцена зарегистрирована в main.js.
+          const drawn = CARDS[session.cardId] ?? CARDS.fool;
+          goto(PLAYABLE.includes(drawn.id) ? drawn.minigame : 'prediction');
         }),
         input.on('hover', (e) => {
           hovering = continueReady() && zoneHit(continueZone, e.x, e.y);
