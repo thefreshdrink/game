@@ -17,6 +17,7 @@ import {
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
 } from '../core/oracle.js';
+import { pickCardId } from '../data/cards.js';
 import { CARD_W, CARD_H } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { easeInOutQuad } from '../core/ease.js';
@@ -364,7 +365,7 @@ export function createDeckScreen({ input, images, goto }) {
           flyFrom = {
             x: p.x - c.w / 2, y: p.y - c.h / 2, w: c.w, h: c.h, rotation: c.angle,
           };
-          session.cardId = 'fool'; // любая карта в этой сборке — Шут (BUILD-SPEC)
+          session.cardId = pickCardId(); // любая карта с записью в банке
         }),
       ];
     },
