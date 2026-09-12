@@ -146,6 +146,7 @@ const IMAGE_MANIFEST = {
   towerOnCard: 'assets/card/tower_on_the_card.png',
   magicianOnCard: 'assets/card/magician_on_the_card.png',
   wheelOnCard: 'assets/card/wheel_on_the_card.png',
+  empressOnCard: 'assets/card/empress_on_the_card.png',
   foolIdleStrip: 'assets/fool/strips/fool_idle_4f_44x48.png',
   foolRise: 'assets/fool/strips/fool_rise_1f_44x48.png',
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
