@@ -241,6 +241,22 @@ export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
  * У Башни `minigame: 'release'`, сцены нет — поэтому её здесь нет. */
 export const PLAYABLE = ['fool'];
 
+/** ТЕСТОВЫЙ РЕЖИМ — выключить и удалить, когда тесты закончатся.
+ *
+ * Пока `true`, карты выдаются не случайно, а по кругу в порядке DECK_ORDER:
+ * Шут → Маг → Императрица → Колесо → Башня → снова Шут. Это просьба из чата
+ * 2026-09-13: проверять все пять карт на рандоме неудобно, нужен один и тот
+ * же предсказуемый порядок.
+ *
+ * Позиция в круге лежит в localStorage, поэтому порядок не сбрасывается при
+ * перезагрузке страницы — иначе на телефоне каждый заход отдавал бы Шута.
+ * Хранилище может быть недоступно (приватная вкладка) — тогда режим тихо
+ * отдаёт первую карту, а не падает.
+ *
+ * Выключение: SEQUENTIAL_DRAW = false вернёт случайную выдачу. */
+export const SEQUENTIAL_DRAW = true;
+const SEQ_KEY = 'tarot.test.drawIndex';
+
 /** Карта для выдачи на экране 2. Берёт любую, у которой есть запись в банке
  * (портрет, имя, номер, три текста) — список растёт сам по мере наполнения
  * CARDS, отдельный перечень вести не надо.
@@ -251,6 +267,16 @@ export const PLAYABLE = ['fool'];
  * будет сузить до PLAYABLE. */
 export function pickCardId() {
   const ids = Object.keys(CARDS);
+  if (SEQUENTIAL_DRAW) {
+    // DECK_ORDER, а не Object.keys: порядок в банке — история правок, а
+    // DECK_ORDER это канонический порядок арканов по номеру.
+    const order = DECK_ORDER.filter((id) => CARDS[id]);
+    let i = 0;
+    try { i = Number(localStorage.getItem(SEQ_KEY)) || 0; } catch { i = 0; }
+    if (!Number.isInteger(i) || i < 0) i = 0;
+    try { localStorage.setItem(SEQ_KEY, String((i + 1) % order.length)); } catch { /* приватная вкладка */ }
+    return order[i % order.length];
+  }
   return ids[Math.floor(Math.random() * ids.length)];
 }
 
