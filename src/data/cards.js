@@ -19,42 +19,41 @@ export const CARDS = {
 
     // Короткая реплика-образ перед мини-игрой. Не отдельный экран —
     // проступает на сцене карты. Опциональна.
-    intro: 'He does not look down. That is not courage. His attention is simply elsewhere.',
+    intro: 'He does not look down. It is not courage. He is just thinking about something else.',
 
     // Заголовок экрана 4 (BUILD-SPEC-02, задача 4) — момент «тебе выпал
     // Шут» получает свою реплику вместо унаследованного с экрана 2
     // «The deck offers itself…». Текст банка, не выдумывать на ходу.
     arrival: 'The Fool answers you.',
 
-    // Разбивка на абзацы (\n\n) — правка в чате 2026-08-30. Слова не
-    // тронуты, только вставлен разрыв на смысловом переходе «наблюдение →
-    // совет». Отход от «строфы приедут отдельно» (задача 10) — по прямой
-    // просьбе пользователя.
+    // Два абзаца через \n\n — правка в чате 2026-08-30, отход от «строфы
+    // приедут отдельно» (задача 10). Формулировки переписаны простым языком
+    // 2026-09-13: аудитория читает по-английски как по неродному, и на
+    // плотных образах спотыкалась. Смысл и разбивка прежние, тронуты слова.
     reading: {
       work:
-        'You are standing at the edge of your working life with empty pockets and ' +
-        'the whole morning ahead of you. What looks like a fall is only the shape ' +
-        'of a beginning seen from above.' +
+        'You are at the start of something at work with nothing ready in your ' +
+        'hands. That is normal. From up here it only looks like falling.' +
         '\n\n' +
-        'This week, say yes to the one thing you are not qualified for — the ground ' +
-        'arrives under the foot that moves, not the foot that waits. Go lightly. ' +
-        'Only do not confuse the leap with running away.',
+        'Say yes this week to the one thing you are not ready for. The ground ' +
+        'shows up under the foot that moves. Go lightly. Just do not call ' +
+        'running away a beginning.',
 
       love:
-        'Something in you wants to walk toward a person without a map. That is not ' +
-        'foolish. It is the only way anyone has ever arrived.' +
+        'You want to walk toward someone without knowing how it ends. That is ' +
+        'not foolish. Everyone starts that way.' +
         '\n\n' +
-        'Let yourself be seen before you are certain — say the plain sentence you ' +
-        'have been rehearsing, and say it first. An open road is not the same as an ' +
-        'open door. Keep one hand for yourself.',
+        'Let yourself be seen before you are sure. Say the simple sentence you ' +
+        'keep practising, and say it first. Being open is not the same as ' +
+        'having no limits. Keep something for yourself.',
 
       mental:
-        'Your mind has been standing at the same edge for a long time now, looking ' +
-        'down and calling it thinking. It is not thinking. It is rehearsal.' +
+        'You have been standing at the same decision for a long time, looking ' +
+        'at it. You call that thinking. It is not. You are going over it again.' +
         '\n\n' +
-        'Choose one small thing and do it before you feel ready — the body settles ' +
-        'what the head cannot. Be gentle about the timing. Beginning again is not ' +
-        'the same as having failed.',
+        'Pick one small thing and do it before you feel ready. The body settles ' +
+        'what the head cannot. Take your time. Starting again is not the same ' +
+        'as having failed.',
     },
   },
 
@@ -70,37 +69,36 @@ export const CARDS = {
     shadow: 'clinging, the propped-up thing, ruin refused',
     symbolism: 'the crown knocked off first, the crack already there, the quiet after',
 
-    intro: 'The crack was there before the storm. The storm only asked it a question.',
+    intro: 'The crack was there before the storm. The storm only found it.',
 
     arrival: 'The Tower answers you.',
 
     reading: {
       work:
-        'Something you built at work has been cracked for a while now, and you ' +
-        'have been standing inside it holding the ceiling up with both arms. ' +
-        'That is where the tiredness comes from. Not the work.' +
+        'Something you built at work has been cracked for a while. You have ' +
+        'been holding it up with both arms. That is where the tiredness comes ' +
+        'from, not the work.' +
         '\n\n' +
-        'Let the thing come down. What is still standing afterward was the part ' +
-        'that was holding you, and you will see it for the first time. Ruin is ' +
-        'not the same as failure. Only do not rebuild the same walls out of habit.',
+        'Let it come down. What is still standing after was the part holding ' +
+        'you up, and you will see it clearly. A ruin is not a failure. Just do ' +
+        'not rebuild the same walls out of habit.',
 
       love:
         'There is something between you and another person that stands only ' +
-        'because you keep propping it up. You know which hour of your day is ' +
-        'the tired one. It is the hour you spend holding it.' +
+        'because you keep holding it up. You know which hour of your day is ' +
+        'the tired one. It is that one.' +
         '\n\n' +
         'Take your hands away and let it fall. What is real between two people ' +
         'survives being dropped. What does not survive was never the thing you ' +
-        'loved, only the shape of it. Grief is allowed here. It is not a verdict.',
+        'loved. You are allowed to be sad about it.',
 
       mental:
-        'You have kept a story about yourself in good repair for years — the ' +
-        'one that explains why you are the way you are. Lately you have seen ' +
-        'the cracks and gone on painting over them.' +
+        'You have kept one story about yourself in good repair for years — the ' +
+        'one that explains why you are like this. You have seen the cracks and ' +
+        'painted over them.' +
         '\n\n' +
         'Let the story come down. You will not be less yourself without it. You ' +
-        'will be quieter. The noise you have been calling thinking was the sound ' +
-        'of walls being held. Do not hurry to build the next explanation.',
+        'will be quieter. Do not rush to build the next explanation.',
     },
   },
 
