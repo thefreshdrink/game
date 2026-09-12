@@ -36,41 +36,23 @@ const TAG_PAD = 6;
 const NUM_TAG_W = 88;
 const NAME_TAG_W = 188;
 
-// Окно рамки под портрет — чистое поле между биркой номера и биркой имени,
-// замерено по card_frame_fool.png: рельсы рамки стоят на x 14…17 и 206…209,
-// поперечины на y 56…59 и y 308…311, значит нутро x 18…205, y 60…307.
-const WIN_X = 18;
-const WIN_Y = 60;
-const WIN_W = 188;
-const WIN_H = 248;
-// На два деления светлее воздуха по лесенке пустоты из CLAUDE.md
-// (#111111 -> #161616 -> #1C1C1C). Правка в чате: блок с персонажем чуть
-// светлее фона, бирки номера и имени остаются как были.
-const WIN_FILL = '#1C1C1C';
 
 // Тело карты — подложка под рубашку и рамку, у которых прозрачный фон
 // (только линии — ~83% пикселей PNG прозрачны), поэтому цвет подложки
 // полностью определяет то, что видно. История: воздух #111111 (карта
 // сливалась с фоном) → сплошной #000000, «дыра в воздухе», как плиты
 // дороги (BUILD-SPEC-05 2a/3a) → шашечка в два тона, вариант B из того же
-// мокапа (тоже не понравилась — «шашечка не оч»). Правка в чате
-// 2026-09-11: назад к воздуху #111111, сознательно — на этот раз не
-// забытый баг, а выбор. Раньше эта заливка была продублирована в трёх
-// местах здесь плюс отдельно в deck.js — один общий хелпер на все четыре.
+// мокапа (тоже не понравилась — «шашечка не оч») → назад к воздуху
+// #111111. Теперь #1C1C1C — на два деления светлее воздуха по лесенке
+// пустоты из CLAUDE.md (#111111 → #161616 → #1C1C1C): карта отделяется от
+// фона сама, тоном, а не только рамкой. Выбран из четырёх черновиков
+// (правка в чате) — светлеет карта целиком, а не одно окно под портретом.
+// Раньше эта заливка была продублирована в трёх местах здесь плюс отдельно
+// в deck.js — один общий хелпер на все четыре сцены с картой, поэтому тон
+// меняется и на рубашке, и на веере.
 export function fillCardBody(ctx, x, y, w, h) {
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = '#1C1C1C';
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
-}
-
-/** Подложка окна под портретом. Кладётся поверх тела карты и под рамку —
- * рамка рисует по краю окна свои рельсы и перекрывает стык. */
-function fillPortraitWindow(ctx, x, y, w, h) {
-  const s = w / CARD_W;
-  ctx.fillStyle = WIN_FILL;
-  ctx.fillRect(
-    Math.round(x + WIN_X * s), Math.round(y + WIN_Y * s),
-    Math.round(WIN_W * s), Math.round(WIN_H * s),
-  );
 }
 
 export function drawCardBack(ctx, images, x, y, w, h) {
@@ -82,7 +64,6 @@ export function drawCardBack(ctx, images, x, y, w, h) {
  * сам портрет ещё не время открывать (материализуется на экране 4). */
 export function drawCardBlank(ctx, images, x, y, w, h) {
   fillCardBody(ctx, x, y, w, h);
-  fillPortraitWindow(ctx, x, y, w, h);
   ctx.drawImage(images.cardFront, Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
@@ -98,7 +79,6 @@ export function drawCardFace(
   const rh = Math.round(h);
 
   fillCardBody(ctx, x, y, w, h);
-  fillPortraitWindow(ctx, x, y, w, h);
   ctx.drawImage(images.cardFront, rx, ry, rw, rh);
 
   if (numeral !== null) {
