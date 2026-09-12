@@ -102,11 +102,130 @@ export const CARDS = {
     },
   },
 
-  // --- Оставшиеся три карты MVP ---------------------------------------
-  // Мини-игры не спроектированы (только строчки в GDD §8.2), тексты не
-  // написаны. В веере они видны, но пока не выбираются — см. BUILD-SPEC.
-  //
-  // magician, empress, wheel
+  // Три карты ниже заведены 2026-09-13: портрет, номер, имя и три текста
+  // есть у каждой, поэтому они выпадают в вере и отдают предсказание. Своей
+  // сцены мини-игры нет ни у одной — в GDD §8.2 только строчка с глаголом,
+  // спеки уровня нет (open-questions.md B2), поэтому в PLAYABLE их нет и
+  // экран 5 они пропускают.
+
+  magician: {
+    id: 'magician',
+    numeral: 'I',
+    name: 'The Magician',
+    minigame: 'channel',      // глагол карты, GDD §8.2. Сцены ещё нет
+    art: 'magicianOnCard',
+
+    upright: 'will, focus, the tools already at hand',
+    shadow: 'scattered power, talk in place of making',
+    symbolism: 'one hand up and one hand down, the four tools, the light that passes through',
+
+    intro: 'He is not making anything new. He is using what is already on the table.',
+
+    arrival: 'The Magician answers you.',
+
+    reading: {
+      work:
+        'You have everything you need for the thing you keep talking about. ' +
+        'The tools are on the table. You keep counting them instead of using ' +
+        'them.' +
+        '\n\n' +
+        'Pick one and start this week. Tell someone who will ask you about it ' +
+        'later. A plan stays soft until a hand moves.',
+
+      love:
+        'You know what you want to say to someone. You have said it in your ' +
+        'head a hundred times. You have not said it once out loud.' +
+        '\n\n' +
+        'Say the plain version, not the good one. People can only answer what ' +
+        'they actually hear.',
+
+      mental:
+        'Your attention is the strongest thing you own. Lately you spend it on ' +
+        'everything at once.' +
+        '\n\n' +
+        'Give one hour to one thing this week and let the rest wait. Nothing is ' +
+        'wrong with you. You are pointed in too many directions.',
+    },
+  },
+
+  empress: {
+    id: 'empress',
+    numeral: 'III',
+    name: 'The Empress',
+    minigame: 'bloom',        // глагол карты, GDD §8.2. Сцены ещё нет
+    art: 'empressOnCard',
+
+    upright: 'abundance, care, the slow growing thing',
+    shadow: 'smothering, tending until empty, the root pulled up to be looked at',
+    symbolism: 'the crown, the tulip held and not gripped, the vine over the throne',
+
+    intro: 'Nothing here was hurried. Look how much of it there is.',
+
+    arrival: 'The Empress answers you.',
+
+    reading: {
+      work:
+        'Something you started is already growing. You keep pulling it up to ' +
+        'look at it. Checking is not the same as helping.' +
+        '\n\n' +
+        'Leave one thing alone this week and let it finish. It is further along ' +
+        'than you think. Your worry is not what makes it grow.',
+
+      love:
+        'You give first and you give well. You have not asked in a long time ' +
+        'who gives to you.' +
+        '\n\n' +
+        'Let someone do something for you, and do not pay it back the same day. ' +
+        'Giving that only runs one way is not generosity. It empties you slowly.',
+
+      mental:
+        'You are hard on yourself on purpose. You treat rest like something you ' +
+        'have to earn first.' +
+        '\n\n' +
+        'Feed yourself the way you feed people you love. Sleep, food, an hour ' +
+        'with nothing in it. Things grow in warm places, not under pressure.',
+    },
+  },
+
+  wheel: {
+    id: 'wheel',
+    numeral: 'X',
+    name: 'Wheel of Fortune',
+    minigame: 'spin',         // глагол карты, GDD §8.2. Сцены ещё нет
+    art: 'wheelOnCard',
+
+    upright: 'the turn, luck, the season changing',
+    shadow: 'gripping the rim, waiting to be lucky, blaming the turn',
+    symbolism: 'the marked rim, the top of the arc, the hands that aim and do not stop it',
+
+    intro: 'It was already turning when you came in. It will turn after you leave.',
+
+    arrival: 'The Wheel answers you.',
+
+    reading: {
+      work:
+        'Something at work is already turning. It started before you noticed. ' +
+        'It is not waiting for you to agree.' +
+        '\n\n' +
+        'Stop pulling at the direction and hold on instead. Some of what arrives ' +
+        'this season is luck. It will still be yours.',
+
+      love:
+        'Something between you and another person is changing. You can feel it ' +
+        'move. You have been calling that feeling doubt.' +
+        '\n\n' +
+        'Let it change without explaining it to yourself every day. Nothing is ' +
+        'being taken from you. What comes back will be different, and that is ' +
+        'allowed.',
+
+      mental:
+        'You are reading a bad stretch as the truth about you. It is not. It is ' +
+        'a low point, and low points move.' +
+        '\n\n' +
+        'Let this week be ordinary. Decide nothing. Moods pass over you like ' +
+        'weather. You are not the weather.',
+    },
+  },
 };
 
 /** Портрет по номеру карты — временный мост для `cardRender.drawCardFace`,
