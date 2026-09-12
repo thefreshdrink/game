@@ -40,6 +40,33 @@ export function setFont(ctx, role, scale) {
 }
 
 /**
+ * Ставит ctx.font для роли, ужимая кегль, пока строка не влезет в maxWidth.
+ * Начинает с кегля роли и спускается по целому пикселю — дробные кегли на
+ * пиксельном шрифте дают разную толщину штриха у соседних букв.
+ *
+ * Нужен там, где ширина контейнера задана картинкой и не тянется: имя карты
+ * лежит в бирке рамки, и длинное имя («Wheel of Fortune») уезжало под рамку
+ * с обеих сторон. Отступ внутри контейнера считает вызывающий — сюда
+ * приходит уже чистая ширина под текст.
+ *
+ * Возвращает line-height, пересчитанный в той же пропорции, что и кегль.
+ */
+export function setFontFitted(ctx, role, scale, text, maxWidth, minSize = 12) {
+  const t = ROLES[role];
+  const weight = t.weight ?? 400;
+  const floor = Math.max(1, Math.round(minSize * scale));
+  let px = Math.max(Math.round(t.size * scale), floor);
+  for (;;) {
+    // letterSpacing влияет на measureText, поэтому ставится до замера
+    ctx.font = `${weight} ${px}px ${t.family}`;
+    ctx.letterSpacing = t.letterSpacing ? `${(px * t.letterSpacing).toFixed(2)}px` : '0px';
+    if (px <= floor || ctx.measureText(text).width <= maxWidth) break;
+    px -= 1;
+  }
+  return Math.round(t.lineHeight * (px / t.size));
+}
+
+/**
  * Разбивает строку на строки по ширине maxWidth (жадный word-wrap).
  * ctx.font должен быть уже выставлен (setFont) — Alagard не моноширинный,
  * на глаз переносы не угадываются, только через measureText.

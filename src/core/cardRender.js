@@ -17,7 +17,7 @@
 // что и у имени карты) — это не векторная фигура, а обычный шрифт, как
 // везде в игре.
 
-import { setFont } from './text.js';
+import { setFontFitted } from './text.js';
 import { drawPixelReveal } from './pixelReveal.js';
 import { ART_BY_NUMERAL } from '../data/cards.js';
 
@@ -27,6 +27,14 @@ import { ART_BY_NUMERAL } from '../data/cards.js';
 // один и тот же размер, иначе карта прыгнет на переходе.
 export const CARD_W = 224;
 export const CARD_H = 384;
+
+// Чистое нутро бирок рамки, замерено по card_frame_fool.png: верхняя
+// (номер) — x 68…155, нижняя (имя) — x 18…205. Текст ужимается под эту
+// ширину за вычетом отступа, чтобы длинное имя не уезжало под рамку
+// («Wheel of Fortune» кеглем 30 шире бирки и обрезался с двух сторон).
+const TAG_PAD = 6;
+const NUM_TAG_W = 88;
+const NAME_TAG_W = 188;
 
 // Тело карты — подложка под рубашку и рамку, у которых прозрачный фон
 // (только линии — ~83% пикселей PNG прозрачны), поэтому цвет подложки
@@ -73,7 +81,7 @@ export function drawCardFace(
     // 32 — геометрический центр верхней бирки: она лежит между сплошными
     // линиями рамки y 4…7 и y 56…59, то есть нутро y 8…55, центр 31.5.
     // Было 37 — номер сидел на 5.5 px ниже центра коробки.
-    setFont(ctx, 'cardName', scale);
+    setFontFitted(ctx, 'cardName', scale, numeral, (NUM_TAG_W - TAG_PAD * 2) * s);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#FFFFFF';
@@ -98,7 +106,7 @@ export function drawCardFace(
     drawPixelReveal(ctx, sprite, artX, artY, artW, artH, revealProgress, cellSize, 0.5, 0.3);
   }
 
-  setFont(ctx, 'cardName', scale);
+  setFontFitted(ctx, 'cardName', scale, name, (NAME_TAG_W - TAG_PAD * 2) * s);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#EBA331';
