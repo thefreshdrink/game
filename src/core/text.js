@@ -19,7 +19,11 @@ const ROLES = {
   // Alagard (index.html, без отдельного начертания Medium) — вес всё
   // равно выставляем для точности, браузер отрисует единственным
   // доступным начертанием, если синтеза нет.
-  cardName:   { family: FONT_DISPLAY, size: 30, lineHeight: 34, weight: 500, letterSpacing: -0.04 },
+  cardNumeral: { family: FONT_DISPLAY, size: 30, lineHeight: 34, weight: 500, letterSpacing: -0.04 },
+  // Имя мельче номера (26 против фигмовских 30) — правка в чате: на длинных
+  // именах строка вставала в бирку впритык. Номер остался на 30: его бирка
+  // вдвое уже, но и строка в ней максимум три знака.
+  cardName:   { family: FONT_DISPLAY, size: 26, lineHeight: 30, weight: 500, letterSpacing: -0.04 },
   body:       { family: FONT_BODY,    size: 16, lineHeight: 26 },
   caption:    { family: FONT_BODY,    size: 12, lineHeight: 18 },
   // Пункты меню категорий — отдельная роль от body: крупнее (22 —
