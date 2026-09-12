@@ -15,10 +15,21 @@ export function loadImage(src) {
   return promise;
 }
 
+// Версия сборки, подставляется Vite (define в vite.config.js). Приклеивается
+// к путям спрайтов, чтобы после деплоя браузер не показывал старую картинку
+// из кэша: имена файлов в public/ между сборками не меняются, в отличие от
+// имени JS-бандла. В CI это SHA коммита, локально — метка времени сборки.
+const ASSET_VERSION = __ASSET_VERSION__;
+
+/** '/assets/x.png' → '/assets/x.png?v=<версия сборки>' */
+function versioned(src) {
+  return src.includes('?') ? src : `${src}?v=${ASSET_VERSION}`;
+}
+
 /** manifest: { name: '/assets/...png' } → { name: HTMLImageElement } */
 export async function loadSprites(manifest) {
   const entries = Object.entries(manifest);
-  const images = await Promise.all(entries.map(([, src]) => loadImage(src)));
+  const images = await Promise.all(entries.map(([, src]) => loadImage(versioned(src))));
   const result = {};
   entries.forEach(([name], i) => { result[name] = images[i]; });
   return result;
