@@ -1,0 +1,355 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Tower — прототип дженги</title>
+<!--
+  ОДНОРАЗОВЫЙ ПРОТОТИП. Не часть сборки, не импортируется игрой.
+  Цель — пощупать темп мини-игры The Tower до генерации арта:
+  удержание вытягивает блок, ряды проседают, башня падает сама.
+  Арта нет намеренно — только прямоугольники палитры.
+-->
+<style>
+  html,body{margin:0;height:100%;background:#111;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{image-rendering:pixelated;touch-action:none}
+</style>
+<canvas id="c" width="430" height="932"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// ── палитра проекта ───────────────────────────────────────────────────────
+const AIR='#111111', BODY='#000000', LINE='#FFFFFF', LINE2='#B8B8B8',
+      TEX='#808080', FAR='#4A4A4A', UI='#232323', ACCENT='#EBA331';
+
+// ── сетка и размеры (экранные px, всё чётное) ─────────────────────────────
+const BLOCK_W=64, BLOCK_H=32, COLS=3, ROW_W=BLOCK_W*COLS;   // 192
+const ROWS=14;                                              // 7 рядов-торцов
+const TOWER_X=Math.round((C.width-ROW_W)/2/2)*2;            // 118
+const GROUND_Y=C.height-140;                                // линия земли
+const PULL_TIME=0.8;                                        // сек удержания
+const PULL_DIST=76;                                         // насколько выходит блок
+
+// ── состояние ─────────────────────────────────────────────────────────────
+let rows, debris, dust, phase, tPhase, shake, pulling, collapsePivot, crown, lastT;
+
+function rowType(r){ return r%2===0 ? 'ends' : 'beam'; }   // r=0 снизу
+
+function reset(){
+  rows=[];
+  for(let r=0;r<ROWS;r++){
+    rows.push({ r, type:rowType(r), slots:rowType(r)==='ends'?[1,1,1]:[1], lean:0, leanTo:0 });
+  }
+  debris=[]; dust=[]; phase='play'; tPhase=0; shake=0; pulling=null; collapsePivot=-1;
+  crown={x:TOWER_X+ROW_W/2, y:rowY(ROWS-1)-26, vx:0, vy:0, rot:0, vr:0, live:false, rest:false};
+}
+
+function rowY(r){ return GROUND_Y - (r+1)*BLOCK_H; }        // верх ряда r
+
+// суммарный сдвиг ряда r: все просадки рядов НИЖЕ него
+function shiftAt(r){ let s=0; for(let i=0;i<r;i++) s+=rows[i].lean; return s; }
+
+function blockRect(r,i){
+  const row=rows[r], x0=TOWER_X+shiftAt(r);
+  if(row.type==='beam') return {x:x0, y:rowY(r), w:ROW_W, h:BLOCK_H};
+  return {x:x0+i*BLOCK_W, y:rowY(r), w:BLOCK_W, h:BLOCK_H};
+}
+
+// ── правило устойчивости ──────────────────────────────────────────────────
+// Ряд с двумя блоками держит прямо, с одним — проседает на его сторону.
+// Падает, когда центр тяжести всего, что выше, уходит за опору ряда.
+function updateStability(){
+  for(let r=0;r<ROWS;r++){
+    const row=rows[r];
+    if(row.type!=='ends'){ row.leanTo=0; continue; }
+    const left=row.slots.reduce((a,v,i)=>a+(v?[-1,0,1][i]:0),0);
+    const n=row.slots.filter(Boolean).length;
+    row.leanTo = n>=2 ? 0 : (n===1 ? left*24 : 0);
+  }
+  for(let r=0;r<ROWS;r++){
+    const row=rows[r];
+    if(row.type!=='ends') continue;
+    const rest=row.slots.filter(Boolean);
+    if(rest.length===0) return r;                       // ряда нет — падаем здесь
+    // центр тяжести того, что выше
+    let mass=0, mx=0;
+    for(let q=r+1;q<ROWS;q++){
+      rows[q].slots.forEach((v,i)=>{ if(!v) return; const b=blockRect(q,i); mass++; mx+=b.x+b.w/2; });
+    }
+    if(!mass) continue;
+    const com=mx/mass;
+    let lo=Infinity, hi=-Infinity;
+    row.slots.forEach((v,i)=>{ if(!v) return; const b=blockRect(r,i); lo=Math.min(lo,b.x); hi=Math.max(hi,b.x+b.w); });
+    if(com<lo-10 || com>hi+10) return r;                 // опора ушла
+  }
+  return -1;
+}
+
+function blocksLeft(){ return rows.reduce((a,row)=>a+(row.type==='ends'?row.slots.filter(Boolean).length:0),0); }
+function pulledCount(){ return 21-blocksLeft(); }
+function tension(){ return Math.min(1, pulledCount()/12 + rows.reduce((a,r)=>a+Math.abs(r.lean),0)/160); }
+
+// ── ввод ──────────────────────────────────────────────────────────────────
+function pick(px,py){
+  for(let r=0;r<ROWS;r++){
+    const row=rows[r]; if(row.type!=='ends') continue;
+    for(let i=0;i<COLS;i++){
+      if(!row.slots[i]) continue;
+      const b=blockRect(r,i);
+      if(px>=b.x-6 && px<=b.x+b.w+6 && py>=b.y-4 && py<=b.y+b.h+4) return {r,i};
+    }
+  }
+  return null;
+}
+function toCanvas(e){
+  const R=C.getBoundingClientRect();
+  return { x:(e.clientX-R.left)*C.width/R.width, y:(e.clientY-R.top)*C.height/R.height };
+}
+C.addEventListener('pointerdown', e=>{
+  C.setPointerCapture(e.pointerId);
+  const p=toCanvas(e);
+  if(phase==='done'){ reset(); return; }
+  if(phase!=='play') return;
+  const hit=pick(p.x,p.y);
+  if(hit) pulling={...hit, t:0, out:0};
+});
+C.addEventListener('pointermove', e=>{
+  if(!pulling) return;
+  const p=toCanvas(e), b=blockRect(pulling.r,pulling.i);
+  // палец ушёл с блока — отпускаем
+  if(p.x<b.x-40||p.x>b.x+b.w+40||p.y<b.y-32||p.y>b.y+b.h+32) release();
+});
+C.addEventListener('pointerup', release);
+C.addEventListener('pointercancel', release);
+function release(){ if(pulling) pulling.releasing=true; }
+
+// ── шаг ───────────────────────────────────────────────────────────────────
+function step(dt){
+  tPhase+=dt;
+
+  // вытягивание
+  if(pulling){
+    if(pulling.releasing){
+      pulling.out-=dt*260;
+      if(pulling.out<=0) pulling=null;
+    }else{
+      pulling.t+=dt;
+      pulling.out=Math.min(PULL_DIST, (pulling.t/PULL_TIME)*PULL_DIST);
+      if(pulling.t>=PULL_TIME){
+        const {r,i}=pulling, b=blockRect(r,i);
+        rows[r].slots[i]=0;
+        const away = i===0 ? -1 : 1;                    // левый блок уходит влево, прочие вправо
+        debris.push({x:b.x+away*PULL_DIST, y:b.y, w:BLOCK_W, h:BLOCK_H,
+          vx:away*(150+Math.random()*60), vy:-40, rot:0, vr:away*1.5, rest:false});
+        puff(b.x+b.w/2, b.y+b.h/2, 10);
+        pulling=null;
+      }
+    }
+  }
+
+  // просадка рядов
+  rows.forEach(row=>{ row.lean += (row.leanTo-row.lean)*Math.min(1,dt*4); });
+  if(phase==='play'){
+    const p=updateStability();
+    if(p>=0){ collapsePivot=p; startCollapse(); }
+    shake=tension()*3;
+  }
+
+  if(phase==='fall'){
+    shake=0;                              // дрожь обрывается в момент отрыва
+    stepDebris(dt, phase==='fall'?0.55:1); // и падение идёт в замедлении
+    if(debris.every(d=>d.rest) && crown.rest && tPhase>2.2){ phase='rest'; tPhase=0; }
+  }else{
+    stepDebris(dt,1);
+  }
+  if(phase==='rest' && tPhase>2.4){ phase='done'; tPhase=0; }
+
+  dust=dust.filter(d=>{ d.t+=dt; d.x+=d.vx*dt; d.y+=d.vy*dt; d.vy+=40*dt; return d.t<d.life; });
+}
+
+function startCollapse(){
+  phase='fall'; tPhase=0;
+  const pivotY=rowY(collapsePivot);
+  for(let r=collapsePivot;r<ROWS;r++){
+    const row=rows[r];
+    row.slots.forEach((v,i)=>{
+      if(!v) return;
+      const b=blockRect(r,i);
+      const lever=(pivotY-b.y)/40;
+      const dir=(rows[collapsePivot].lean<=0?-1:1);
+      const parts=b.w>BLOCK_W ? COLS : 1;               // балка ломается на три куска
+      for(let k=0;k<parts;k++){
+        debris.push({x:b.x+k*(b.w/parts), y:b.y, w:b.w/parts, h:b.h,
+          vx:(14+lever*16)*dir + (Math.random()*30-15),
+          vy:-20-Math.random()*30, rot:0, vr:(Math.random()*2-1)*2.4, rest:false});
+      }
+      row.slots[i]=0;
+      puff(b.x+b.w/2, b.y+b.h, 4);
+    });
+  }
+  crown.live=true;
+  crown.vx=(rows[collapsePivot].lean<=0?-1:1)*46; crown.vy=-150; crown.vr=2.2;
+}
+
+// Высота кучи по колонкам шириной 32 — чтобы обломки ложились друг на друга,
+// а не выстраивались в одну ровную линию по земле.
+function pileTopUnused(x,w){
+  let top=GROUND_Y;
+  for(const d of debris){
+    if(!d.rest) continue;
+    if(x+w<=d.x+4 || x>=d.x+d.w-4) continue;
+    top=Math.min(top, d.y);
+  }
+  return top;
+}
+
+function stepDebris(dt,slow){
+  const d2=dt*slow;
+  debris.forEach(d=>{
+    if(d.rest) return;
+    d.vy+=1400*d2; d.x+=d.vx*d2; d.y+=d.vy*d2; d.rot+=d.vr*d2;
+    d.vx*=(1-1.2*d2);                                  // трение о воздух: не разъезжаются через весь экран
+    if(d.y+d.h>=GROUND_Y){
+      d.y=GROUND_Y-d.h;
+      if(Math.abs(d.vy)<170){
+        // Внавал: обломки лежат у земли внахлёст и с наклоном — это куча,
+        // а штабель из ровных блоков читался бы как вторая стена.
+        d.rest=true; d.vx=0; d.vr=0;
+        d.rot=(Math.random()*2-1)*0.18;
+        d.y=GROUND_Y-d.h+Math.round(Math.random()*8);
+        const mid=d.x+d.w/2;
+        if(phase==='play' && mid>TOWER_X-8 && mid<TOWER_X+ROW_W+8){   // вынутый рукой — за край основания
+          d.x = mid<TOWER_X+ROW_W/2 ? TOWER_X-12-d.w : TOWER_X+ROW_W+12;
+        }
+      }
+      else { d.vy*=-0.22; d.vx*=0.35; d.vr*=0.3; puff(d.x+d.w/2, GROUND_Y, 3); }
+    }
+  });
+  if(crown.live && !crown.rest){
+    crown.vy+=1400*d2; crown.x+=crown.vx*d2; crown.y+=crown.vy*d2; crown.rot+=crown.vr*d2;
+    if(crown.y+20>=GROUND_Y){
+      crown.y=GROUND_Y-20;
+      if(Math.abs(crown.vy)<90){ crown.rest=true; crown.vx=0; crown.vr=0; }
+      else { crown.vy*=-0.3; crown.vx*=0.7; }
+    }
+  }
+}
+
+function puff(x,y,n){
+  for(let k=0;k<n;k++) dust.push({x, y, vx:(Math.random()*2-1)*50, vy:-Math.random()*40,
+    t:0, life:0.5+Math.random()*0.6, s:Math.random()<0.5?2:4});
+}
+
+// ── рисование ─────────────────────────────────────────────────────────────
+function drawBlock(x,y,w,h,hot,rot){
+  x=Math.round(x); y=Math.round(y);
+  ctx.save();
+  if(rot){ ctx.translate(x+w/2,y+h/2); ctx.rotate(rot); ctx.translate(-w/2,-h/2); x=0; y=0; }
+  ctx.fillStyle=BODY;  ctx.fillRect(x,y,w,h);                    // тело темнее воздуха
+  ctx.fillStyle=hot?ACCENT:LINE;  ctx.fillRect(x,y,w,2);         // двойной контур
+  ctx.fillStyle=hot?ACCENT:LINE2; ctx.fillRect(x,y+2,w,1);
+  ctx.fillStyle=hot?ACCENT:LINE;  ctx.fillRect(x,y+h-2,w,2);
+  ctx.fillStyle=hot?ACCENT:LINE2; ctx.fillRect(x,y,2,h); ctx.fillRect(x+w-2,y,2,h);
+  ctx.fillStyle=TEX;                                             // пунктирная фактура
+  for(let k=0;k<4;k++) ctx.fillRect(x+10+k*14, y+10+((k%2)*8), 2, 2);
+  ctx.restore();
+}
+
+function drawPlates(){                    // плиты дороги Шута под башней
+  const y=GROUND_Y;
+  for(let x=-16;x<C.width+16;x+=32){
+    ctx.fillStyle=UI;       ctx.fillRect(x,y,32,40);
+    ctx.fillStyle='#A0A0A0';ctx.fillRect(x,y,32,2);
+    ctx.fillStyle=FAR;      ctx.fillRect(x,y+2,32,2);
+    ctx.fillStyle=TEX;      ctx.fillRect(x+6,y+12,2,2); ctx.fillRect(x+20,y+22,2,2);
+    ctx.fillStyle=AIR;      ctx.fillRect(x+31,y,1,40);
+  }
+}
+
+function drawCrown(x,y,rot,hot){
+  ctx.save(); ctx.translate(Math.round(x),Math.round(y)); ctx.rotate(rot);
+  ctx.fillStyle=hot?ACCENT:LINE;
+  ctx.fillRect(-18,4,36,8);
+  [-18,-6,6].forEach(dx=>ctx.fillRect(dx,-8,8,12));
+  ctx.fillStyle=LINE2; ctx.fillRect(-18,12,36,2);
+  ctx.restore();
+}
+
+function drawEdgeDark(k){                 // темнота наступает от полей к центру
+  if(k<=0) return;
+  const band=Math.round(110*k/2)*2;
+  const ramp=['#161616','#1C1C1C','#212121','#252525','#2A2A2A','#2E2E2E'];
+  for(let s=5;s>=0;s--){                 // от светлой ступени к тёмной, чтобы не было рамки
+    const w=Math.round(band*(s+1)/6/2)*2;
+    ctx.fillStyle=ramp[s];
+    ctx.fillRect(0,0,w,C.height); ctx.fillRect(C.width-w,0,w,C.height);
+    ctx.fillRect(0,0,C.width,Math.round(w*0.7)); ctx.fillRect(0,C.height-Math.round(w*0.7),C.width,Math.round(w*0.7));
+  }
+}
+
+function draw(){
+  ctx.fillStyle=AIR; ctx.fillRect(0,0,C.width,C.height);
+  drawEdgeDark(phase==='play' ? tension()*0.3 : 0.12);
+
+  ctx.save();
+  const sh=shake?(Math.random()*2-1)*shake:0;
+  ctx.translate(Math.round(sh), Math.round(shake?(Math.random()*2-1)*shake:0));
+
+  drawPlates();
+
+  // башня
+  for(let r=0;r<ROWS;r++){
+    const row=rows[r];
+    row.slots.forEach((v,i)=>{
+      if(!v) return;
+      const b=blockRect(r,i);
+      const hot = pulling && pulling.r===r && pulling.i===i;
+      const away = i===0 ? -1 : 1;                 // выползает в свою сторону
+      drawBlock(b.x+(hot?away*pulling.out:0), b.y, b.w, b.h, hot);
+    });
+  }
+  // зубцы и корона на макушке
+  if(rows[ROWS-1].slots.some(Boolean)){
+    const x0=TOWER_X+shiftAt(ROWS-1), y=rowY(ROWS-1)-12;
+    ctx.fillStyle=LINE; [0,72,144].forEach(dx=>ctx.fillRect(x0+dx+8,y,40,12));
+  }
+  if(!crown.live) drawCrown(TOWER_X+shiftAt(ROWS-1)+ROW_W/2, rowY(ROWS-1)-26, 0);
+  else drawCrown(crown.x, crown.y, crown.rot);
+
+  debris.forEach(d=>drawBlock(d.x,d.y,d.w,d.h,false,d.rot));
+  dust.forEach(d=>{ ctx.fillStyle = d.t/d.life<0.5?LINE2:TEX; ctx.fillRect(Math.round(d.x),Math.round(d.y),d.s,d.s); });
+  ctx.restore();
+
+  // подсказки — тем же голосом, что в игре
+  ctx.fillStyle=LINE; ctx.font='16px monospace'; ctx.textAlign='center';
+  if(phase==='play'){
+    const msg = pulledCount()===0 ? 'HOLD A BLOCK' : `${blocksLeft()} BLOCKS HOLD IT`;
+    ctx.globalAlpha=0.6; ctx.fillText(msg, C.width/2, 60); ctx.globalAlpha=1;
+  }
+  if(phase==='rest'||phase==='done'){
+    ctx.fillText('IT HAD TO FALL', C.width/2, 60);
+    if(phase==='done'){ ctx.globalAlpha=0.6; ctx.fillText('tap to try again', C.width/2, 90); ctx.globalAlpha=1; }
+  }
+}
+
+// ── цикл ──────────────────────────────────────────────────────────────────
+let frames=0;
+function loop(now){
+  frames++;
+  const dt=Math.min(0.05,(now-(lastT||now))/1000); lastT=now;
+  step(dt); draw();
+  requestAnimationFrame(loop);
+}
+function fit(){
+  const k=Math.min(window.innerWidth/C.width, window.innerHeight/C.height);
+  C.style.width=Math.floor(C.width*k)+'px'; C.style.height=Math.floor(C.height*k)+'px';
+}
+window.addEventListener('resize',fit); fit();
+reset(); requestAnimationFrame(loop);
+
+// отладка из консоли
+window.towerReset=reset;
+window.towerState=()=>({phase, left:blocksLeft(), pivot:collapsePivot, debris:debris.length, frames, pulling:pulling&&{r:pulling.r,i:pulling.i,t:+pulling.t.toFixed(2)}});
+window.towerPull=(r,i)=>{ rows[r].slots[i]=0; };
+</script>
