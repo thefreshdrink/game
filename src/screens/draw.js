@@ -1,7 +1,7 @@
 // Экран 3 — Вытягивание. Одна карта рубашкой вверх, тап переворачивает.
 // Референс: docs/interfaces/Tap to see.png
 
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont } from '../core/text.js';
 import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
 import { blinkAlpha } from '../core/textReveal.js';
 import { drawTapStar } from '../core/gestureGlyph.js';
@@ -10,12 +10,6 @@ import { easeInOutQuad } from '../core/ease.js';
 // «Не быстрее ~0.8 сек» — это ритуал (BUILD-SPEC). BUILD-SPEC-05 задача 3c:
 // 0.8 → 1.1 и через easing, а не линейно, — переворот как жест, не как
 // переключение кадра.
-// Слово в слово заголовок экрана 2 (deck.js, NEW_TITLE): игрок переходит
-// 2 → 3 и должен видеть один непрерывный текст, а не новый. Пока это две
-// копии одной строки в двух файлах — схлопнутся, когда появится слой строк
-// для локализации (CLAUDE.md: строки идут через один слой, не хардкодом).
-const TITLE = 'The deck offers itself…';
-
 const FLIP_DURATION = 1.1;
 const STAR_DELAY = 0.6;   // сек после появления карты — знак тапа проступает
 const STAR_PERIOD = 1.4;  // сек — период пульса знака
@@ -81,23 +75,19 @@ export function createDrawScreen({ input, images, goto }) {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF';
       const ty = Math.round(70 * scale); // тот же уровень, что и на экране 1 (правка в чате)
-      // Перенос считается, а не задаётся руками: экран 2 ломает эту же
-      // строку через wrapLines, и при забитом вручную переносе заголовок
-      // прыгал бы на переходе 2 → 3. Число строк разное у разных шрифтов —
-      // Kingdom уже Alagard и влезает в одну.
-      const titleLines = wrapLines(ctx, TITLE, w - marginX * 2);
-      titleLines.forEach((line, i) => ctx.fillText(line, marginX, ty + i * titleLH));
+      ctx.fillText('The deck', marginX, ty);
+      ctx.fillText('offers itself…', marginX, ty + titleLH);
 
       if (state === 'waiting') {
         // Тот же стиль/размер, что у вспомогательного текста на экране 1
         // (правка в чате: «вспомогательный текст по размеру как на первом»).
         // Текст ОСТАЁТСЯ (BUILD-SPEC-05 3b: он объясняет, звёздочка
         // показывает куда). Отступ считаем от ПЕРВОЙ строки заголовка на
-        // всю высоту заголовка — иначе подпись налезает на его последнюю строку.
+        // всю высоту двух строк — иначе подпись налезает на вторую строку.
         setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
         ctx.globalAlpha = blinkAlpha(idleT);
-        ctx.fillText('TAP THE CARD', marginX, ty + titleLines.length * titleLH + Math.round(9 * scale));
+        ctx.fillText('TAP THE CARD', marginX, ty + 2 * titleLH + Math.round(9 * scale));
         ctx.globalAlpha = 1;
       }
 
