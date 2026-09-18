@@ -61,8 +61,8 @@ export const CARDS = {
     id: 'tower',
     numeral: 'XVI',
     name: 'The Tower',
-    minigame: 'release',      // глагол карты, GDD §8.2. Сцены ещё нет —
-                              // поэтому карта не в PLAYABLE (см. ниже)
+    minigame: 'release',      // глагол карты, GDD §8.2 — сцена есть
+                              // (minigames/tower/release.js), карта в PLAYABLE
     art: 'towerOnCard',
 
     upright: 'sudden collapse, release, the necessary ruin',
@@ -238,8 +238,9 @@ export const ART_BY_NUMERAL = Object.fromEntries(
 export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
 
 /** Карты, которые реально ПРОХОДЯТСЯ: у них есть своя сцена мини-игры.
- * У Башни `minigame: 'release'`, сцены нет — поэтому её здесь нет. */
-export const PLAYABLE = ['fool'];
+ * У Башни `minigame: 'release'` — сцена появилась (minigames/tower/release.js),
+ * дженга: вынимаешь брусок за бруском, пока башня не сложится сама. */
+export const PLAYABLE = ['fool', 'tower'];
 
 /** ТЕСТОВЫЙ РЕЖИМ — выключить и удалить, когда тесты закончатся.
  *

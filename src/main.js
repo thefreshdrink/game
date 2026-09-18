@@ -12,6 +12,7 @@ import { createQuestionScreen } from './screens/question.js';
 import { createDeckScreen } from './screens/deck.js';
 import { createDrawScreen } from './screens/draw.js';
 import { createRevealScreen } from './screens/reveal.js';
+import { createReleaseScene } from './minigames/tower/release.js';
 import { createLeapScreen } from './minigames/fool/leap.js';
 import { createPredictionScreen } from './screens/prediction.js';
 
@@ -169,6 +170,7 @@ loadSprites(IMAGE_MANIFEST).then((images) => {
   registerScene('draw', createDrawScreen(deps));
   registerScene('reveal', createRevealScreen(deps));
   registerScene('leap', createLeapScreen(deps));
+  registerScene('release', createReleaseScene(deps));
   registerScene('prediction', createPredictionScreen(deps));
   goto('question');
 }).catch((err) => {

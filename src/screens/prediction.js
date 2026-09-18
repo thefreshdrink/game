@@ -22,6 +22,8 @@ import {
   buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W,
 } from '../minigames/fool/platforms.js';
 import { drawArrivalSun, drawArrivalLife } from '../minigames/fool/arrivalScene.js';
+import { drawPixelReveal } from '../core/pixelReveal.js';
+import { rubbleSnapshot, drawRubble, drawGround } from '../minigames/tower/blocks.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
@@ -35,6 +37,17 @@ const DOG_W = 36;
 const DOG_H = 28;
 const IDLE_FPS = 6;
 
+// Башня: куча обломков приезжает со сцены мини-игры и лежит у нижней кромки,
+// как у Шута лежит дорога. Когда предсказание уже пошло, куча РАСТВОРЯЕТСЯ
+// тем же пиксельным уходом, каким уходит в темноту оракул (core/oracle.js),
+// и на её месте проступает знак вопроса: дальше решать тому, кто читает
+// (правка в чате).
+const RUBBLE_HOLD = 1.4;       // сек: сначала читается текст, куча ещё цела
+const RUBBLE_DISSOLVE = 1.6;   // сколько растворяется
+const MARK_REVEAL = 1.0;       // сколько проступает знак вопроса
+const RUBBLE_CELL = 4;         // ячейка растворения — как у оракула
+const MARK_SIZE = 96;
+
 export function createPredictionScreen({ input, images, goto }) {
   let offTap = null;
   let t = 0;
@@ -44,6 +57,9 @@ export function createPredictionScreen({ input, images, goto }) {
   // на абзацы (задача 10). Одиночные переводы строки внутри абзаца
   // схлопываем в пробел — wrapLines рвёт только по пробелам.
   let paragraphs = [];
+  let rubbleBuf = null;  // куча, снятая в буфер: её растворяем целиком
+  let markBuf = null;    // знак вопроса на её месте
+  let bufKey = '';
 
   /** Общая длительность печати: все символы + паузы на стыках абзацев. */
   function totalTime() {
@@ -70,6 +86,37 @@ export function createPredictionScreen({ input, images, goto }) {
       time = 0;
       return n;
     });
+  }
+
+  /** Куча и знак вопроса — в буферы: пиксельное растворение работает по
+   * готовой картинке, ровно как у фигуры оракула. */
+  function buildBuffers(w, h) {
+    const key = `${w}x${h}x${rubbleSnapshot.blocks.length}`;
+    if (bufKey === key) return;
+    bufKey = key;
+    const baseX = Math.round(w / 2);
+    const baseY = h - rubbleSnapshot.oyFromBottom;
+    const top = baseY - 170;
+
+    rubbleBuf = document.createElement('canvas');
+    rubbleBuf.width = w;
+    rubbleBuf.height = Math.max(1, h - top);
+    const rc = rubbleBuf.getContext('2d');
+    rc.imageSmoothingEnabled = false;
+    drawGround(rc, baseX, baseY - top, 4);
+    drawRubble(rc, baseX, baseY - top, rubbleSnapshot.blocks);
+    rubbleBuf.top = top;
+
+    markBuf = document.createElement('canvas');
+    markBuf.width = MARK_SIZE;
+    markBuf.height = MARK_SIZE;
+    const mc = markBuf.getContext('2d');
+    mc.imageSmoothingEnabled = false;
+    mc.fillStyle = '#FFFFFF';
+    mc.textAlign = 'center';
+    mc.textBaseline = 'middle';
+    mc.font = `${Math.round(MARK_SIZE * 0.8)}px Alagard, serif`;
+    mc.fillText('?', MARK_SIZE / 2, MARK_SIZE / 2 + 2);
   }
 
   return {
@@ -114,7 +161,7 @@ export function createPredictionScreen({ input, images, goto }) {
       // своей сцены прибытия не было — низ остаётся пустым, ровно как на
       // docs/interfaces/The prediction.png (дорога там появилась правкой
       // 2026-08-30 специально под склейку 5→6 у Шута).
-      if (groundMain && PLAYABLE.includes(card.id)) {
+      if (groundMain && card.id === 'fool') {
         const gy = Math.round(h * ARRIVE_GROUND_FRAC);
         const gw = groundMain.width;
         const gx = Math.round(w / 2 - gw / 2 - 28);
@@ -129,6 +176,32 @@ export function createPredictionScreen({ input, images, goto }) {
         ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
         const fr = images.foolIdleFrames;
         ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], fcx - PLAYER_W / 2, gy - PLAYER_H, PLAYER_W, PLAYER_H);
+      }
+
+      // Башня: куча лежит там же, где её оставила мини-игра, потом уходит
+      // пикселями и отдаёт место знаку вопроса.
+      if (card.id === 'tower' && rubbleSnapshot.blocks.length) {
+        buildBuffers(w, h);
+        const dissolveT = t - RUBBLE_HOLD;
+        if (dissolveT <= 0) {
+          ctx.drawImage(rubbleBuf, 0, rubbleBuf.top);
+        } else if (dissolveT < RUBBLE_DISSOLVE) {
+          const left = 1 - dissolveT / RUBBLE_DISSOLVE;
+          drawPixelReveal(
+            ctx, rubbleBuf, 0, rubbleBuf.top, rubbleBuf.width, rubbleBuf.height,
+            left, RUBBLE_CELL, 0.5, 0.55,
+          );
+        }
+        const markT = dissolveT - RUBBLE_DISSOLVE * 0.7;
+        if (markT > 0) {
+          const baseY = h - rubbleSnapshot.oyFromBottom;
+          drawPixelReveal(
+            ctx, markBuf,
+            Math.round(w / 2 - MARK_SIZE / 2), Math.round(baseY - MARK_SIZE / 2),
+            MARK_SIZE, MARK_SIZE,
+            Math.min(1, markT / MARK_REVEAL), RUBBLE_CELL, 0.5, 0.5,
+          );
+        }
       }
 
       const marginX = Math.round(53 * scale);
