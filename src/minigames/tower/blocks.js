@@ -115,8 +115,7 @@ export function setBlockSprite(img) {
 export function drawBlock(ctx, ox, oy, o, hot) {
   if (blockSprite) {
     const r = blockRect(ox, oy, o);
-    if (o.dx > o.dy) {                 // спрайт нарисован длинной осью влево-вниз,
-                                       // поэтому зеркалим ПРОДОЛЬНЫЙ брусок
+    if (o.dy > o.dx) {                 // поперечный ряд — тот же спрайт зеркально
       ctx.save();
       ctx.translate(r.x + r.w, r.y);
       ctx.scale(-1, 1);

@@ -112,13 +112,11 @@ def normalize(src):
                 if mp[x, y] < 128:
                     continue
                 r, g, b, a = sp[x, y]
-                # Фактура берётся из генерации, но только вдали от края:
-                # у края генератор и «мажет», и промахивается мимо сетки.
-                near_edge = (
-                    mp[max(0, x - 1), y] < 128 or mp[min(W - 1, x + 1), y] < 128
-                    or mp[x, max(0, y - 1)] < 128 or mp[x, min(H - 1, y + 1)] < 128
-                )
-                op[x, y] = (tone + (255,)) if (a < 128 or near_edge) else (snap((r, g, b)) + (255,))
+                # Фактура генерации сохраняется как есть — плоская заливка
+                # тоном шла бы против стиля карт, где плоскость всегда с
+                # крошкой. Тоном добиваются только дыры: там, где генератор
+                # не дорисовал грань до края сетки.
+                op[x, y] = (snap((r, g, b)) + (255,)) if a >= 128 else (tone + (255,))
 
     d = ImageDraw.Draw(out)
     d.line(silhouette() + [silhouette()[0]], fill=LINE + (255,), width=1)
@@ -129,11 +127,59 @@ def normalize(src):
     return out
 
 
+def draw_block():
+    """Рисует брусок по сетке — без генератора.
+
+    Роли тонов сняты с уже существующего арта игры: дорога
+    (`road/plat_tiles.png`) и портрет Башни держатся на тёмном теле
+    `#232323`/`#4A4A4A`, светлой каменной верхушке `#808080` и белом
+    контуре. Тот же набор и здесь, поэтому брусок читается как камень
+    того же мира, а не как прозрачная коробка.
+    """
+    top, front, right = faces()
+    out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(out)
+    d.polygon(top, fill=(128, 128, 128, 255))     # верх — свет
+    d.polygon(front, fill=(74, 74, 74, 255))      # передняя грань — полутон
+    d.polygon(right, fill=(35, 35, 35, 255))      # боковая — тень
+
+    # Фактура камня: точки постоянные, не случайные от запуска к запуску.
+    seed = 0
+    op = out.load()
+
+    def dot(x, y, c):
+        if 0 <= x < W and 0 <= y < H and op[x, y][3] == 255:
+            op[x, y] = c + (255,)
+
+    for i in range(24):
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        x = 3 + seed % (W - 6)
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        y = 3 + seed % (H - 6)
+        base = op[x, y][:3]
+        if base == (128, 128, 128):
+            dot(x, y, (184, 184, 184))            # блик на верхушке
+        elif base == (74, 74, 74):
+            dot(x, y, (128, 128, 128))
+        elif base == (35, 35, 35):
+            dot(x, y, (74, 74, 74))
+
+    # Контур: белый силуэт и вторая линия под верхним ребром — двойная
+    # линия из графического языка проекта (design-system §1).
+    d.line(silhouette() + [silhouette()[0]], fill=LINE + (255,), width=1)
+    d.line([P(0, DY, 1), P(DX, DY, 1)], fill=LINE + (255,), width=1)
+    d.line([P(DX, 0, 1), P(DX, DY, 1)], fill=LINE + (255,), width=1)
+    x0, y0 = P(0, DY, 1)
+    x1, y1 = P(DX, DY, 1)
+    d.line([(x0, y0 + 1), (x1, y1 + 1)], fill=LINE2 + (255,), width=1)
+    d.line([P(DX, DY, 1), P(DX, DY, 0)], fill=LINE2 + (255,), width=1)
+    return out
+
+
 def selftest():
     set_unit(8)
     """Проверяем ровно то, ради чего скрипт существует: сетку и палитру."""
-    noise = Image.new('RGBA', (70, 40), (90, 90, 90, 255))
-    im = normalize(noise)
+    im = draw_block()
     assert im.size == (W, H), im.size
     cols = {c[1][:3] for c in im.getcolors(9999) if c[1][3] == 255}
     assert cols <= set(PALETTE), f'цвет вне палитры: {cols - set(PALETTE)}'
@@ -161,10 +207,19 @@ def main():
     ap.add_argument('dst', nargs='?')
     ap.add_argument('--selftest', action='store_true')
     ap.add_argument('--unit', type=int, default=8, help='шаг сетки: 8 → 32×26 (×4), 16 → 64×52 (×2)')
+    ap.add_argument('--draw', action='store_true', help='нарисовать брусок по сетке, без генерации')
     a = ap.parse_args()
     set_unit(a.unit)
     if a.selftest:
         selftest()
+        return
+    if a.draw:
+        if not a.dst and a.src:
+            a.dst = a.src
+        if not a.dst:
+            ap.error('нужен выходной файл')
+        draw_block().save(a.dst)
+        print(f'{a.dst}: {W}×{H}, нарисован по сетке')
         return
     if not a.src or not a.dst:
         ap.error('нужны вход и выход')
