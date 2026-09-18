@@ -5,3 +5,8 @@ dist/
 *.log
 .vite/
 vite.config.js.timestamp-*.mjs
+
+# Кэш и промежуточное от скриптов в tools/
+tools/.pixelify-upstream.ttf
+tools/.kingdom-charset.txt
+**/__pycache__/

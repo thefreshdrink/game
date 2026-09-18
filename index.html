@@ -11,16 +11,31 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <style>
-  /* Alagard is the display face (headings, card names). Latin only — the game
-     is EN-only, see GDD §12. Pixelify Sans is the text face. */
+  /* Три шрифта. Kingdom — заголовки экранов: покрывает все пять языков
+     продукта, куплен под коммерческую лицензию. Alagard — остаток
+     дисплейного: номер и имя карты; только латиница, на кириллице рвётся,
+     это open-questions.md B6, и для лица карты вопрос ещё открыт.
+     Pixelify Sans — текстовый.
+
+     Оба самохостом: сетевых запросов в рантайме нет (§14). Pixelify лежит
+     починенный — в стоковом семействе нет трёх заглавных (О, П и украинской
+     І), и капсовые метки теряли буквы. Файл пересобирается скриптом
+     tools/patch-pixelify.py, руками его не правь. */
   @font-face {
     font-family: 'Alagard';
     src: url('/assets/alagard.ttf') format('truetype');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'Kingdom';
+    src: url('/assets/kingdom.ttf') format('truetype');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'Pixelify Sans';
+    src: url('/assets/pixelify-sans.ttf') format('truetype');
+    font-weight: 400 700;   /* один вариативный файл на всю ось wght */
     font-display: block;
   }
 

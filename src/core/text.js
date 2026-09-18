@@ -9,11 +9,16 @@ export function uiScale(width) {
   return Math.min(Math.max(width / REFERENCE_WIDTH, 0.75), 1.15);
 }
 
+// Заголовки экранов переведены на Kingdom (решение 18.09, decisions-log):
+// он покрывает все пять языков продукта, Alagard — только латиницу. Лицо
+// карты пока осталось на Alagard, там замена ещё не решена (B6).
+const FONT_TITLE = 'Kingdom, serif';
 const FONT_DISPLAY = 'Alagard, serif';
 const FONT_BODY = '"Pixelify Sans", monospace';
 
 const ROLES = {
-  title:      { family: FONT_DISPLAY, size: 46, lineHeight: 46 },
+  // letterSpacing 0 — выбрано на прототипе, разрядку не добавляем.
+  title:      { family: FONT_TITLE, size: 46, lineHeight: 46, letterSpacing: 0 },
   // Номер и имя на раскрытой карте — по Figma: Alagard Medium 30,
   // letter-spacing −4% (правка в чате). У нас только один статичный файл
   // Alagard (index.html, без отдельного начертания Medium) — вес всё
@@ -72,8 +77,8 @@ export function setFontFitted(ctx, role, scale, text, maxWidth, minSize = 12) {
 
 /**
  * Разбивает строку на строки по ширине maxWidth (жадный word-wrap).
- * ctx.font должен быть уже выставлен (setFont) — Alagard не моноширинный,
- * на глаз переносы не угадываются, только через measureText.
+ * ctx.font должен быть уже выставлен (setFont) — дисплейные шрифты не
+ * моноширинные, на глаз переносы не угадываются, только через measureText.
  */
 export function wrapLines(ctx, text, maxWidth) {
   const words = text.split(' ');
