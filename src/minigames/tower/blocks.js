@@ -10,9 +10,13 @@
 // Всё в единицах бруска: короткая сторона 1, длинная 3, высота ряда 1.
 // Экранные шаги чётные (CLAUDE.md: 1 арт-пиксель = 2 экранных).
 
-export const U = 26;    // шаг вправо на единицу глубины
-export const HU = 13;   // он же вниз — изометрия 2:1
-export const ZH = 20;   // высота ряда
+// Спрайт бруска — 60×48 арт-пикселей, в игре рисуется ×2 (закон сетки
+// CLAUDE.md). Отсюда и шаги: длинный брусок занимает 4·U = 120 экранных
+// по ширине и 4·HU + ZH = 96 по высоте — ровно спрайт, без дробного
+// масштаба и без щелей между рядами.
+export const U = 30;    // шаг вправо на единицу глубины
+export const HU = 15;   // он же вниз — изометрия 2:1
+export const ZH = 36;   // высота ряда
 export const ROWS = 12;
 export const COLS = 3;
 
@@ -69,10 +73,64 @@ function edge(ctx, a, b, color, width = 2) {
   ctx.stroke();
 }
 
+/** Экранный прямоугольник бруска: по нему сажается спрайт. Ширина
+ * (dx+dy)·U, высота (dx+dy)·HU + ZH — то есть длинный брусок это ровно
+ * 104×72 экранных. */
+export function blockRect(ox, oy, o) {
+  const f = facesOf(ox, oy, o);
+  const pts = [...f.top, ...f.front, ...f.right];
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const x = Math.round(Math.min(...xs));
+  const y = Math.round(Math.min(...ys));
+  return { x, y, w: Math.round(Math.max(...xs)) - x, h: Math.round(Math.max(...ys)) - y };
+}
+
+/** Силуэт бруска — обводка поверх спрайта, когда он под пальцем. */
+function strokeSilhouette(ctx, ox, oy, o, color) {
+  const f = facesOf(ox, oy, o);
+  edge(ctx, f.top[0], f.top[1], color);
+  edge(ctx, f.top[1], f.top[2], color);
+  edge(ctx, f.top[2], f.top[3], color);
+  edge(ctx, f.top[3], f.top[0], color);
+  edge(ctx, f.right[1], f.right[2], color);
+  edge(ctx, f.right[2], f.right[3], color);
+  edge(ctx, f.front[2], f.front[3], color);
+  edge(ctx, f.front[3], f.front[0], color);
+}
+
+// Спрайт бруска. Пока не выбран — null, и башня рисуется гранями палитры.
+// Рисуется ОДИН спрайт (длинный вдоль X); поперечный ряд — тот же спрайт,
+// отзеркаленный по горизонтали: в изометрии 2:1 это ровно поворот на 90°.
+let blockSprite = null;
+
+export function setBlockSprite(img) {
+  blockSprite = img ?? null;
+}
+
 /** Брусок: верхняя грань светлее — по ней читается глубина; тело темнее
  * воздуха (design-system §2). `hot` — брусок под пальцем, акцент значит
  * ровно «это можно тронуть». */
 export function drawBlock(ctx, ox, oy, o, hot) {
+  if (blockSprite) {
+    const r = blockRect(ox, oy, o);
+    if (o.dx > o.dy) {                 // спрайт нарисован длинной осью влево-вниз,
+                                       // поэтому зеркалим ПРОДОЛЬНЫЙ брусок
+      ctx.save();
+      ctx.translate(r.x + r.w, r.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(blockSprite, 0, 0, r.w, r.h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(blockSprite, r.x, r.y, r.w, r.h);
+    }
+    if (hot) strokeSilhouette(ctx, ox, oy, o, ACCENT);
+    return;
+  }
+  drawBlockFaces(ctx, ox, oy, o, hot);
+}
+
+function drawBlockFaces(ctx, ox, oy, o, hot) {
   const f = facesOf(ox, oy, o);
   poly(ctx, f.top, FAR);
   poly(ctx, f.front, UI);

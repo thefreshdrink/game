@@ -98,12 +98,13 @@ export function createPredictionScreen({ input, images, goto }) {
     const baseY = h - rubbleSnapshot.oyFromBottom;
     const top = baseY - 170;
 
+    // В буфер идут ТОЛЬКО обломки: земля под ними остаётся на месте и
+    // никуда не девается (правка в чате) — растворяется то, что упало.
     rubbleBuf = document.createElement('canvas');
     rubbleBuf.width = w;
     rubbleBuf.height = Math.max(1, h - top);
     const rc = rubbleBuf.getContext('2d');
     rc.imageSmoothingEnabled = false;
-    drawGround(rc, baseX, baseY - top, 4);
     drawRubble(rc, baseX, baseY - top, rubbleSnapshot.blocks);
     rubbleBuf.top = top;
 
@@ -112,7 +113,7 @@ export function createPredictionScreen({ input, images, goto }) {
     markBuf.height = MARK_SIZE;
     const mc = markBuf.getContext('2d');
     mc.imageSmoothingEnabled = false;
-    mc.fillStyle = '#FFFFFF';
+    mc.fillStyle = '#EBA331';   // акцент: дальше решать тому, кто читает
     mc.textAlign = 'center';
     mc.textBaseline = 'middle';
     mc.font = `${Math.round(MARK_SIZE * 0.8)}px Alagard, serif`;
@@ -182,6 +183,7 @@ export function createPredictionScreen({ input, images, goto }) {
       // пикселями и отдаёт место знаку вопроса.
       if (card.id === 'tower' && rubbleSnapshot.blocks.length) {
         buildBuffers(w, h);
+        drawGround(ctx, Math.round(w / 2), h - rubbleSnapshot.oyFromBottom, 4);
         const dissolveT = t - RUBBLE_HOLD;
         if (dissolveT <= 0) {
           ctx.drawImage(rubbleBuf, 0, rubbleBuf.top);

@@ -13,6 +13,7 @@ import { createDeckScreen } from './screens/deck.js';
 import { createDrawScreen } from './screens/draw.js';
 import { createRevealScreen } from './screens/reveal.js';
 import { createReleaseScene } from './minigames/tower/release.js';
+import { setBlockSprite } from './minigames/tower/blocks.js';
 import { createLeapScreen } from './minigames/fool/leap.js';
 import { createPredictionScreen } from './screens/prediction.js';
 
@@ -153,6 +154,7 @@ const IMAGE_MANIFEST = {
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
   foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
   roadTiles: 'assets/road/plat_tiles.png',
+  towerBlock: 'assets/tower/block.png',
   dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
   dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
   dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
@@ -164,6 +166,7 @@ loadSprites(IMAGE_MANIFEST).then((images) => {
   images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
   images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
 
+  setBlockSprite(images.towerBlock);   // брусок Башни — из спрайта, не гранями
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
   registerScene('deck', createDeckScreen(deps));

@@ -41,6 +41,7 @@ Nearest Neighbor / «без сглаживания».
 | `dog/strips/dog_look_down_1f_18x14.png` | 18×14 | арт-px | **×2** | пёс lookdown |
 | `dog/strips/dog_jump_1f_18x14.png` | 18×14 | арт-px | **×2** | пёс над щелью |
 | `road/plat_tiles.png` | 48×16 (3 ячейки 16×16) | арт-px | **×2** | дорога, `platforms.js drawRoad` (торец+N×серединка+торец) |
+| `tower/block.png` | 60×48 | арт-px | **×2** | брусок дженги Башни, изометрия 2:1. Один спрайт на всю башню: поперечный ряд — он же, отзеркаленный. `minigames/tower/blocks.js` |
 | `card/card_frame_fool.png` | 224×384 | экранные | **×1** | лицо карты, экран 4 (`cardFront`, `CARD_W×CARD_H`) |
 | `card/back_side_card_final.png` | 224×384 | экранные | **×1** | рубашка карты, экран 2 (веер) и 3 (`cardBack`) |
 | `card/fool_on_the_card.png` | 164×182 | экранные | **×1** | портрет на карте, экран 4 (нативный размер, `pixelReveal`) |
