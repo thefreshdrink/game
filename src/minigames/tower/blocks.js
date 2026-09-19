@@ -100,19 +100,37 @@ function strokeSilhouette(ctx, ox, oy, o, color) {
   edge(ctx, f.front[3], f.front[0], color);
 }
 
-// Спрайт бруска. Пока не выбран — null, и башня рисуется гранями палитры.
-// Рисуется ОДИН спрайт (длинный вдоль X); поперечный ряд — тот же спрайт,
-// отзеркаленный по горизонтали: в изометрии 2:1 это ровно поворот на 90°.
-let blockSprite = null;
+// Спрайты брусков: три тона камня (светлый / серый / тёмный). Кладка
+// набирается ими по фиксированному узору — так она читается как кладка, а
+// не рябит случайностью; ровно этим живёт референс, присланный в чате.
+// Поперечный ряд — тот же спрайт зеркально: в изометрии 2:1 это поворот
+// на 90°, второго файла не нужно.
+//
+// Золотого спрайта нет и не будет: `#EBA331` значит ровно «это можно
+// тронуть» (CLAUDE.md), поэтому золотым брусок становится ТОЛЬКО под
+// пальцем — перекраской, а не отдельной картинкой.
+const TONES = ['light', 'mid', 'dark'];
+const sprites = { light: null, mid: null, dark: null };
 
-export function setBlockSprite(img) {
-  blockSprite = img ?? null;
+export function setBlockSprites(imgs) {
+  TONES.forEach((t) => { sprites[t] = imgs?.[t] ?? null; });
+}
+
+/** Тон бруска по его месту в кладке. Узор постоянный: одна и та же башня
+ * выглядит одинаково при каждом заходе, но не полосами. */
+export function toneOf(r, i) {
+  return TONES[(r * 2 + i * 5 + Math.floor(r / 3)) % TONES.length];
+}
+
+function spriteFor(o) {
+  return sprites[o.tone ?? 'mid'] ?? sprites.mid ?? sprites.light ?? sprites.dark;
 }
 
 /** Брусок: верхняя грань светлее — по ней читается глубина; тело темнее
  * воздуха (design-system §2). `hot` — брусок под пальцем, акцент значит
  * ровно «это можно тронуть». */
 export function drawBlock(ctx, ox, oy, o, hot) {
+  const blockSprite = spriteFor(o);
   if (blockSprite) {
     const r = blockRect(ox, oy, o);
     if (o.dy > o.dx) {                 // поперечный ряд — тот же спрайт зеркально
@@ -152,6 +170,24 @@ function drawBlockFaces(ctx, ox, oy, o, hot) {
   edge(ctx, f.right[2], f.right[3], L);
   edge(ctx, f.front[2], f.front[3], L);
   edge(ctx, f.front[3], f.front[0], L2);
+}
+
+/** Золотые искры вокруг короны — четырёхлучевые звёздочки, как на
+ * референсе из чата. Процедурно: своя картинка им не нужна, а мерцание
+ * спрайтом не запечёшь. Акцентом их красить законно — корона и есть то,
+ * что игрок отпускает первым. */
+export function drawSparkles(ctx, cx, cy, t) {
+  const spots = [[-26, -14, 3], [22, -20, 2], [-14, -34, 2], [30, 2, 2], [-34, 4, 2], [8, -40, 3]];
+  ctx.fillStyle = ACCENT;
+  spots.forEach(([dx, dy, arm], k) => {
+    const blink = 0.5 + 0.5 * Math.sin(t * 2.2 + k * 1.7);
+    if (blink < 0.35) return;
+    const x = Math.round(cx + dx);
+    const y = Math.round(cy + dy);
+    const a = Math.round(arm * (0.6 + blink * 0.4)) * 2;
+    ctx.fillRect(x - a, y - 1, a * 2 + 2, 2);
+    ctx.fillRect(x - 1, y - a, 2, a * 2 + 2);
+  });
 }
 
 /** Земля — те же каменные плиты дороги Шута, только в изометрии (решение
@@ -198,7 +234,7 @@ export function rubbleBounds(ox, oy, blocks) {
 export const rubbleSnapshot = { blocks: [], ox: 0, oyFromBottom: 0 };
 
 export function saveRubble(blocks, ox, oyFromBottom) {
-  rubbleSnapshot.blocks = blocks.map((b) => ({ x: b.x, y: b.y, z: b.z, dx: b.dx, dy: b.dy }));
+  rubbleSnapshot.blocks = blocks.map((b) => ({ x: b.x, y: b.y, z: b.z, dx: b.dx, dy: b.dy, tone: b.tone }));
   rubbleSnapshot.ox = ox;
   rubbleSnapshot.oyFromBottom = oyFromBottom;
 }

@@ -17,7 +17,7 @@
 import { setFont } from '../../core/text.js';
 import { blinkAlpha } from '../../core/textReveal.js';
 import {
-  ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble,
+  ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
 } from './blocks.js';
 
 const PULL_TIME = 0.8;      // сек удержания до выхода бруска
@@ -94,7 +94,7 @@ export function createReleaseScene({ input, goto }) {
     return {
       x: c.x + sx + (r % 2 === 0 ? push : 0),
       y: c.y + sy + (r % 2 === 0 ? 0 : push),
-      z: r, dx: c.dx, dy: c.dy,
+      z: r, dx: c.dx, dy: c.dy, tone: toneOf(r, i),
     };
   }
 

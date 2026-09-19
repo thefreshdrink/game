@@ -46,6 +46,7 @@ PALETTE = [
 ]
 LINE = (255, 255, 255)
 LINE2 = (184, 184, 184)
+RAMP = [0, 17, 35, 74, 128, 184, 255]
 
 set_unit(8)
 
@@ -107,16 +108,39 @@ def normalize(src):
         m = mask_of(poly)
         tone = median_tone(src, m)
         mp = m.load()
+        i_t = RAMP.index(tone[0]) if tone[0] in RAMP else 0
+
+        # Чем пиксель отличается от тона грани, в ступенях рампы.
+        diff = {}
         for y in range(H):
             for x in range(W):
                 if mp[x, y] < 128:
                     continue
                 r, g, b, a = sp[x, y]
-                # Фактура генерации сохраняется как есть — плоская заливка
-                # тоном шла бы против стиля карт, где плоскость всегда с
-                # крошкой. Тоном добиваются только дыры: там, где генератор
-                # не дорисовал грань до края сетки.
-                op[x, y] = (snap((r, g, b)) + (255,)) if a >= 128 else (tone + (255,))
+                if a < 128:
+                    diff[(x, y)] = None          # дыра генерации
+                    continue
+                c = snap((r, g, b))
+                i_c = RAMP.index(c[0]) if c[0] in RAMP else 0
+                diff[(x, y)] = (c, i_c - i_t)
+
+        for (x, y), v in diff.items():
+            if v is None or v[1] == 0:
+                op[x, y] = tone + (255,)
+                continue
+            c, step = v
+            # Крапина — одиночный пиксель или пара. Сплошное пятно той же
+            # яркости это ГРАНЬ ЧУЖОГО БРУСКА: генератор рисует свой блок
+            # меньше нашей сетки, и его рёбра оставались внутри силуэта.
+            crowd = 0
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    n = diff.get((x + dx, y + dy))
+                    if n and n[1] == step:
+                        crowd += 1
+            op[x, y] = (c + (255,)) if (crowd <= 2 and abs(step) <= 2) else (tone + (255,))
 
     d = ImageDraw.Draw(out)
     d.line(silhouette() + [silhouette()[0]], fill=LINE + (255,), width=1)
@@ -176,6 +200,55 @@ def draw_block():
     return out
 
 
+def flatten(im):
+    """Однотонные грани с тенью только по нижнему краю — так бруски
+    выглядят на референсе, присланном в чате: никакой крошки внутри,
+    работает контраст между брусками, а не внутри одного."""
+    top, front, right = faces()
+    out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    op, ip = out.load(), im.load()
+    for poly in (top, front, right):
+        m = mask_of(poly)
+        mp = m.load()
+        vals = [ip[x, y][0] for y in range(H) for x in range(W)
+                if mp[x, y] >= 128 and ip[x, y][3] == 255 and ip[x, y][:3] != (255, 255, 255)]
+        if not vals:
+            continue
+        vals.sort()
+        tone = (vals[len(vals) // 2],) * 3
+        i_t = min(range(len(RAMP)), key=lambda k: abs(RAMP[k] - tone[0]))
+        shade = (RAMP[max(0, i_t - 1)],) * 3           # тень на ступень темнее
+        for y in range(H):
+            for x in range(W):
+                if mp[x, y] < 128:
+                    continue
+                low = mp[x, min(H - 1, y + 1)] < 128 or mp[min(W - 1, x + 1), y] < 128
+                op[x, y] = (shade if low else tone) + (255,)
+    d = ImageDraw.Draw(out)
+    d.line(silhouette() + [silhouette()[0]], fill=LINE + (255,), width=1)
+    d.line([P(0, DY, 1), P(DX, DY, 1)], fill=LINE + (255,), width=1)
+    d.line([P(DX, 0, 1), P(DX, DY, 1)], fill=LINE + (255,), width=1)
+    d.line([P(DX, DY, 1), P(DX, DY, 0)], fill=LINE2 + (255,), width=1)
+    return out
+
+
+def shift_tone(im, step):
+    """Светлее/темнее на step ступеней рампы — так три тона кладки выходят
+    из ОДНОГО бруска и держат одну фактуру. Белый контур не трогаем: он
+    роль, а не оттенок."""
+    out = im.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a < 128 or (r, g, b) == (255, 255, 255):
+                continue
+            i = min(range(len(RAMP)), key=lambda k: abs(RAMP[k] - r))
+            v = RAMP[max(0, min(len(RAMP) - 1, i + step))]
+            px[x, y] = (v, v, v, 255)
+    return out
+
+
 def selftest():
     set_unit(8)
     """Проверяем ровно то, ради чего скрипт существует: сетку и палитру."""
@@ -208,6 +281,8 @@ def main():
     ap.add_argument('--selftest', action='store_true')
     ap.add_argument('--unit', type=int, default=8, help='шаг сетки: 8 → 32×26 (×4), 16 → 64×52 (×2)')
     ap.add_argument('--draw', action='store_true', help='нарисовать брусок по сетке, без генерации')
+    ap.add_argument('--tone', type=int, default=0, help='сдвиг тона: +1 светлее, -1 темнее')
+    ap.add_argument('--flat', action='store_true', help='однотонные грани, тень только по краю')
     a = ap.parse_args()
     set_unit(a.unit)
     if a.selftest:
@@ -223,7 +298,12 @@ def main():
         return
     if not a.src or not a.dst:
         ap.error('нужны вход и выход')
-    normalize(Image.open(a.src)).save(a.dst)
+    im = normalize(Image.open(a.src))
+    if a.flat:
+        im = flatten(im)
+    if a.tone:
+        im = shift_tone(im, a.tone)
+    im.save(a.dst)
     print(f'{a.dst}: {W}×{H}')
 
 
