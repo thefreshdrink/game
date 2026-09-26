@@ -12,9 +12,8 @@ import { createQuestionScreen } from './screens/question.js';
 import { createDeckScreen } from './screens/deck.js';
 import { createDrawScreen } from './screens/draw.js';
 import { createRevealScreen } from './screens/reveal.js';
-import { createReleaseScene } from './minigames/tower/release.js';
+import { MINIGAMES } from './minigames/index.js';
 import { setBlockSprites } from './minigames/tower/blocks.js';
-import { createLeapScreen } from './minigames/fool/leap.js';
 import { createPredictionScreen } from './screens/prediction.js';
 
 const canvasEl = document.getElementById('game');
@@ -154,9 +153,9 @@ const IMAGE_MANIFEST = {
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
   foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
   roadTiles: 'assets/road/plat_tiles.png',
-  towerBlockLight: 'assets/tower/block_light.png',
-  towerBlockMid: 'assets/tower/block_mid.png',
-  towerBlockDark: 'assets/tower/block_dark.png',
+  // Три тона бруска (light/mid/dark) не собраны — docs/pixel-assets-howto.md
+  // §4.1; пока все тона берут один block.png (spriteFor в blocks.js).
+  towerBlock: 'assets/tower/block.png',
   dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
   dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
   dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
@@ -168,18 +167,13 @@ loadSprites(IMAGE_MANIFEST).then((images) => {
   images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
   images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
 
-  setBlockSprites({           // три тона камня — кладка набирается ими
-    light: images.towerBlockLight,
-    mid: images.towerBlockMid,
-    dark: images.towerBlockDark,
-  });
+  setBlockSprites({ mid: images.towerBlock });
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
   registerScene('deck', createDeckScreen(deps));
   registerScene('draw', createDrawScreen(deps));
   registerScene('reveal', createRevealScreen(deps));
-  registerScene('leap', createLeapScreen(deps));
-  registerScene('release', createReleaseScene(deps));
+  Object.entries(MINIGAMES).forEach(([verb, create]) => registerScene(verb, create(deps)));
   registerScene('prediction', createPredictionScreen(deps));
   goto('question');
 }).catch((err) => {

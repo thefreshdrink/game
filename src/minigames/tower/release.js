@@ -14,8 +14,9 @@
 // Такты: play → fall (обвал, дрожь обрывается) → settle (тишина) →
 // lower (композиция едет вниз, к месту предсказания) → экран 6.
 
-import { setFont } from '../../core/text.js';
-import { blinkAlpha } from '../../core/textReveal.js';
+import { defineMinigame } from '../../core/minigame.js';
+import { applyShake } from '../../core/juice.js';
+import { drawTopHint, hintScale } from '../../core/hints.js';
 import {
   ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
 } from './blocks.js';
@@ -46,7 +47,6 @@ export function createReleaseScene({ input, goto }) {
   let crown = null;
   let lowerFrom = 0;
   let lowerTo = 0;
-  let offHandlers = [];
   let baseX = 0;
   let baseY = 0;
   let movedEver = false;
@@ -273,25 +273,19 @@ export function createReleaseScene({ input, goto }) {
     return hit;
   }
 
-  return {
-    enter() {
-      reset();
-      offHandlers = [
-        input.on('pressstart', (e) => {
-          if (phase !== 'play') return;
-          const hit = pickAt(e.x, e.y);
-          if (hit) { pulling = { r: hit.r, i: hit.i, t: 0, out: 0 }; movedEver = true; }
-        }),
-        input.on('pressend', () => { if (pulling) pulling.releasing = true; }),
-      ];
+  return defineMinigame({ input, goto }, {
+    enter: reset,
+
+    input: {
+      pressstart(e) {
+        if (phase !== 'play') return;
+        const hit = pickAt(e.x, e.y);
+        if (hit) { pulling = { r: hit.r, i: hit.i, t: 0, out: 0 }; movedEver = true; }
+      },
+      pressend() { if (pulling) pulling.releasing = true; },
     },
 
-    exit() {
-      offHandlers.forEach((off) => off?.());
-      offHandlers = [];
-    },
-
-    update(dt, w, h) {
+    update(dt, w, h, finish) {
       baseX = Math.round(w / 2);
       if (phase !== 'lower') {
         baseY = Math.round(h * BASE_Y_FRAC);
@@ -349,7 +343,7 @@ export function createReleaseScene({ input, goto }) {
           // Куча переезжает на экран предсказания как есть — там она и
           // растворится, освободив место знаку вопроса.
           saveRubble(debris, baseX, RUBBLE_BOTTOM_GAP);
-          goto('prediction');
+          finish();
         }
       }
 
@@ -366,12 +360,7 @@ export function createReleaseScene({ input, goto }) {
       ctx.fillRect(0, 0, w, h);
 
       ctx.save();
-      if (shake) {
-        ctx.translate(
-          Math.round((Math.random() * 2 - 1) * shake),
-          Math.round((Math.random() * 2 - 1) * shake),
-        );
-      }
+      applyShake(ctx, shake);
 
       drawGround(ctx, baseX, baseY, 4);
       drawRubble(ctx, baseX, baseY, debris.filter((d) => d.rest));
@@ -400,14 +389,8 @@ export function createReleaseScene({ input, goto }) {
 
       // Подсказка жеста — как у Шута: словом, один раз, пока не тронули.
       if (phase === 'play' && !movedEver) {
-        const scale = Math.min(Math.max(w / 430, 0.75), 1.15);
-        setFont(ctx, 'caption', scale);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#EBA331';
-        ctx.globalAlpha = blinkAlpha(tPhase);
-        ctx.fillText('HOLD A BLOCK', w / 2, Math.round(74 * scale));
-        ctx.globalAlpha = 1;
+        drawTopHint(ctx, 'HOLD A BLOCK', { w, t: tPhase, scale: hintScale(w, 1.15) });
       }
     },
-  };
+  });
 }

@@ -67,9 +67,9 @@ export function createRevealScreen({ input, images, goto }) {
           if (!continueReady()) return;
           if (!zoneHit(continueZone, e.x, e.y)) return;
           // У карты своя сцена мини-игры (`card.minigame`). Пока она есть
-          // только у Шута — остальные карты идут сразу к предсказанию, а не
-          // на чужую дорогу (правка в чате). PLAYABLE и есть список карт,
-          // у которых сцена зарегистрирована в main.js.
+          // не у всех — остальные карты идут сразу к предсказанию, а не
+          // на чужую дорогу (правка в чате). PLAYABLE — список карт, у
+          // которых сцена есть в реестре minigames/index.js.
           const drawn = CARDS[session.cardId] ?? CARDS.fool;
           goto(PLAYABLE.includes(drawn.id) ? drawn.minigame : 'prediction');
         }),
