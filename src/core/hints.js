@@ -4,12 +4,7 @@
 
 import { setFont } from './text.js';
 import { blinkAlpha } from './textReveal.js';
-import { clamp01 } from './juice.js';
-
-/** Масштаб подсказок от ширины кадра; 430 — эталонный портрет. */
-export function hintScale(w, max = 1.25) {
-  return Math.min(Math.max(w / 430, 0.75), max);
-}
+import { clamp01 } from './ease.js';
 
 /**
  * Строки столбиком над фигурой: центр по figX с клэмпом в поля кадра, низ

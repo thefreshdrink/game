@@ -1,7 +1,7 @@
 // Экран 3 — Вытягивание. Одна карта рубашкой вверх, тап переворачивает.
 // Референс: docs/interfaces/Tap to see.png
 
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
 import { blinkAlpha } from '../core/textReveal.js';
 import { drawTapStar } from '../core/gestureGlyph.js';
@@ -32,7 +32,7 @@ export function createDrawScreen({ input, images, goto }) {
   let box = { x: 0, y: 0, w: 0, h: 0 };
 
   function layout(w, h) {
-    const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+    const scale = uiScale(w);
     // Карта — фиксированные 224×384, без uiScale (BUILD-SPEC-03 задача 2).
     // По центру экрана (правка в чате, 2026-08-23) — та же формула, что и в
     // reveal.js, иначе при переходе 3→4 карта прыгнет.
@@ -74,7 +74,7 @@ export function createDrawScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const scale = uiScale(w);
       const marginX = Math.round(53 * scale);
 
       const titleLH = setFont(ctx, 'title', scale);

@@ -4,13 +4,14 @@
 // раз и дальше не мешаем); HOLD TO JUMP — на последнем краю, не пропадает
 // во время удержания, справа проявляется кольцо.
 
-import { drawHintStack, hintScale } from '../../core/hints.js';
+import { drawHintStack } from '../../core/hints.js';
+import { uiScale } from '../../core/text.js';
 import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
-import { clamp01 } from '../../core/juice.js';
+import { clamp01 } from '../../core/ease.js';
 import { PLAYER_H } from './actors.js';
 
 export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver, idx, lean, player }) {
-  const scale = hintScale(w);
+  const scale = uiScale(w);
   const at = {
     figX: Math.round(player.x - camX),
     headTop: Math.round(player.y - camY - PLAYER_H),

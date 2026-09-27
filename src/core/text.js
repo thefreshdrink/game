@@ -5,8 +5,9 @@
 
 const REFERENCE_WIDTH = 430;
 
-export function uiScale(width) {
-  return Math.min(Math.max(width / REFERENCE_WIDTH, 0.75), 1.15);
+/** Масштаб текста и отступов от ширины окна; 430 — эталонный портрет. */
+export function uiScale(width, max = 1.25) {
+  return Math.min(Math.max(width / REFERENCE_WIDTH, 0.75), max);
 }
 
 // Заголовки экранов переведены на Kingdom (решение 18.09, decisions-log):

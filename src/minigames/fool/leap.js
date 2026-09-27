@@ -15,7 +15,8 @@
 
 import { defineMinigame } from '../../core/minigame.js';
 import { createFollowCamera } from '../../core/camera.js';
-import { createParticles, createFlash, clamp01 } from '../../core/juice.js';
+import { createParticles, createFlash } from '../../core/juice.js';
+import { clamp01 } from '../../core/ease.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, ARRIVE_MAIN_W,

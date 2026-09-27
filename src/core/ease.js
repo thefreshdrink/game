@@ -2,6 +2,10 @@
 // был локально в deck.js, переворот на экране 3 просил ту же кривую —
 // выносим, не копируем).
 
+export function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
+}
+
 /** Разгон и торможение, симметрично. x ∈ [0, 1]. */
 export function easeInOutQuad(x) {
   return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;

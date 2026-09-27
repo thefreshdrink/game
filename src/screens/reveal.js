@@ -7,24 +7,22 @@
 // строки. `›CONTINUE` — под картой, а не в шапке: раньше сидел на месте
 // пунктов меню экрана 1, примерно на 400px выше карты, к которой относится.
 //
-// CONTINUE ведёт в мини-игру «Leap» (экран 5).
+// ›KEEP GOING ведёт в мини-игру карты (экран 5), если у неё есть сцена.
 
-import { CARDS, PLAYABLE } from '../data/cards.js';
+import { CARDS, cardArt } from '../data/cards.js';
+import { isPlayable } from '../minigames/index.js';
 import { session } from '../core/session.js';
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont, wrapLines, uiScale } from '../core/text.js';
 import {
   layoutWords, visibleWordCount, revealDuration, blinkAlpha,
 } from '../core/textReveal.js';
 import { drawCardFace, CARD_W, CARD_H } from '../core/cardRender.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
+import { clamp01 } from '../core/ease.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
 const REVEAL_CELL_SIZE = 4;
 const CONTINUE_DELAY = 0.3; // короткая пауза после того, как всё проступило
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
 
 export function createRevealScreen({ input, images, goto }) {
   let offHandlers = [];
@@ -66,12 +64,10 @@ export function createRevealScreen({ input, images, goto }) {
         input.on('tap', (e) => {
           if (!continueReady()) return;
           if (!zoneHit(continueZone, e.x, e.y)) return;
-          // У карты своя сцена мини-игры (`card.minigame`). Пока она есть
-          // не у всех — остальные карты идут сразу к предсказанию, а не
-          // на чужую дорогу (правка в чате). PLAYABLE — список карт, у
-          // которых сцена есть в реестре minigames/index.js.
+          // Карта без своей сцены идёт сразу к предсказанию, а не на чужую
+          // дорогу (правка в чате).
           const drawn = CARDS[session.cardId] ?? CARDS.fool;
-          goto(PLAYABLE.includes(drawn.id) ? drawn.minigame : 'prediction');
+          goto(isPlayable(drawn) ? drawn.minigame : 'prediction');
         }),
         input.on('hover', (e) => {
           hovering = continueReady() && zoneHit(continueZone, e.x, e.y);
@@ -94,7 +90,7 @@ export function createRevealScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const scale = uiScale(w);
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
       const card = CARDS[session.cardId] ?? CARDS.fool;
@@ -115,7 +111,7 @@ export function createRevealScreen({ input, images, goto }) {
       layout(w, h, scale);
       const revealProgress = clamp01(t / REVEAL_DURATION);
       drawCardFace(ctx, images, box.x, box.y, box.w, box.h, card.name, scale, {
-        numeral: card.numeral, revealProgress, cellSize: REVEAL_CELL_SIZE,
+        numeral: card.numeral, revealProgress, cellSize: REVEAL_CELL_SIZE, art: cardArt(card.id).key,
       });
 
       if (continueReady()) {

@@ -1,27 +1,27 @@
-// Точка входа: canvas, ввод, роутер сцен, игровой цикл.
+// Точка входа: canvas, ввод, роутер сцен, загрузка картинок, игровой цикл.
 //
-// BUILD-SPEC.md, шаг 2 — экраны 1–4 (вопрос, веер, вытягивание, раскрытие)
-// с заглушкой вместо мини-игры. Заглушка на экране 4 замыкает цикл сама на
-// себя (экран 1), потому что экранов 5–6 ещё нет.
+// Ритуал — шесть экранов: вопрос → веер → вытягивание → раскрытие →
+// мини-игра карты → предсказание. Мини-игры приходят из реестра
+// (minigames/index.js) вместе со своими картинками — здесь о них ничего не
+// знают.
 
 import { createCanvas } from './core/canvas.js';
 import { createInput } from './core/input.js';
-import { loadSprites, sliceStrip } from './core/sprites.js';
-import { CARDS } from './data/cards.js';
+import { loadSprites } from './core/sprites.js';
+import { CARDS, cardArt } from './data/cards.js';
 import { createQuestionScreen } from './screens/question.js';
 import { createDeckScreen } from './screens/deck.js';
 import { createDrawScreen } from './screens/draw.js';
 import { createRevealScreen } from './screens/reveal.js';
-import { MINIGAMES } from './minigames/index.js';
-import { setBlockSprites } from './minigames/tower/blocks.js';
 import { createPredictionScreen } from './screens/prediction.js';
+import { MINIGAMES } from './minigames/index.js';
 
 const canvasEl = document.getElementById('game');
 const screen = createCanvas(canvasEl);
 const input = createInput(canvasEl);
 
 // --- Роутер сцен ------------------------------------------------------
-// Сцена: { enter(prevName), exit(), update(dt), draw(ctx, w, h) }.
+// Сцена: { enter(prevName), exit(), update(dt, w, h), draw(ctx, w, h) }.
 // enter/exit/update — опциональны.
 
 const scenes = {};
@@ -42,82 +42,13 @@ function goto(name) {
   currentName = name;
   current = scenes[name];
   current.enter?.(prevName);
-  console.log(`[router] → ${name}`);
+  if (import.meta.env.DEV) console.log(`[router] → ${name}`);
 }
 
-// Отладочные хуки — переключение сцен без UI, по заданию BUILD-SPEC.
+// Отладочные хуки — переключение сцен из консоли: gameGoto('leap').
 window.gameGoto = goto;
 window.gameScenes = () => Object.keys(scenes);
 window.gameCurrentScene = () => currentName;
-
-// --- Тестовая сцена: ввод (осталась с шага 1, доступна из консоли) -------
-
-registerScene('boot', {
-  taps: 0,
-  lastSwipe: null,
-  holding: false,
-  holdProgress: 0,
-  offHandlers: [],
-
-  enter() {
-    this.taps = 0;
-    this.lastSwipe = null;
-    this.holding = false;
-    this.holdProgress = 0;
-    this.offHandlers = [
-      input.on('tap', () => { this.taps++; }),
-      input.on('swipe', (e) => { this.lastSwipe = e; }),
-      input.on('holdstart', () => { this.holding = true; this.holdProgress = 0; }),
-      input.on('holdmove', (e) => { this.holdProgress = Math.min(e.duration / 2600, 1); }),
-      input.on('holdend', () => { this.holding = false; this.holdProgress = 0; }),
-    ];
-  },
-
-  exit() {
-    this.offHandlers.forEach((off) => off());
-    this.offHandlers = [];
-  },
-
-  draw(ctx, w, h) {
-    ctx.fillStyle = '#111111';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = '28px Alagard, serif';
-    ctx.fillText('TAROT JOURNEY', w / 2, h * 0.28);
-
-    ctx.fillStyle = '#B8B8B8';
-    ctx.font = '14px "Pixelify Sans", monospace';
-    ctx.fillText('input test scene', w / 2, h * 0.28 + 26);
-    ctx.fillText(`bank: ${CARDS.fool.name} loaded`, w / 2, h * 0.28 + 46);
-
-    ctx.fillStyle = '#EBA331';
-    ctx.font = '16px "Pixelify Sans", monospace';
-    ctx.fillText('tap / swipe / hold to test input', w / 2, h * 0.5);
-    ctx.fillText(`taps: ${this.taps}`, w / 2, h * 0.5 + 24);
-
-    if (this.lastSwipe) {
-      const s = this.lastSwipe;
-      ctx.fillText(
-        `swipe dx:${s.dx.toFixed(0)} dy:${s.dy.toFixed(0)} up:${s.up.toFixed(2)} side:${s.side.toFixed(2)}`,
-        w / 2, h * 0.5 + 44,
-      );
-    }
-
-    const barW = w * 0.6, barX = w * 0.2, barY = h * 0.62;
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.strokeRect(barX, barY, barW, 12);
-    if (this.holding) {
-      ctx.fillStyle = '#EBA331';
-      ctx.fillRect(barX, barY, barW * this.holdProgress, 12);
-    }
-
-    ctx.fillStyle = '#808080';
-    ctx.font = '11px "Pixelify Sans", monospace';
-    ctx.fillText('console: gameGoto("question")', w / 2, h - 30);
-  },
-});
 
 // --- Сцена загрузки -------------------------------------------------------
 
@@ -135,50 +66,40 @@ registerScene('loading', {
 
 goto('loading');
 
-// --- Экраны 1–4 -------------------------------------------------------
+// --- Картинки -------------------------------------------------------------
+// Общие для ритуала + портрет каждой карты (путь выводится из id) + то, что
+// объявила каждая мини-игра. Совпавший ключ с другим путём — ошибка: одна
+// картинка молча подменила бы другую.
 
-const IMAGE_MANIFEST = {
+const RITUAL_IMAGES = {
   futureTellerBody: 'assets/future_teller/oracle_body.png',
   futureTellerEyes: 'assets/future_teller/oracle_eyes.png',
   cardBack: 'assets/card/back_side_card_final.png',
   cardSelectFrame: 'assets/card/select_frame.png',
   cardFront: 'assets/card/card_frame_fool.png',
-  foolOnCard: 'assets/card/fool_on_the_card.png',
-  towerOnCard: 'assets/card/tower_on_the_card.png',
-  magicianOnCard: 'assets/card/magician_on_the_card.png',
-  wheelOnCard: 'assets/card/wheel_on_the_card.png',
-  empressOnCard: 'assets/card/empress_on_the_card.png',
-  foolIdleStrip: 'assets/fool/strips/fool_idle_4f_44x48.png',
-  foolRise: 'assets/fool/strips/fool_rise_1f_44x48.png',
-  foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
-  foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
-  roadTiles: 'assets/road/plat_tiles.png',
-  // Три тона бруска — из block.png скриптом (docs/pixel-assets-howto.md §4.1, --flat).
-  towerBlockLight: 'assets/tower/block_light.png',
-  towerBlockMid: 'assets/tower/block_mid.png',
-  towerBlockDark: 'assets/tower/block_dark.png',
-  dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
-  dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
-  dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
-  dogJump: 'assets/dog/strips/dog_jump_1f_18x14.png',
 };
 
-loadSprites(IMAGE_MANIFEST).then((images) => {
-  images.dogWalkFrames = sliceStrip(images.dogWalkStrip, 18, 14);
-  images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
-  images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
-
-  setBlockSprites({
-    light: images.towerBlockLight,
-    mid: images.towerBlockMid,
-    dark: images.towerBlockDark,
+function buildManifest() {
+  const manifest = { ...RITUAL_IMAGES };
+  const add = (key, path, from) => {
+    if (manifest[key] && manifest[key] !== path) throw new Error(`image key "${key}" (${from}) уже занят`);
+    manifest[key] = path;
+  };
+  Object.values(CARDS).forEach((c) => { const a = cardArt(c.id); add(a.key, a.path, `card ${c.id}`); });
+  Object.values(MINIGAMES).forEach((m) => {
+    Object.entries(m.assets ?? {}).forEach(([k, p]) => add(k, p, `minigame ${m.verb}`));
   });
+  return manifest;
+}
+
+loadSprites(buildManifest()).then((images) => {
+  Object.values(MINIGAMES).forEach((m) => m.prepare?.(images));
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
   registerScene('deck', createDeckScreen(deps));
   registerScene('draw', createDrawScreen(deps));
   registerScene('reveal', createRevealScreen(deps));
-  Object.entries(MINIGAMES).forEach(([verb, create]) => registerScene(verb, create(deps)));
+  Object.values(MINIGAMES).forEach((m) => registerScene(m.verb, m.createScene(deps)));
   registerScene('prediction', createPredictionScreen(deps));
   goto('question');
 }).catch((err) => {

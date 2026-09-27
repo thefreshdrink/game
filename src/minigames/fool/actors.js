@@ -3,7 +3,7 @@
 // (ASSETS.md): squash-and-stretch, программный наклон и позиционирование
 // по существующим позам.
 
-import { clamp01 } from '../../core/juice.js';
+import { clamp01 } from '../../core/ease.js';
 import { platformAt } from './platforms.js';
 
 // Спрайты — 44×48 и 18×14 арт-px (ASSETS.md). Правило сетки CLAUDE.md —

@@ -11,7 +11,6 @@ export const CARDS = {
     numeral: '0',
     name: 'The Fool',
     minigame: 'leap',
-    art: 'foolOnCard',        // ключ IMAGE_MANIFEST (main.js)
 
     upright: 'beginnings, faith, the open road',
     shadow: 'recklessness, avoidance, the un-looked leap',
@@ -61,9 +60,7 @@ export const CARDS = {
     id: 'tower',
     numeral: 'XVI',
     name: 'The Tower',
-    minigame: 'release',      // глагол карты, GDD §8.2 — сцена есть
-                              // (minigames/tower/release.js), карта в PLAYABLE
-    art: 'towerOnCard',
+    minigame: 'release',      // глагол карты, GDD §8.2 — сцена minigames/tower/
 
     upright: 'sudden collapse, release, the necessary ruin',
     shadow: 'clinging, the propped-up thing, ruin refused',
@@ -102,18 +99,16 @@ export const CARDS = {
     },
   },
 
-  // Три карты ниже заведены 2026-09-13: портрет, номер, имя и три текста
-  // есть у каждой, поэтому они выпадают в вере и отдают предсказание. Своей
-  // сцены мини-игры нет ни у одной — в GDD §8.2 только строчка с глаголом,
-  // спеки уровня нет (open-questions.md B2), поэтому в PLAYABLE их нет и
-  // экран 5 они пропускают.
+  // У трёх карт ниже есть портрет, номер, имя и три текста, поэтому они
+  // выпадают в вере и отдают предсказание. Своей сцены мини-игры нет ни у
+  // одной — в GDD §8.2 только строчка с глаголом, спеки уровня нет
+  // (open-questions.md B2), поэтому экран 5 они пропускают.
 
   magician: {
     id: 'magician',
     numeral: 'I',
     name: 'The Magician',
     minigame: 'channel',      // глагол карты, GDD §8.2. Сцены ещё нет
-    art: 'magicianOnCard',
 
     upright: 'will, focus, the tools already at hand',
     shadow: 'scattered power, talk in place of making',
@@ -153,7 +148,6 @@ export const CARDS = {
     numeral: 'III',
     name: 'The Empress',
     minigame: 'bloom',        // глагол карты, GDD §8.2. Сцены ещё нет
-    art: 'empressOnCard',
 
     upright: 'abundance, care, the slow growing thing',
     shadow: 'smothering, tending until empty, the root pulled up to be looked at',
@@ -192,7 +186,6 @@ export const CARDS = {
     numeral: 'X',
     name: 'Wheel of Fortune',
     minigame: 'spin',         // глагол карты, GDD §8.2. Сцены ещё нет
-    art: 'wheelOnCard',
 
     upright: 'the turn, luck, the season changing',
     shadow: 'gripping the rim, waiting to be lucky, blaming the turn',
@@ -228,19 +221,14 @@ export const CARDS = {
   },
 };
 
-/** Портрет по номеру карты — временный мост для `cardRender.drawCardFace`,
- * пока экраны полируются параллельно и не передают `art` параметром.
- * Удаляется вместе с добавлением `art: card.art` в reveal.js. */
-export const ART_BY_NUMERAL = Object.fromEntries(
-  Object.values(CARDS).map((c) => [c.numeral, c.art]),
-);
+/** Портрет карты — ключ в загруженных картинках и путь к файлу. Выводится
+ * из id: новая карта кладёт `public/assets/card/<id>_on_the_card.png`, и
+ * больше ничего прописывать не нужно. */
+export function cardArt(id) {
+  return { key: `${id}OnCard`, path: `assets/card/${id}_on_the_card.png` };
+}
 
 export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
-
-/** Карты, которые реально ПРОХОДЯТСЯ: у них есть своя сцена мини-игры.
- * У Башни `minigame: 'release'` — сцена появилась (minigames/tower/release.js),
- * дженга: вынимаешь брусок за бруском, пока башня не сложится сама. */
-export const PLAYABLE = ['fool', 'tower'];
 
 /** ТЕСТОВЫЙ РЕЖИМ — выключить и удалить, когда тесты закончатся.
  *
@@ -260,12 +248,9 @@ const SEQ_KEY = 'tarot.test.drawIndex';
 
 /** Карта для выдачи на экране 2. Берёт любую, у которой есть запись в банке
  * (портрет, имя, номер, три текста) — список растёт сам по мере наполнения
- * CARDS, отдельный перечень вести не надо.
- *
- * ВРЕМЕННО: выпавшая карта показывается и отдаёт своё предсказание, но
- * дорога у всех одна — `reveal.js` жёстко уводит в 'leap'. Когда появятся
- * остальные сцены, там встанет `goto(card.minigame)`, и выбор здесь можно
- * будет сузить до PLAYABLE. */
+ * CARDS. Карта без своей сцены пока тоже выпадает и пропускает экран 5 —
+ * сузить выдачу до играбельных (`isPlayable`, minigames/index.js) —
+ * задача 5 BUILD-SPEC-07. */
 export function pickCardId() {
   const ids = Object.keys(CARDS);
   if (SEQUENTIAL_DRAW) {

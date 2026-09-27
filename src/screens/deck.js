@@ -10,7 +10,7 @@
 // docs/interfaces/Picking the card.png
 
 import { session } from '../core/session.js';
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont, wrapLines, uiScale } from '../core/text.js';
 import {
   layoutWords, visibleWordCount, revealDuration, blinkAlpha,
 } from '../core/textReveal.js';
@@ -20,7 +20,7 @@ import {
 import { pickCardId } from '../data/cards.js';
 import { CARD_W, CARD_H, fillCardBody } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
-import { easeInOutQuad } from '../core/ease.js';
+import { easeInOutQuad, clamp01 } from '../core/ease.js';
 
 // Число карт в вере — чисто визуальное (правка в чате: сначала 5
 // читалось «мало для колоды», подняли до 9, потом ещё раз попросили
@@ -212,10 +212,6 @@ const SPREAD_RATE = 14; // скорость лерпа подъёма
 // экрана», формула здесь и в draw.js/reveal.js обновлены синхронно.
 const FLY_DURATION = 0.9;
 const FLY_FADE_OTHERS = 0.4; // остальные карты гаснут, чтобы не мешать
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
 
 // Детерминированный псевдослучай [0..1) по паре целых — тот же приём, что в
 // моке «Тасовка колоды»: каскад раскладывается ОДИНАКОВО каждый заход, без
@@ -425,7 +421,7 @@ export function createDeckScreen({ input, images, goto }) {
       const bgA = 1 - clamp01((t - ORACLE_CONCEAL) / BG_FADE_OUT);
       drawVoidGradient(ctx, w, h, { alpha: bgA, t, topFrac: 0.54, maxLevel: 4 });
 
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const scale = uiScale(w);
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
 

@@ -8,58 +8,36 @@
 // по ключу card.reading[category] (BUILD-SPEC, GDD §7.4).
 //
 // Расхождение с референсом, зафиксировано вслух (правило CLAUDE.md): на
-// The prediction.png низ экрана пустой, а здесь у нижней кромки держится
-// та же дорога, на которую Шут пришёл в такте 3 падения (leap.js) — по
-// правке в чате 2026-08-30 («размести сцену внизу экрана, предсказание
-// проявляй поверх фона верхней части»): экраны 5→6 склеиваются без
-// скачка, дорога просто остаётся под словами.
+// The prediction.png низ экрана пустой, а здесь у нижней кромки остаётся
+// сцена мини-игры, из которой пришли (`createAfterscene` в паспорте
+// мини-игры, minigames/index.js) — по правке в чате 2026-08-30: экраны 5→6
+// склеиваются без скачка. У карты без своей сцены низ пустой, как на фрейме.
 
-import { CARDS, PLAYABLE, getReading } from '../data/cards.js';
+import { CARDS, getReading } from '../data/cards.js';
 import { session, resetSession } from '../core/session.js';
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
-import {
-  buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W,
-} from '../minigames/fool/platforms.js';
-import { drawArrivalSun, drawArrivalLife } from '../minigames/fool/arrivalScene.js';
-import { drawPixelReveal } from '../core/pixelReveal.js';
-import { rubbleSnapshot, drawRubble, drawGround } from '../minigames/tower/blocks.js';
+import { MINIGAMES } from '../minigames/index.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
 const PARA_PAUSE = 0.6;      // печать замирает на границе абзацев (задача 10)
 const PARA_GAP_LINES = 1;    // пустая строка между абзацами
-// Размеры спрайтов Шута и пса — как в leap.js (не экспортируются оттуда;
-// нужны для статичной композиции прибытия под текстом).
-const PLAYER_W = 88;
-const PLAYER_H = 96;
-const DOG_W = 36;
-const DOG_H = 28;
-const IDLE_FPS = 6;
-
-// Башня: куча обломков приезжает со сцены мини-игры и лежит у нижней кромки,
-// как у Шута лежит дорога. Когда предсказание уже пошло, куча РАСТВОРЯЕТСЯ
-// тем же пиксельным уходом, каким уходит в темноту оракул (core/oracle.js),
-// и на её месте проступает знак вопроса: дальше решать тому, кто читает
-// (правка в чате).
-const RUBBLE_HOLD = 1.4;       // сек: сначала читается текст, куча ещё цела
-const RUBBLE_DISSOLVE = 1.6;   // сколько растворяется
-const MARK_REVEAL = 1.0;       // сколько проступает знак вопроса
-const RUBBLE_CELL = 4;         // ячейка растворения — как у оракула
-const MARK_SIZE = 96;
 
 export function createPredictionScreen({ input, images, goto }) {
   let offTap = null;
   let t = 0;
   let promptZone = null; // хит-зона ›ONE MORE QUESTION (textButton.js)
-  let groundMain = null; // полоса дороги под текстом — та же, что в такте 3 падения
   // Тексты банка приходят одной строкой; `\n\n` (пустая строка) делит их
   // на абзацы (задача 10). Одиночные переводы строки внутри абзаца
   // схлопываем в пробел — wrapLines рвёт только по пробелам.
   let paragraphs = [];
-  let rubbleBuf = null;  // куча, снятая в буфер: её растворяем целиком
-  let markBuf = null;    // знак вопроса на её месте
-  let bufKey = '';
+  // Сцены под текстом — по одной на мини-игру, у которой она есть.
+  const afterscenes = {};
+  Object.values(MINIGAMES).forEach((m) => {
+    if (m.createAfterscene) afterscenes[m.verb] = m.createAfterscene({ images });
+  });
+  let after = null;
 
   /** Общая длительность печати: все символы + паузы на стыках абзацев. */
   function totalTime() {
@@ -88,38 +66,6 @@ export function createPredictionScreen({ input, images, goto }) {
     });
   }
 
-  /** Куча и знак вопроса — в буферы: пиксельное растворение работает по
-   * готовой картинке, ровно как у фигуры оракула. */
-  function buildBuffers(w, h) {
-    const key = `${w}x${h}x${rubbleSnapshot.blocks.length}`;
-    if (bufKey === key) return;
-    bufKey = key;
-    const baseX = Math.round(w / 2);
-    const baseY = h - rubbleSnapshot.oyFromBottom;
-    const top = baseY - 170;
-
-    // В буфер идут ТОЛЬКО обломки: земля под ними остаётся на месте и
-    // никуда не девается (правка в чате) — растворяется то, что упало.
-    rubbleBuf = document.createElement('canvas');
-    rubbleBuf.width = w;
-    rubbleBuf.height = Math.max(1, h - top);
-    const rc = rubbleBuf.getContext('2d');
-    rc.imageSmoothingEnabled = false;
-    drawRubble(rc, baseX, baseY - top, rubbleSnapshot.blocks);
-    rubbleBuf.top = top;
-
-    markBuf = document.createElement('canvas');
-    markBuf.width = MARK_SIZE;
-    markBuf.height = MARK_SIZE;
-    const mc = markBuf.getContext('2d');
-    mc.imageSmoothingEnabled = false;
-    mc.fillStyle = '#EBA331';   // акцент: дальше решать тому, кто читает
-    mc.textAlign = 'center';
-    mc.textBaseline = 'middle';
-    mc.font = `${Math.round(MARK_SIZE * 0.8)}px Alagard, serif`;
-    mc.fillText('?', MARK_SIZE / 2, MARK_SIZE / 2 + 2);
-  }
-
   return {
     enter() {
       t = 0;
@@ -130,7 +76,8 @@ export function createPredictionScreen({ input, images, goto }) {
         .map((p) => p.replace(/\s*\n\s*/g, ' ').trim())
         .filter(Boolean);
 
-      if (!groundMain) groundMain = buildRoadStrip(images, ARRIVE_MAIN_W);
+      after = afterscenes[card.minigame] ?? null;
+      after?.enter?.();
 
       offTap = input.on('tap', (e) => {
         if (!typingDone()) { t = totalTime(); return; }
@@ -142,6 +89,7 @@ export function createPredictionScreen({ input, images, goto }) {
 
     exit() {
       offTap?.();
+      after?.exit?.();
     },
 
     update(dt) {
@@ -153,59 +101,11 @@ export function createPredictionScreen({ input, images, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      // Та же композиция, что в такте 3 падения (leap.js): Шут с псом на
-      // дороге у нижней кромки, над ними — следующая плита; без тумана
-      // (правка в чате 2026-08-30). Статична — «прибытие» уже отыграно.
-      // Рисуем ДО текста: слова лягут поверх чистого воздуха верхней части.
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
-      // Сцена прибытия принадлежит мини-игре, с которой пришли. У карты без
-      // своей сцены прибытия не было — низ остаётся пустым, ровно как на
-      // docs/interfaces/The prediction.png (дорога там появилась правкой
-      // 2026-08-30 специально под склейку 5→6 у Шута).
-      if (groundMain && card.id === 'fool') {
-        const gy = Math.round(h * ARRIVE_GROUND_FRAC);
-        const gw = groundMain.width;
-        const gx = Math.round(w / 2 - gw / 2 - 28);
-        const fcx = gx + Math.round(gw * 0.44);
-        // «Другой мир»: солнце в верхнем углу, трава и кустик на плите
-        // (правка в чате 2026-09-10). Солнце проступает вместе с заголовком.
-        // Второй плиты над Шутом нет — конец пути, одна плита, пришли и всё.
-        drawArrivalSun(ctx, w - 6, 22, t, Math.min(1, t / 0.3));
-        ctx.drawImage(groundMain, gx, gy);
-        drawArrivalLife(ctx, gx, gw, gy);
-        const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
-        ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
-        const fr = images.foolIdleFrames;
-        ctx.drawImage(fr[Math.floor(t * IDLE_FPS) % fr.length], fcx - PLAYER_W / 2, gy - PLAYER_H, PLAYER_W, PLAYER_H);
-      }
+      // Сцена мини-игры — ДО текста: слова лягут поверх чистого воздуха
+      // верхней части.
+      after?.draw(ctx, w, h, t);
 
-      // Башня: куча лежит там же, где её оставила мини-игра, потом уходит
-      // пикселями и отдаёт место знаку вопроса.
-      if (card.id === 'tower' && rubbleSnapshot.blocks.length) {
-        buildBuffers(w, h);
-        drawGround(ctx, Math.round(w / 2), h - rubbleSnapshot.oyFromBottom, 4);
-        const dissolveT = t - RUBBLE_HOLD;
-        if (dissolveT <= 0) {
-          ctx.drawImage(rubbleBuf, 0, rubbleBuf.top);
-        } else if (dissolveT < RUBBLE_DISSOLVE) {
-          const left = 1 - dissolveT / RUBBLE_DISSOLVE;
-          drawPixelReveal(
-            ctx, rubbleBuf, 0, rubbleBuf.top, rubbleBuf.width, rubbleBuf.height,
-            left, RUBBLE_CELL, 0.5, 0.55,
-          );
-        }
-        const markT = dissolveT - RUBBLE_DISSOLVE * 0.7;
-        if (markT > 0) {
-          const baseY = h - rubbleSnapshot.oyFromBottom;
-          drawPixelReveal(
-            ctx, markBuf,
-            Math.round(w / 2 - MARK_SIZE / 2), Math.round(baseY - MARK_SIZE / 2),
-            MARK_SIZE, MARK_SIZE,
-            Math.min(1, markT / MARK_REVEAL), RUBBLE_CELL, 0.5, 0.5,
-          );
-        }
-      }
-
+      const scale = uiScale(w);
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
 

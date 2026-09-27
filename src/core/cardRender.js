@@ -5,8 +5,8 @@
 // Рамка (`card_frame_fool.png`) — отдельный ассет без персонажа и ОБЩИЙ для
 // всех карт: имя файла историческое, ничего от Шута в нём нет. Место под
 // номер и под имя размечено бирками художника, а сами номер и имя рисуются
-// текстом из `cards.js`. Портрет у каждой карты свой (`card.art` — ключ
-// IMAGE_MANIFEST) — кладётся отдельным слоем поверх и умеет
+// текстом из `cards.js`. Портрет у каждой карты свой (`cardArt(id).key` в
+// cards.js) — кладётся отдельным слоем поверх и умеет
 // проступать пикселями (revealProgress 0→1, core/pixelReveal.js) — тем же
 // эффектом, что и силуэт оракула на экранах 1–2 (правка в чате 2026-08-19:
 // «появляй дурака так же, как силуэт»). Раньше пробовали и цельную
@@ -19,7 +19,6 @@
 
 import { setFontFitted } from './text.js';
 import { drawPixelReveal } from './pixelReveal.js';
-import { ART_BY_NUMERAL } from '../data/cards.js';
 
 // Карта — экранные пиксели, множитель ×1, фиксированный размер во всех
 // сценах (BUILD-SPEC-03 задача 2): рамка `card_frame_fool.png` ровно
@@ -96,14 +95,8 @@ export function drawCardFace(
 
   if (revealProgress > 0) {
     // Портрет — экранные пиксели, множитель ×1 (BUILD-SPEC-03 задача 2):
-    // рисуем в натуральном размере ассета, не 150-в-что-то. Свой у каждой
-    // карты (ключ манифеста в `card.art`). Пока
-    // экраны полируются параллельно и не передают `art`, ключ достаётся
-    // мостом по номеру карты — номер уже приходит сюда и он данные, а не
-    // отображаемая строка. Когда reveal.js освободится, туда добавляется
-    // `art: card.art`, и мост с ART_BY_NUMERAL удаляется.
-    const artKey = art ?? ART_BY_NUMERAL[numeral] ?? 'foolOnCard';
-    const sprite = images[artKey] ?? images.foolOnCard;
+    // рисуем в натуральном размере ассета, не 150-в-что-то.
+    const sprite = images[art] ?? images.foolOnCard;
     const artW = sprite.width;
     const artH = sprite.height;
     const artX = Math.round(x + (w - artW) / 2);

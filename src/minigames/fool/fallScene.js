@@ -2,7 +2,7 @@
 // (стоп-кадр обычной сцены, рисует leap.js) → 'fall' (полёт «сквозь миры»)
 // → 'arrive' (проявление земли). Здесь — кадр тактов 2–3 и их визуал.
 
-import { clamp01 } from '../../core/juice.js';
+import { clamp01 } from '../../core/ease.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { drawPlatform, PLATE_H, ARRIVE_GROUND_FRAC } from './platforms.js';
 import { drawArrivalLife } from './arrivalScene.js';

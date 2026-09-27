@@ -12,13 +12,6 @@ export const PHYS = {
   walk: 165,
 };
 
-// Голый тап — «самый маленький прыжок» (BUILD-SPEC), но не буквально нулевой:
-// подобрано так, чтобы даже он гарантированно перекрывал GAP_JUMP из
-// platforms.js — «промахнуться нельзя» это про подбор чисел, а не про
-// код-подстраховку.
-export const TAP_UP_POW = 0.15;
-export const TAP_SIDE_POW = 0.5;
-
 /** Гравитация в текущий момент по вертикальной скорости — медленнее у пика. */
 export function gravityFor(vy) {
   if (Math.abs(vy) < PHYS.hangSpeed) return PHYS.gHang;

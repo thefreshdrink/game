@@ -16,7 +16,8 @@
 
 import { defineMinigame } from '../../core/minigame.js';
 import { applyShake } from '../../core/juice.js';
-import { drawTopHint, hintScale } from '../../core/hints.js';
+import { drawTopHint } from '../../core/hints.js';
+import { uiScale } from '../../core/text.js';
 import {
   ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
 } from './blocks.js';
@@ -389,7 +390,7 @@ export function createReleaseScene({ input, goto }) {
 
       // Подсказка жеста — как у Шута: словом, один раз, пока не тронули.
       if (phase === 'play' && !movedEver) {
-        drawTopHint(ctx, 'HOLD A BLOCK', { w, t: tPhase, scale: hintScale(w, 1.15) });
+        drawTopHint(ctx, 'HOLD A BLOCK', { w, t: tPhase, scale: uiScale(w, 1.15) });
       }
     },
   });

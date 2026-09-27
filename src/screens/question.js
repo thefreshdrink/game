@@ -13,13 +13,14 @@
 
 import { CATEGORIES } from '../data/cards.js';
 import { session } from '../core/session.js';
-import { setFont, wrapLines } from '../core/text.js';
+import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import { layoutWords, visibleWordCount, revealDuration } from '../core/textReveal.js';
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY,
 } from '../core/oracle.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
+import { clamp01 } from '../core/ease.js';
 
 const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
 
@@ -95,10 +96,6 @@ const RETURN_OPTIONS_GAP = 0.3;
 const BLINK_MIN = 2.5;
 const BLINK_MAX = 2.5;
 const BLINK_DURATION = 0.12;
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
 
 export function createQuestionScreen({ input, images, goto }) {
   let offHandlers = [];
@@ -231,7 +228,7 @@ export function createQuestionScreen({ input, images, goto }) {
       // старт чуть ниже, яркость капнута на #252525 — не спорит с фигурой.
       drawVoidGradient(ctx, w, h, { alpha: bgA, t, topFrac: 0.54, maxLevel: 4 });
 
-      const scale = Math.min(Math.max(w / 430, 0.75), 1.25);
+      const scale = uiScale(w);
       const marginX = Math.round(53 * scale);
       const textMaxWidth = w - marginX * 2;
 

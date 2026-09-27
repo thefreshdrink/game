@@ -214,21 +214,6 @@ export function drawRubble(ctx, ox, oy, blocks) {
     .forEach((b) => drawBlock(ctx, ox, oy, b, false));
 }
 
-/** Габариты кучи в экранных координатах — нужны предсказанию, чтобы снять
- * её в буфер под пиксельное растворение. */
-export function rubbleBounds(ox, oy, blocks) {
-  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-  blocks.forEach((b) => {
-    const f = facesOf(ox, oy, b);
-    [...f.top, ...f.front, ...f.right].forEach(([px, py]) => {
-      x0 = Math.min(x0, px); y0 = Math.min(y0, py);
-      x1 = Math.max(x1, px); y1 = Math.max(y1, py);
-    });
-  });
-  if (!blocks.length) return { x: 0, y: 0, w: 0, h: 0 };
-  return { x: Math.floor(x0) - 2, y: Math.floor(y0) - 2, w: Math.ceil(x1 - x0) + 4, h: Math.ceil(y1 - y0) + 4 };
-}
-
 // Снимок последней кучи: сцена кладёт сюда обломки и точку, где они
 // замерли, предсказание читает. Пусто — Башню в этой сессии не играли.
 export const rubbleSnapshot = { blocks: [], ox: 0, oyFromBottom: 0 };
@@ -239,6 +224,7 @@ export function saveRubble(blocks, ox, oyFromBottom) {
   rubbleSnapshot.oyFromBottom = oyFromBottom;
 }
 
+/** Куча показана — снимок больше не нужен. */
 export function clearRubble() {
   rubbleSnapshot.blocks = [];
 }
