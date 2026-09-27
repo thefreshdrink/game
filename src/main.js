@@ -153,9 +153,10 @@ const IMAGE_MANIFEST = {
   foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
   foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
   roadTiles: 'assets/road/plat_tiles.png',
-  // Три тона бруска (light/mid/dark) не собраны — docs/pixel-assets-howto.md
-  // §4.1; пока все тона берут один block.png (spriteFor в blocks.js).
-  towerBlock: 'assets/tower/block.png',
+  // Три тона бруска — из block.png скриптом (docs/pixel-assets-howto.md §4.1, --flat).
+  towerBlockLight: 'assets/tower/block_light.png',
+  towerBlockMid: 'assets/tower/block_mid.png',
+  towerBlockDark: 'assets/tower/block_dark.png',
   dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
   dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
   dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
@@ -167,7 +168,11 @@ loadSprites(IMAGE_MANIFEST).then((images) => {
   images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
   images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
 
-  setBlockSprites({ mid: images.towerBlock });
+  setBlockSprites({
+    light: images.towerBlockLight,
+    mid: images.towerBlockMid,
+    dark: images.towerBlockDark,
+  });
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
   registerScene('deck', createDeckScreen(deps));
