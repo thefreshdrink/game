@@ -10,14 +10,14 @@
 // Всё в единицах бруска: короткая сторона 1, длинная 3, высота ряда 1.
 // Экранные шаги чётные (CLAUDE.md: 1 арт-пиксель = 2 экранных).
 
-// Спрайт бруска — 32×26 арт-пикселей, в игре рисуется ×4. Крупное зерно
-// (правка в чате: «нужна больше пикселизация»): арт-пиксель занимает 4
-// экранных, как у портретов карт, а не 2, как у дороги. Шаги ниже —
-// ровно ×4 от сетки спрайта (tools/iso-block.py, --unit 8), поэтому
-// брусок садится пиксель в пиксель и ряды сходятся без щелей.
+// Спрайт бруска — 64×48 арт-пикселей, в игре рисуется ×2: зерно Башни 2
+// экранных на арт-пиксель, как у референса в нашем масштабе (решение
+// 2026-09-28). Шаги ниже — ровно ×2 от сетки спрайта (tools/iso-block.py
+// --unit 16 --row 16), поэтому брусок садится пиксель в пиксель и ряды
+// сходятся без щелей. Ряд ниже шага (32 < 40 было) — бруски тоньше.
 export const U = 32;    // шаг вправо на единицу глубины
 export const HU = 16;   // он же вниз — изометрия 2:1
-export const ZH = 40;   // высота ряда
+export const ZH = 32;   // высота ряда
 export const ROWS = 12;
 export const COLS = 3;
 
@@ -107,14 +107,14 @@ function strokeSilhouette(ctx, ox, oy, o, color) {
 // и у зеркального бруска он перевернулся бы. Нет своего — тот же спрайт
 // зеркально: в изометрии 2:1 это поворот на 90°.
 //
-// Золотого спрайта нет и не будет: `#EBA331` значит ровно «это можно
-// тронуть» (CLAUDE.md), поэтому золотым брусок становится ТОЛЬКО под
-// пальцем — перекраской, а не отдельной картинкой.
-export const TONES = ['light', 'mid', 'dark', 'black'];
+// Золотые бруски есть в кладке — решение 2026-09-28 (референс из чата):
+// в Башне золото — это ценность, которую держит кладка, а не знак «можно
+// тронуть». Брусок под пальцем по-прежнему обводится акцентом.
+export const TONES = ['light', 'mid', 'dark', 'black', 'gold'];
 
 // Доли тонов — как на референсе из чата (2026-09-28): белых и тёмных
 // больше, серых меньше, контраст между соседями сильный.
-const TONE_WEIGHTS = { light: 6, mid: 4, dark: 6, black: 4 };
+const TONE_WEIGHTS = { light: 8, mid: 3, dark: 9, black: 5, gold: 3 };
 const sprites = {};
 
 export function setBlockSprites(imgs) {
@@ -124,22 +124,39 @@ export function setBlockSprites(imgs) {
   });
 }
 
+/** Золото — равномерно по высоте, не на верхнем ряду: ряды через равный
+ * шаг, место в ряду по кругу (внешнее, среднее, заднее). */
+function goldSpots(rows, cols, count) {
+  const spots = new Map();
+  const usable = rows - 1;
+  const order = [cols - 1, 1, 0];
+  for (let k = 0; k < count; k++) {
+    const r = Math.floor(((k + 0.5) * usable) / count);
+    spots.set(r, order[k % order.length] % cols);
+  }
+  return spots;
+}
+
 /** Раскладка тонов на всю башню, считается один раз: точные доли
- * TONE_WEIGHTS, и у бруска другой тон, чем у соседа по ряду и у бруска на
- * том же месте рядом ниже и через ряд (там лежит брусок той же ориентации,
- * одинаковые тона выстраивались бы столбиком). Порядок кандидатов крутится
- * постоянным шагом — башня одинаковая при каждом заходе. */
+ * TONE_WEIGHTS, золото — по goldSpots, у остальных другой тон, чем у соседа
+ * по ряду и у бруска на том же месте рядом ниже и через ряд (там лежит
+ * брусок той же ориентации, одинаковые тона выстраивались бы столбиком).
+ * Порядок кандидатов крутится постоянным шагом — башня одинаковая при
+ * каждом заходе. */
 function buildToneGrid(rows, cols) {
   const total = rows * cols;
   const sum = Object.values(TONE_WEIGHTS).reduce((a, n) => a + n, 0);
   const left = {};
   TONES.forEach((t) => { left[t] = Math.round((TONE_WEIGHTS[t] / sum) * total); });
+  const gold = goldSpots(rows, cols, left.gold);
+  left.gold = 0;
   const grid = [];
   let step = 0;
   for (let r = 0; r < rows; r++) {
     grid.push([]);
     for (let i = 0; i < cols; i++) {
-      const banned = new Set([grid[r][i - 1], grid[r - 1]?.[i], grid[r - 2]?.[i]]);
+      if (gold.get(r) === i) { grid[r].push('gold'); continue; }
+      const banned = new Set([grid[r][i - 1], grid[r - 1]?.[i], grid[r - 2]?.[i], 'gold']);
       const order = TONES.map((_, k) => TONES[(k + step) % TONES.length]);
       step += 3;
       const pick = order
@@ -236,7 +253,7 @@ export function drawSparkles(ctx, cx, cy, t) {
 
 /** Земля — те же каменные плиты дороги Шута, только в изометрии (решение
  * в чате: не заводить под Башню свою землю, а связать карты одним миром). */
-export function drawGround(ctx, ox, oy, radius = 4) {
+export function drawGround(ctx, ox, oy, radius = 4, shadowRows = 0) {
   for (let gx = -radius; gx <= radius + 2; gx++) {
     for (let gy = -radius; gy <= radius + 2; gy++) {
       const q = [
@@ -248,6 +265,32 @@ export function drawGround(ctx, ox, oy, radius = 4) {
       edge(ctx, q[0], q[3], FAR, 1);
     }
   }
+  if (shadowRows > 0) drawShadow(ctx, ox, oy, shadowRows);
+}
+
+/** Тень башни на полу — свет слева, тень ложится вправо (по +x) на длину,
+ * растущую с высотой. Пиксельным растром 2×2 чёрного: палитра без альфы,
+ * а сплошная чернота съела бы сетку пола. Даёт башне опору и глубину. */
+function drawShadow(ctx, ox, oy, rows) {
+  const len = 3 + rows * 0.35;
+  const q = [
+    project(ox, oy, 3, 0, 0), project(ox, oy, 3 + len, 0, 0),
+    project(ox, oy, 3 + len, 3, 0), project(ox, oy, 3, 3, 0),
+  ];
+  ctx.save();
+  ctx.beginPath();
+  q.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.clip();
+  const xs = q.map((p) => p[0]);
+  const ys = q.map((p) => p[1]);
+  ctx.fillStyle = BODY;
+  for (let y = Math.floor(Math.min(...ys) / 2) * 2; y < Math.max(...ys); y += 2) {
+    for (let x = Math.floor(Math.min(...xs) / 2) * 2 + ((y / 2) % 2) * 2; x < Math.max(...xs); x += 4) {
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+  ctx.restore();
 }
 
 /** Куча лежащих обломков — от дальних к ближним, иначе ближние уходят под

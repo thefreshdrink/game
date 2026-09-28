@@ -363,7 +363,7 @@ export function createReleaseScene({ input, goto }) {
       ctx.save();
       applyShake(ctx, shake);
 
-      drawGround(ctx, baseX, baseY, 4);
+      drawGround(ctx, baseX, baseY, 4, phase === 'play' ? ROWS : 0);
       drawRubble(ctx, baseX, baseY, debris.filter((d) => d.rest));
 
       for (let r = 0; r < ROWS; r++) {

@@ -33,9 +33,10 @@ DX, DY = 3, 1
 W = H = OX = OY = 0
 
 
-def set_unit(u):
+def set_unit(u, row=None):
+    """row — высота ряда в арт-пикселях; по умолчанию 5/4 шага."""
     global U0, HU0, ZH0, W, H, OX, OY
-    U0, HU0, ZH0 = u, u // 2, (u * 5) // 4
+    U0, HU0, ZH0 = u, u // 2, (row if row else (u * 5) // 4)
     W = (DX + DY) * U0
     H = (DX + DY) * HU0 + ZH0
     OX, OY = DY * U0, ZH0
@@ -249,45 +250,64 @@ def shift_tone(im, step):
     return out
 
 
-# Кладка по референсу из чата (2026-09-28): свет слева — верх светлее всего,
-# грань влево полутон, грань вправо тень; тонкий чёрный контур вместо белого
-# (бруски отделяются швом, как на референсе); тёмная крапина камня. Тона —
-# индексы RAMP: (верх, грань влево, грань вправо).
-REF_TONES = {'light': (6, 5, 4), 'mid': (4, 3, 2), 'dark': (3, 2, 1), 'black': (2, 1, 0)}
+# Кладка по референсу из чата (2026-09-28). Цвета сняты с референса: почти
+# нет средних серых — либо белый, либо тёмный, плюс золото; поэтому кладка
+# контрастная, а не серая. Свет слева: верх и длинная грань белого бруска
+# почти одного тона (их разделяет ребро), торец темнее. Тонкий чёрный шов
+# между брусками. Тона — (верх, грань влево, грань вправо, ребро).
+GOLD, GOLD_SHADE = (235, 163, 49), (176, 122, 28)
+REF_TONES = {
+    'light': ((255,) * 3, (255,) * 3, (184,) * 3, (184,) * 3),
+    'mid': ((128,) * 3, (74,) * 3, (46,) * 3, (74,) * 3),
+    'dark': ((74,) * 3, (35,) * 3, (17,) * 3, (35,) * 3),
+    'black': ((46,) * 3, (28,) * 3, (0,) * 3, (28,) * 3),
+    'gold': (GOLD, GOLD, GOLD_SHADE, GOLD_SHADE),
+}
+# Крапина камня — только на светлых брусках, как на референсе; на тёмных
+# она читается грязью.
+REF_LIFT = {'mid': (184,) * 3, 'dark': (128,) * 3, 'black': (74,) * 3, 'gold': (255,) * 3}
+REF_SPECKLE = {'light': (184,) * 3, 'mid': (74,) * 3, 'gold': GOLD_SHADE}
 
 
-def draw_ref(tone, cross=False, speckle=18):
+def draw_ref(tone, cross=False):
     """Брусок в стиле референса. cross — поперечный ряд: длинная грань
     смотрит вправо, свет тот же (зеркало перевернуло бы его)."""
-    t, l, r = REF_TONES[tone]
+    t, l, r, edge = REF_TONES[tone]
     top, front, right = faces()
+    flip = (lambda poly: [(W - 1 - x, y) for x, y in poly]) if cross else (lambda poly: poly)
     if cross:
-        flip = lambda poly: [(W - 1 - x, y) for x, y in poly]
         top, left, rgt = flip(top), flip(right), flip(front)
     else:
         left, rgt = front, right
-    g = lambda i: (RAMP[i],) * 3 + (255,)
     out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(out)
-    d.polygon(top, fill=g(t))
-    d.polygon(left, fill=g(l))
-    d.polygon(rgt, fill=g(r))
+    d.polygon(top, fill=t + (255,))
+    d.polygon(left, fill=l + (255,))
+    d.polygon(rgt, fill=r + (255,))
+    # ребро между верхом и левой гранью и вертикальный угол
+    d.line([left[0], left[1]], fill=edge + (255,), width=1)
+    d.line([left[1], left[2]], fill=edge + (255,), width=1)
+    # глубина: светлая кромка на верхней грани вдоль переднего ребра — свет
+    # слева ловит край, брусок читается объёмом, а не плашкой
+    lift = REF_LIFT.get(tone)
+    if lift:
+        (x0, y0), (x1, y1) = left[0], left[1]
+        d.line([(x0 + (1 if not cross else 0), y0 - 1), (x1 - (0 if not cross else 1), y1 - 1)],
+               fill=lift + (255,), width=1)
     op = out.load()
-    seed = {'light': 7, 'mid': 11, 'dark': 13, 'black': 17}[tone] + (100 if cross else 0)
-    for _ in range(speckle):
-        seed = (seed * 1103515245 + 12345) % (1 << 31)
-        x = 1 + seed % (W - 2)
-        seed = (seed * 1103515245 + 12345) % (1 << 31)
-        y = 1 + seed % (H - 2)
-        c = op[x, y]
-        if c[3] == 255:
-            op[x, y] = g(max(0, RAMP.index(c[0]) - 1))   # крапина только темнее
-    sil = silhouette()
-    if cross:
-        sil = [(W - 1 - x, y) for x, y in sil]
+    dot = REF_SPECKLE.get(tone)
+    if dot:
+        seed = sum(map(ord, tone)) + (100 if cross else 0)
+        for _ in range((W * H) // 90):
+            seed = (seed * 1103515245 + 12345) % (1 << 31)
+            x = 2 + seed % (W - 4)
+            seed = (seed * 1103515245 + 12345) % (1 << 31)
+            y = 2 + seed % (H - 4)
+            if op[x, y][:3] in (t, l):
+                op[x, y] = dot + (255,)
+    sil = flip(silhouette())
     d.line(sil + [sil[0]], fill=(0, 0, 0, 255), width=1)
     return out
-
 
 def selftest():
     set_unit(8)
@@ -296,7 +316,8 @@ def selftest():
         for cross in (False, True):
             ref = draw_ref(tone, cross)
             rc = {c[1][:3] for c in ref.getcolors(9999) if c[1][3] == 255}
-            assert rc <= set(PALETTE), f'ref {tone}: цвет вне палитры {rc - set(PALETTE)}'
+            allowed = set(PALETTE) | {t for v in REF_TONES.values() for t in v}
+            assert rc <= allowed, f'ref {tone}: цвет вне палитры {rc - allowed}'
     im = draw_block()
     assert im.size == (W, H), im.size
     cols = {c[1][:3] for c in im.getcolors(9999) if c[1][3] == 255}
@@ -328,9 +349,10 @@ def main():
     ap.add_argument('--draw', action='store_true', help='нарисовать брусок по сетке, без генерации')
     ap.add_argument('--tone', type=int, default=0, help='сдвиг тона: +1 светлее, -1 темнее')
     ap.add_argument('--flat', action='store_true', help='однотонные грани, тень только по краю')
+    ap.add_argument('--row', type=int, default=None, help='высота ряда в арт-px (Башня: --unit 16 --row 16)')
     ap.add_argument('--ref-set', metavar='DIR', help='вся кладка по референсу: block_<тон>[_cross].png в DIR')
     a = ap.parse_args()
-    set_unit(a.unit)
+    set_unit(a.unit, a.row)
     if a.selftest:
         selftest()
         return
