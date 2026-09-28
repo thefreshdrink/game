@@ -249,9 +249,54 @@ def shift_tone(im, step):
     return out
 
 
+# Кладка по референсу из чата (2026-09-28): свет слева — верх светлее всего,
+# грань влево полутон, грань вправо тень; тонкий чёрный контур вместо белого
+# (бруски отделяются швом, как на референсе); тёмная крапина камня. Тона —
+# индексы RAMP: (верх, грань влево, грань вправо).
+REF_TONES = {'light': (6, 5, 4), 'mid': (4, 3, 2), 'dark': (3, 2, 1), 'black': (2, 1, 0)}
+
+
+def draw_ref(tone, cross=False, speckle=18):
+    """Брусок в стиле референса. cross — поперечный ряд: длинная грань
+    смотрит вправо, свет тот же (зеркало перевернуло бы его)."""
+    t, l, r = REF_TONES[tone]
+    top, front, right = faces()
+    if cross:
+        flip = lambda poly: [(W - 1 - x, y) for x, y in poly]
+        top, left, rgt = flip(top), flip(right), flip(front)
+    else:
+        left, rgt = front, right
+    g = lambda i: (RAMP[i],) * 3 + (255,)
+    out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(out)
+    d.polygon(top, fill=g(t))
+    d.polygon(left, fill=g(l))
+    d.polygon(rgt, fill=g(r))
+    op = out.load()
+    seed = {'light': 7, 'mid': 11, 'dark': 13, 'black': 17}[tone] + (100 if cross else 0)
+    for _ in range(speckle):
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        x = 1 + seed % (W - 2)
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        y = 1 + seed % (H - 2)
+        c = op[x, y]
+        if c[3] == 255:
+            op[x, y] = g(max(0, RAMP.index(c[0]) - 1))   # крапина только темнее
+    sil = silhouette()
+    if cross:
+        sil = [(W - 1 - x, y) for x, y in sil]
+    d.line(sil + [sil[0]], fill=(0, 0, 0, 255), width=1)
+    return out
+
+
 def selftest():
     set_unit(8)
     """Проверяем ровно то, ради чего скрипт существует: сетку и палитру."""
+    for tone in REF_TONES:
+        for cross in (False, True):
+            ref = draw_ref(tone, cross)
+            rc = {c[1][:3] for c in ref.getcolors(9999) if c[1][3] == 255}
+            assert rc <= set(PALETTE), f'ref {tone}: цвет вне палитры {rc - set(PALETTE)}'
     im = draw_block()
     assert im.size == (W, H), im.size
     cols = {c[1][:3] for c in im.getcolors(9999) if c[1][3] == 255}
@@ -283,10 +328,18 @@ def main():
     ap.add_argument('--draw', action='store_true', help='нарисовать брусок по сетке, без генерации')
     ap.add_argument('--tone', type=int, default=0, help='сдвиг тона: +1 светлее, -1 темнее')
     ap.add_argument('--flat', action='store_true', help='однотонные грани, тень только по краю')
+    ap.add_argument('--ref-set', metavar='DIR', help='вся кладка по референсу: block_<тон>[_cross].png в DIR')
     a = ap.parse_args()
     set_unit(a.unit)
     if a.selftest:
         selftest()
+        return
+    if a.ref_set:
+        for tone in REF_TONES:
+            for cross in (False, True):
+                path = f"{a.ref_set}/block_{tone}{'_cross' if cross else ''}.png"
+                draw_ref(tone, cross).save(path)
+                print(f'{path}: {W}×{H}')
         return
     if a.draw:
         if not a.dst and a.src:

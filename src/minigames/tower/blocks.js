@@ -103,27 +103,68 @@ function strokeSilhouette(ctx, ox, oy, o, color) {
 // Спрайты брусков: три тона камня (светлый / серый / тёмный). Кладка
 // набирается ими по фиксированному узору — так она читается как кладка, а
 // не рябит случайностью; ровно этим живёт референс, присланный в чате.
-// Поперечный ряд — тот же спрайт зеркально: в изометрии 2:1 это поворот
-// на 90°, второго файла не нужно.
+// Поперечный ряд — свой спрайт (`<тон>Cross`): свет на референсе идёт слева,
+// и у зеркального бруска он перевернулся бы. Нет своего — тот же спрайт
+// зеркально: в изометрии 2:1 это поворот на 90°.
 //
 // Золотого спрайта нет и не будет: `#EBA331` значит ровно «это можно
 // тронуть» (CLAUDE.md), поэтому золотым брусок становится ТОЛЬКО под
 // пальцем — перекраской, а не отдельной картинкой.
-const TONES = ['light', 'mid', 'dark'];
-const sprites = { light: null, mid: null, dark: null };
+export const TONES = ['light', 'mid', 'dark', 'black'];
+
+// Доли тонов — как на референсе из чата (2026-09-28): белых и тёмных
+// больше, серых меньше, контраст между соседями сильный.
+const TONE_WEIGHTS = { light: 6, mid: 4, dark: 6, black: 4 };
+const sprites = {};
 
 export function setBlockSprites(imgs) {
-  TONES.forEach((t) => { sprites[t] = imgs?.[t] ?? null; });
+  TONES.forEach((t) => {
+    sprites[t] = imgs?.[t] ?? null;
+    sprites[`${t}Cross`] = imgs?.[`${t}Cross`] ?? null;
+  });
 }
 
-/** Тон бруска по его месту в кладке. Узор постоянный: одна и та же башня
- * выглядит одинаково при каждом заходе, но не полосами. */
+/** Раскладка тонов на всю башню, считается один раз: точные доли
+ * TONE_WEIGHTS, и у бруска другой тон, чем у соседа по ряду и у бруска на
+ * том же месте рядом ниже и через ряд (там лежит брусок той же ориентации,
+ * одинаковые тона выстраивались бы столбиком). Порядок кандидатов крутится
+ * постоянным шагом — башня одинаковая при каждом заходе. */
+function buildToneGrid(rows, cols) {
+  const total = rows * cols;
+  const sum = Object.values(TONE_WEIGHTS).reduce((a, n) => a + n, 0);
+  const left = {};
+  TONES.forEach((t) => { left[t] = Math.round((TONE_WEIGHTS[t] / sum) * total); });
+  const grid = [];
+  let step = 0;
+  for (let r = 0; r < rows; r++) {
+    grid.push([]);
+    for (let i = 0; i < cols; i++) {
+      const banned = new Set([grid[r][i - 1], grid[r - 1]?.[i], grid[r - 2]?.[i]]);
+      const order = TONES.map((_, k) => TONES[(k + step) % TONES.length]);
+      step += 3;
+      const pick = order
+        .filter((t) => !banned.has(t))
+        .sort((x, y) => left[y] - left[x])[0] ?? order[0];
+      left[pick] = Math.max(0, left[pick] - 1);
+      grid[r].push(pick);
+    }
+  }
+  return grid;
+}
+
+const TONE_GRID = buildToneGrid(ROWS, COLS);
+
+/** Тон бруска по его месту в кладке. */
 export function toneOf(r, i) {
-  return TONES[(r * 2 + i * 5 + Math.floor(r / 3)) % TONES.length];
+  return TONE_GRID[r]?.[i] ?? 'mid';
 }
 
 function spriteFor(o) {
   return sprites[o.tone ?? 'mid'] ?? sprites.mid ?? sprites.light ?? sprites.dark;
+}
+
+function crossSpriteFor(o) {
+  return sprites[`${o.tone ?? 'mid'}Cross`] ?? null;
 }
 
 /** Брусок: верхняя грань светлее — по ней читается глубина; тело темнее
@@ -133,7 +174,10 @@ export function drawBlock(ctx, ox, oy, o, hot) {
   const blockSprite = spriteFor(o);
   if (blockSprite) {
     const r = blockRect(ox, oy, o);
-    if (o.dy > o.dx) {                 // поперечный ряд — тот же спрайт зеркально
+    const cross = o.dy > o.dx ? crossSpriteFor(o) : null;
+    if (cross) {
+      ctx.drawImage(cross, r.x, r.y, r.w, r.h);
+    } else if (o.dy > o.dx) {          // поперечный ряд — тот же спрайт зеркально
       ctx.save();
       ctx.translate(r.x + r.w, r.y);
       ctx.scale(-1, 1);
