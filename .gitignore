@@ -10,3 +10,4 @@ vite.config.js.timestamp-*.mjs
 tools/.pixelify-upstream.ttf
 tools/.kingdom-charset.txt
 **/__pycache__/
+public/_preview/
