@@ -6,7 +6,7 @@
 // растворяется только то, что упало.
 
 import { drawPixelReveal } from '../../core/pixelReveal.js';
-import { rubbleSnapshot, clearRubble, drawRubble, drawGround } from './blocks.js';
+import { rubbleSnapshot, clearRubble, drawRubble, drawGround, drawCrown } from './blocks.js';
 
 const RUBBLE_HOLD = 1.4;       // сек: сначала читается текст, куча ещё цела
 const RUBBLE_DISSOLVE = 1.6;   // сколько растворяется
@@ -27,7 +27,7 @@ export function createReleaseAfterscene() {
     bufKey = key;
     const baseX = Math.round(w / 2);
     const baseY = h - rubbleSnapshot.oyFromBottom;
-    const top = baseY - 170;
+    const top = baseY - 280;   // куча до 6 слоёв (pile.js) и корона сверху
 
     rubbleBuf = document.createElement('canvas');
     rubbleBuf.width = w;
@@ -35,6 +35,7 @@ export function createReleaseAfterscene() {
     const rc = rubbleBuf.getContext('2d');
     rc.imageSmoothingEnabled = false;
     drawRubble(rc, baseX, baseY - top, rubbleSnapshot.blocks);
+    if (rubbleSnapshot.crown) drawCrown(rc, baseX, baseY - top, rubbleSnapshot.crown, 0, false);
     rubbleBuf.top = top;
 
     markBuf = document.createElement('canvas');

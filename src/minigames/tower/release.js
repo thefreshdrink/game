@@ -20,7 +20,9 @@ import { drawTopHint } from '../../core/hints.js';
 import { uiScale } from '../../core/text.js';
 import {
   ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
+  drawCastle, drawCrown, crownLift,
 } from './blocks.js';
+import { createPile } from './pile.js';
 
 const PULL_TIME = 0.8;      // сек удержания до выхода бруска
 const PULL_DIST = 2.6;      // насколько выезжает, в единицах бруска
@@ -39,7 +41,7 @@ export function createReleaseScene({ input, goto }) {
   let rows = [];
   let debris = [];
   let dust = [];
-  let taken = new Set();
+  const pile = createPile();
   let phase = 'play';
   let tPhase = 0;
   let shake = 0;
@@ -51,6 +53,8 @@ export function createReleaseScene({ input, goto }) {
   let baseX = 0;
   let baseY = 0;
   let movedEver = false;
+  let castleUp = true;   // крепость стоит на крыше; при обвале — в обломки
+  let t = 0;             // для искр короны
 
   function reset() {
     rows = [];
@@ -67,13 +71,14 @@ export function createReleaseScene({ input, goto }) {
     }
     debris = [];
     dust = [];
-    taken = new Set();
+    pile.reset();
     phase = 'play';
     tPhase = 0;
     shake = 0;
     pulling = null;
     pivotRow = -1;
-    crown = { x: 1.5, y: 1.5, z: ROWS, vx: 0, vy: 0, vz: 0, live: false, rest: false };
+    crown = { x: 1.5, y: 1.5, z: ROWS + crownLift(), vx: 0, vy: 0, vz: 0, live: false, rest: false };
+    castleUp = true;
     movedEver = false;
   }
 
@@ -132,47 +137,6 @@ export function createReleaseScene({ input, goto }) {
   const tension = () => Math.min(1,
     (COLS * ROWS - blocksLeft()) / 16 + rows.reduce((a, r) => a + Math.abs(r.lean), 0) / 3);
 
-  // --- куча обломков ------------------------------------------------------
-  // Плотно: место ищем по спирали от центра основания и складываем слоями,
-  // а не разбрасываем по всей земле (правка в чате — «куча плотнее»).
-  function cellKeys(d) {
-    const out = [];
-    for (let a = 0; a < Math.round(d.dx); a++) {
-      for (let b = 0; b < Math.round(d.dy); b++) {
-        out.push(`${Math.round(d.x) + a},${Math.round(d.y) + b},${Math.round(d.z)}`);
-      }
-    }
-    return out;
-  }
-
-  function freeAt(d, x, y, z) {
-    const probe = { ...d, x, y, z };
-    return cellKeys(probe).every((k) => !taken.has(k));
-  }
-
-  function settle(d) {
-    const cx = 1.5;
-    const cy = 1.5;
-    let best = null;
-    for (let z = 0; z <= 3 && !best; z++) {
-      for (let ring = 0; ring <= 3 && !best; ring++) {
-        for (let dx = -ring; dx <= ring && !best; dx++) {
-          for (let dy = -ring; dy <= ring && !best; dy++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
-            const x = Math.round(cx - d.dx / 2) + dx;
-            const y = Math.round(cy - d.dy / 2) + dy;
-            if (!freeAt(d, x, y, z)) continue;
-            // На весу не висим: либо земля, либо есть опора снизу.
-            if (z > 0 && freeAt(d, x, y, z - 1)) continue;
-            best = { x, y, z };
-          }
-        }
-      }
-    }
-    const spot = best ?? { x: Math.round(d.x), y: Math.round(d.y), z: 0 };
-    d.x = spot.x; d.y = spot.y; d.z = spot.z;
-    cellKeys(d).forEach((k) => taken.add(k));
-  }
 
   function puff(o) {
     for (let k = 0; k < 6; k++) {
@@ -212,10 +176,31 @@ export function createReleaseScene({ input, goto }) {
         puff(o);
       });
     }
+    // Крепость уходит обломками вместе с кладкой (решение в чате): светлый
+    // камень с крыши летит дальше всех — у него самый длинный рычаг.
+    if (castleUp) {
+      castleUp = false;
+      const [sx, sy] = shiftAt(ROWS);
+      [[0, 1, 3, 1, 'light'], [1, 0, 1, 3, 'light'], [0.5, 0.5, 3, 1, 'mid']].forEach(([ox, oy, dx, dy, tone]) => {
+        const o = { x: ox + sx, y: oy + sy, z: ROWS, dx, dy, tone };
+        debris.push({
+          ...o,
+          vx: dir * 2 + (Math.random() - 0.5) * 1.2,
+          vy: dir * 2 + (Math.random() - 0.5) * 1.2,
+          vz: 1 + Math.random(),
+          rest: false,
+        });
+        puff(o);
+      });
+    }
+    // Корона — первой: подлетает и падает (решение в чате).
+    const [cx, cy] = shiftAt(ROWS);
+    crown.x += cx;
+    crown.y += cy;
     crown.live = true;
     crown.vx = dir * 1.1;
     crown.vy = dir * 1.1;
-    crown.vz = 2.4;
+    crown.vz = 3.2;
   }
 
   function stepDebris(dt, slow) {
@@ -229,7 +214,7 @@ export function createReleaseScene({ input, goto }) {
         d.z = 0;
         if (Math.abs(d.vz) < 3) {
           d.rest = true; d.vx = 0; d.vy = 0; d.vz = 0;
-          settle(d);
+          pile.settle(d);
         } else {
           d.vz *= -0.24; d.vx *= 0.4; d.vy *= 0.4; puff(d);
         }
@@ -294,6 +279,7 @@ export function createReleaseScene({ input, goto }) {
         lowerTo = h - RUBBLE_BOTTOM_GAP;
       }
       tPhase += dt;
+      t += dt;
 
       if (pulling) {
         if (pulling.releasing) {
@@ -343,7 +329,7 @@ export function createReleaseScene({ input, goto }) {
         if (k >= 1) {
           // Куча переезжает на экран предсказания как есть — там она и
           // растворится, освободив место знаку вопроса.
-          saveRubble(debris, baseX, RUBBLE_BOTTOM_GAP);
+          saveRubble(debris, baseX, RUBBLE_BOTTOM_GAP, crown);
           finish();
         }
       }
@@ -376,8 +362,22 @@ export function createReleaseScene({ input, goto }) {
         list.forEach((e) => drawBlock(ctx, baseX, baseY, e.o, e.hot));
       }
 
+      if (castleUp) {
+        const [sx, sy] = shiftAt(ROWS);
+        drawCastle(ctx, baseX, baseY, 1.5 + sx, 1.5 + sy, ROWS);
+      }
+
       debris.filter((d) => !d.rest).sort((a, b) => a.z - b.z)
         .forEach((d) => drawBlock(ctx, baseX, baseY, d, false));
+
+      // Корона парит над крепостью и чуть дышит; после обвала — лежит в куче.
+      if (crown.live) {
+        drawCrown(ctx, baseX, baseY, crown, t, false);
+      } else {
+        const [sx, sy] = shiftAt(ROWS);
+        const bob = Math.round(Math.sin(t * 2) * 1.5) * 0.08;
+        drawCrown(ctx, baseX, baseY, { x: crown.x + sx, y: crown.y + sy, z: crown.z + bob }, t, true);
+      }
 
       // Пыль — процедурно, как везде в проекте (ASSETS.md).
       dust.forEach((d) => {

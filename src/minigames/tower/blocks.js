@@ -13,12 +13,13 @@
 // Спрайт бруска — 64×48 арт-пикселей, в игре рисуется ×2: зерно Башни 2
 // экранных на арт-пиксель, как у референса в нашем масштабе (решение
 // 2026-09-28). Шаги ниже — ровно ×2 от сетки спрайта (tools/iso-block.py
-// --unit 16 --row 16), поэтому брусок садится пиксель в пиксель и ряды
-// сходятся без щелей. Ряд ниже шага (32 < 40 было) — бруски тоньше.
+// --unit 16 --row 12), поэтому брусок садится пиксель в пиксель и ряды
+// сходятся без щелей. Бруски тонкие и рядов много — как на референсе.
 export const U = 32;    // шаг вправо на единицу глубины
 export const HU = 16;   // он же вниз — изометрия 2:1
-export const ZH = 32;   // высота ряда
-export const ROWS = 12;
+export const ZH = 24;   // высота ряда
+export const ROWS = 16;
+const GRAIN = 2;        // экранных px на арт-пиксель у спрайтов Башни
 export const COLS = 3;
 
 // Палитра — только из таблицы CLAUDE.md.
@@ -251,6 +252,68 @@ export function drawSparkles(ctx, cx, cy, t) {
   });
 }
 
+// --- крепость и корона на крыше ---------------------------------------
+// Спрайты — генерация (pixflux), приведённая к палитре. Крепость сажается
+// ЦЕНТРОМ СВОЕГО ОСНОВАНИЯ на точку крыши: центр основания — середина
+// самой широкой строки силуэта (углы изометрического ромба), считается по
+// самому спрайту, поэтому замена картинки не требует новых чисел.
+const top = { castle: null, crown: null, anchor: [0, 0], height: 0 };
+
+function baseAnchor(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const a = g.getImageData(0, 0, img.width, img.height).data;
+  let best = { w: -1, y: 0, x: 0 };
+  let topY = img.height;
+  for (let y = 0; y < img.height; y++) {
+    let x0 = -1;
+    let x1 = -1;
+    for (let x = 0; x < img.width; x++) {
+      if (a[(y * img.width + x) * 4 + 3] > 127) { if (x0 < 0) x0 = x; x1 = x; }
+    }
+    if (x0 < 0) continue;
+    topY = Math.min(topY, y);
+    if (x1 - x0 >= best.w) best = { w: x1 - x0, y, x: (x0 + x1 + 1) / 2 };
+  }
+  return { anchor: [best.x, best.y], height: best.y - topY };
+}
+
+export function setTowerTop({ castle, crown }) {
+  top.castle = castle ?? null;
+  top.crown = crown ?? null;
+  if (castle) Object.assign(top, baseAnchor(castle));
+}
+
+/** Где над крышей парит корона — в рядах (единицы z), от крыши. */
+export function crownLift() {
+  return top.castle ? (top.height * GRAIN + 10) / ZH : 0.5;
+}
+
+/** Крепость на крыше: (x, y) — центр крыши в единицах бруска, z — её уровень. */
+export function drawCastle(ctx, ox, oy, x, y, z) {
+  if (!top.castle) return;
+  const [px, py] = project(ox, oy, x, y, z);
+  const w = top.castle.width * GRAIN;
+  const h = top.castle.height * GRAIN;
+  ctx.drawImage(top.castle, Math.round(px - top.anchor[0] * GRAIN), Math.round(py - top.anchor[1] * GRAIN), w, h);
+}
+
+/** Корона: нижний край — в точке (x, y, z). sparkle — искры вокруг (пока
+ * она на крепости). */
+export function drawCrown(ctx, ox, oy, c, t, sparkle) {
+  if (!top.crown) return;
+  const [px, py] = project(ox, oy, c.x, c.y, c.z);
+  const w = top.crown.width * GRAIN;
+  const h = top.crown.height * GRAIN;
+  const x = Math.round((px - w / 2) / 2) * 2;
+  const y = Math.round((py - h) / 2) * 2;
+  ctx.drawImage(top.crown, x, y, w, h);
+  if (sparkle) drawSparkles(ctx, x + w / 2, y + h / 2, t);
+}
+
 /** Земля — те же каменные плиты дороги Шута, только в изометрии (решение
  * в чате: не заводить под Башню свою землю, а связать карты одним миром). */
 export function drawGround(ctx, ox, oy, radius = 4, shadowRows = 0) {
@@ -303,15 +366,17 @@ export function drawRubble(ctx, ox, oy, blocks) {
 
 // Снимок последней кучи: сцена кладёт сюда обломки и точку, где они
 // замерли, предсказание читает. Пусто — Башню в этой сессии не играли.
-export const rubbleSnapshot = { blocks: [], ox: 0, oyFromBottom: 0 };
+export const rubbleSnapshot = { blocks: [], ox: 0, oyFromBottom: 0, crown: null };
 
-export function saveRubble(blocks, ox, oyFromBottom) {
+export function saveRubble(blocks, ox, oyFromBottom, crown = null) {
   rubbleSnapshot.blocks = blocks.map((b) => ({ x: b.x, y: b.y, z: b.z, dx: b.dx, dy: b.dy, tone: b.tone }));
   rubbleSnapshot.ox = ox;
   rubbleSnapshot.oyFromBottom = oyFromBottom;
+  rubbleSnapshot.crown = crown ? { x: crown.x, y: crown.y, z: crown.z } : null;
 }
 
 /** Куча показана — снимок больше не нужен. */
 export function clearRubble() {
   rubbleSnapshot.blocks = [];
+  rubbleSnapshot.crown = null;
 }
