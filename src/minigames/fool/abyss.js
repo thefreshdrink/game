@@ -28,6 +28,7 @@ export function drawAbyss(ctx, w, h, t) {
     topFrac: ABYSS_TOP_FRAC,
     breatheAmp: 24,
     breathePeriod: 7,
+    cell: 2,   // сетка сцены Шута — 2 экранных на арт-пиксель
   });
 
   // Облака поверх градиента, внутри полосы пропасти. Разная скорость =

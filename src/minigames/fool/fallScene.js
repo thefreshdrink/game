@@ -122,17 +122,40 @@ function drawFallWorld(ctx, w, h, prog, scroll) {
   const frac = wf - wi;               // 0..1 — доля перехода в следующий мир
   const cur = FALL_WORLDS[wi];
   const nxt = FALL_WORLDS[Math.min(N - 1, wi + 1)];
-  const CELL = 8;
-  const yoff = ((Math.round(scroll * 0.4) % CELL) + CELL) % CELL;
-  for (let cy = -CELL + yoff, row = 0; cy < h; cy += CELL, row++) {
-    const brow = FALL_BAYER[((row % 4) + 4) % 4];
-    for (let cx = 0, col = 0; cx < w; cx += CELL, col++) {
-      const thr = brow[col & 3] / 16;
-      const pair = thr < frac ? nxt : cur;  // диссолв: чем дальше frac, тем больше ячеек из nxt
-      ctx.fillStyle = thr < 0.5 ? pair[0] : pair[1];
-      ctx.fillRect(cx, cy, CELL, CELL);
+  // Ячейка 2 — сетка сцены Шута. Узор 4×4 ячейки собирается один раз на
+  // (мир, ступень перехода) и кладётся заливкой: по ячейке — это сотня
+  // тысяч fillRect за кадр.
+  const tile = FALL_CELL * 4;
+  const yoff = ((Math.round(scroll * 0.4) % tile) + tile) % tile;
+  ctx.save();
+  ctx.fillStyle = fallPattern(ctx, wi, cur, nxt, Math.ceil(frac * 16));
+  ctx.translate(0, yoff - tile);
+  ctx.fillRect(0, 0, w, h + tile * 2);
+  ctx.restore();
+}
+
+const FALL_CELL = 2;
+const fallPatterns = new Map();
+
+function fallPattern(ctx, wi, cur, nxt, level) {
+  const key = `${wi}:${level}`;
+  let p = fallPatterns.get(key);
+  if (!p) {
+    const c = document.createElement('canvas');
+    c.width = c.height = FALL_CELL * 4;
+    const g = c.getContext('2d');
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        const b = FALL_BAYER[row][col];
+        const pair = b < level ? nxt : cur;   // диссолв: чем дальше переход, тем больше ячеек из nxt
+        g.fillStyle = b < 8 ? pair[0] : pair[1];
+        g.fillRect(col * FALL_CELL, row * FALL_CELL, FALL_CELL, FALL_CELL);
+      }
     }
+    p = ctx.createPattern(c, 'repeat');
+    fallPatterns.set(key, p);
   }
+  return p;
 }
 
 /** Звёзды — далёкий слой, слабый параллакс вверх, мерцание по синусу. */
@@ -159,7 +182,7 @@ function drawFallMoon(ctx, w, h, prog) {
   const local = (prog - P0) / (P1 - P0);
   const a = clamp01(local / 0.14) * (1 - clamp01((local - 0.82) / 0.18));
   if (a <= 0) return;
-  const CELL = 12;                                 // КРУПНЫЙ пиксель
+  const CELL = 2;                                  // сетка сцены Шута
   const R = Math.round((Math.min(w, h) * 0.15) / CELL) * CELL;
   const cx = Math.round(w / 2 / CELL) * CELL;
   const cy = Math.round((h * 0.19) / CELL) * CELL;
@@ -188,7 +211,7 @@ function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
   const local = (prog - P0) / (P1 - P0);
   const a = clamp01(local / 0.18) * (1 - clamp01((local - 0.85) / 0.15)) * alphaMul;
   if (a <= 0) return;
-  const CELL = 10;
+  const CELL = 2;                                  // сетка сцены Шута
   const R = Math.round((Math.min(w, h) * 0.10) / CELL) * CELL;
   const cx = Math.round(w / 2 / CELL) * CELL;
   const cy = Math.round((h * 0.20) / CELL) * CELL;
@@ -198,7 +221,7 @@ function drawFallSun(ctx, w, h, prog, alphaMul = 1) {
   ctx.fillStyle = '#808080';
   for (let i = 0; i < 12; i++) {
     const ang = rot + i * Math.PI / 6;
-    for (let rr = R + CELL * 1.5; rr < R + CELL * 4.5; rr += CELL) {
+    for (let rr = R + 15; rr < R + 45; rr += CELL) {
       ctx.fillRect(
         Math.round((cx + Math.cos(ang) * rr) / CELL) * CELL,
         Math.round((cy + Math.sin(ang) * rr) / CELL) * CELL,
@@ -394,7 +417,7 @@ export function drawFallSequence(ctx, w, h, s) {
   if (p >= 1) {
     dust.forEach((d) => {
       ctx.fillStyle = (1 - d.t / d.life) > 0.5 ? '#808080' : '#4A4A4A';
-      ctx.fillRect(Math.round(standCX + (d.x - player.x)), Math.round(groundY - (player.y - d.y)), d.s, d.s);
+      ctx.fillRect(Math.round((standCX + (d.x - player.x)) / 2) * 2, Math.round((groundY - (player.y - d.y)) / 2) * 2, d.s, d.s);
     });
   }
 }

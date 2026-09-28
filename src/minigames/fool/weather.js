@@ -55,8 +55,9 @@ for (let i = 0; i < DRIZZLE_N; i++) {
 
 export function drawDrizzle(ctx, w, h, t, camX) {
   ctx.save();
-  ctx.globalAlpha = 0.5;
-  ctx.fillStyle = '#4A4A4A';
+  // Тон пустоты сплошным, а не #4A4A4A на половине прозрачности: полупрозрачный
+  // даёт цвет вне палитры. Штрих — ячейками 2×2, по сетке сцены.
+  ctx.fillStyle = '#2E2E2E';
   const span = h + 40;
   const wind = 2; // наклон штриха, px вправо на каждый px вниз... мягко
   for (const d of DRIZZLE) {
@@ -64,7 +65,7 @@ export function drawDrizzle(ctx, w, h, t, camX) {
     let x = (d.x * w - camX * 0.06 + t * 24) % w;
     if (x < 0) x += w;
     for (let s = 0; s < d.len; s += 2) {
-      ctx.fillRect(Math.round(x + s / wind), Math.round(y + s), 1, 2);
+      ctx.fillRect(Math.round((x + s / wind) / 2) * 2, Math.round((y + s) / 2) * 2, 2, 2);
     }
   }
   ctx.restore();

@@ -23,7 +23,7 @@ export function createParticles() {
           vx: (Math.random() - 0.5) * spreadX,
           vy: -Math.random() * liftY,
           t: 0, life: life + Math.random() * lifeJitter,
-          s: Math.random() < 0.5 ? 2 : 3,
+          s: Math.random() < 0.5 ? 2 : 4,   // чётно: 1 арт-пиксель = 2 экранных
         });
       }
     },
@@ -44,7 +44,7 @@ export function createParticles() {
       list.forEach((d) => {
         const a = 1 - d.t / d.life;
         ctx.fillStyle = a > 0.5 ? '#808080' : '#4A4A4A';
-        ctx.fillRect(Math.round(d.x - camX), Math.round(d.y - camY - d.s), d.s, d.s);
+        ctx.fillRect(Math.round((d.x - camX) / 2) * 2, Math.round((d.y - camY - d.s) / 2) * 2, d.s, d.s);
       });
     },
   };

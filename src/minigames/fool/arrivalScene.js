@@ -58,10 +58,11 @@ export function drawArrivalGrass(ctx, plateX, plateW, groundY, a = 1) {
   ctx.fillStyle = '#4A4A4A';
   for (let g = plateX + 10; g < plateX + plateW - 10; g += 18) {
     const j = (g * 37) % 4;                 // стабильный джиттер высоты
-    ctx.fillRect(g, groundY - 6 - j, 2, 6 + j);
-    ctx.fillRect(g + 3, groundY - 4, 2, 4);
-    ctx.fillRect(g - 3, groundY - 3, 2, 3);
-    ctx.fillRect(g + 5, groundY - 2, 2, 2);
+    const jj = j & ~1;                      // сетка 2: высоты и сдвиги чётные
+    ctx.fillRect(g, groundY - 6 - jj, 2, 6 + jj);
+    ctx.fillRect(g + 4, groundY - 4, 2, 4);
+    ctx.fillRect(g - 4, groundY - 4, 2, 4);
+    ctx.fillRect(g + 6, groundY - 2, 2, 2);
   }
   ctx.restore();
 }
@@ -73,19 +74,19 @@ export function drawArrivalBush(ctx, x, groundY, a = 1) {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, a));
   ctx.fillStyle = '#4A4A4A';
-  ctx.fillRect(x + 10, groundY - 6, 3, 6); // ствол
+  ctx.fillRect(x + 10, groundY - 6, 4, 6); // ствол
   const lobes = [
     [x, groundY - 16, 12, 12],
-    [x + 8, groundY - 21, 13, 15],
-    [x + 16, groundY - 15, 11, 11],
+    [x + 8, groundY - 22, 14, 16],
+    [x + 16, groundY - 14, 12, 10],
   ];
   lobes.forEach(([lx, ly, lw, lh]) => {
     ctx.fillRect(lx, ly + 2, lw, lh - 2);
     ctx.fillRect(lx + 2, ly, lw - 4, lh);   // скруглённая макушка
   });
   ctx.fillStyle = '#808080';                // блики
-  ctx.fillRect(x + 3, groundY - 14, 3, 2);
-  ctx.fillRect(x + 12, groundY - 20, 3, 2);
+  ctx.fillRect(x + 4, groundY - 14, 4, 2);
+  ctx.fillRect(x + 12, groundY - 20, 4, 2);
   ctx.fillRect(x + 20, groundY - 12, 2, 2);
   ctx.restore();
 }
