@@ -251,7 +251,14 @@ const SEQ_KEY = 'tarot.test.drawIndex';
  * CARDS. Карта без своей сцены пока тоже выпадает и пропускает экран 5 —
  * сузить выдачу до играбельных (`isPlayable`, minigames/index.js) —
  * задача 5 BUILD-SPEC-07. */
+// `?card=<id>` в ссылке — сразу эта карта, без прохода по кругу: проверка
+// одной карты с телефона (BUILD-SPEC-07 задача 5). Читается один раз.
+const FORCED_CARD = (() => {
+  try { return new URLSearchParams(window.location.search).get('card'); } catch { return null; }
+})();
+
 export function pickCardId() {
+  if (FORCED_CARD && CARDS[FORCED_CARD]) return FORCED_CARD;
   const ids = Object.keys(CARDS);
   if (SEQUENTIAL_DRAW) {
     // DECK_ORDER, а не Object.keys: порядок в банке — история правок, а
