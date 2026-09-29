@@ -17,7 +17,8 @@ import {
 import {
   computeOracleLayout, drawOracleBody, drawOracleEyes, headerBottomY as oracleHeaderBottomY,
 } from '../core/oracle.js';
-import { pickCardId } from '../data/cards.js';
+import { CARDS, pickCardId } from '../data/cards.js';
+import { isPlayable } from '../minigames/index.js';
 import { CARD_W, CARD_H, fillCardBody } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { easeInOutQuad, clamp01 } from '../core/ease.js';
@@ -374,7 +375,8 @@ export function createDeckScreen({ input, images, goto }) {
           flyFrom = {
             x: p.x - c.w / 2, y: p.y - c.h / 2, w: c.w, h: c.h, rotation: c.angle,
           };
-          session.cardId = pickCardId(); // любая карта с записью в банке
+          // только карты со своей мини-игрой (BUILD-SPEC-07 задача 5)
+          session.cardId = pickCardId(Object.keys(CARDS).filter((id) => isPlayable(CARDS[id])));
         }),
       ];
     },

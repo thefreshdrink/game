@@ -246,24 +246,22 @@ export const DECK_ORDER = ['fool', 'magician', 'empress', 'wheel', 'tower'];
 export const SEQUENTIAL_DRAW = true;
 const SEQ_KEY = 'tarot.test.drawIndex';
 
-/** Карта для выдачи на экране 2. Берёт любую, у которой есть запись в банке
- * (портрет, имя, номер, три текста) — список растёт сам по мере наполнения
- * CARDS. Карта без своей сцены пока тоже выпадает и пропускает экран 5 —
- * сузить выдачу до играбельных (`isPlayable`, minigames/index.js) —
- * задача 5 BUILD-SPEC-07. */
+/** Карта для выдачи на экране 2 из пула pool (по умолчанию — весь банк).
+ * Веер передаёт только играбельные (`isPlayable`, minigames/index.js):
+ * карта без своей сцены в раздачу не попадает (BUILD-SPEC-07 задача 5). */
 // `?card=<id>` в ссылке — сразу эта карта, без прохода по кругу: проверка
 // одной карты с телефона (BUILD-SPEC-07 задача 5). Читается один раз.
 const FORCED_CARD = (() => {
   try { return new URLSearchParams(window.location.search).get('card'); } catch { return null; }
 })();
 
-export function pickCardId() {
+export function pickCardId(pool = Object.keys(CARDS)) {
   if (FORCED_CARD && CARDS[FORCED_CARD]) return FORCED_CARD;
-  const ids = Object.keys(CARDS);
+  const ids = pool.filter((id) => CARDS[id]);
   if (SEQUENTIAL_DRAW) {
     // DECK_ORDER, а не Object.keys: порядок в банке — история правок, а
     // DECK_ORDER это канонический порядок арканов по номеру.
-    const order = DECK_ORDER.filter((id) => CARDS[id]);
+    const order = DECK_ORDER.filter((id) => ids.includes(id));
     let i = 0;
     try { i = Number(localStorage.getItem(SEQ_KEY)) || 0; } catch { i = 0; }
     if (!Number.isInteger(i) || i < 0) i = 0;
