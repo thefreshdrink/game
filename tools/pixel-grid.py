@@ -11,8 +11,14 @@
   3. снапит цвета в палитру игры (design-system/tarot-journey.hex);
   4. пишет либо нативный размер (1 клетка = 1 пиксель), либо --scale N.
 
+--ramp вместо п.3: цветную генерацию (фон по цветным референсам) не снапить
+по ближайшему цвету — синее и оранжевое схлопнутся в одно серое. Цвета
+сортируются по яркости и раскладываются по лесенке тонов равными долями
+площади: порядок «дальше — светлее» и все кромки остаются.
+
     python3 tools/pixel-grid.py вход.png выход.png --grain 4 --scale 4
     python3 tools/pixel-grid.py вход.png выход.png --grain auto
+    python3 tools/pixel-grid.py фон.png выход.png --grain 1 --ramp 111111,161616,1C1C1C,212121,2E2E2E,4A4A4A
     python3 tools/pixel-grid.py --selftest
 """
 import argparse
@@ -63,7 +69,23 @@ def best_offset(px, w, h, g):
     return max(((purity(px, w, h, g, ox, oy), ox, oy) for ox in range(g) for oy in range(g)))
 
 
-def snap(im, g, scale):
+def luma(c):
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+
+
+def ramp_map(colors, ramp):
+    """Counter цветов → {цвет: тон лесенки}: по яркости, равными долями площади."""
+    total = sum(colors.values())
+    out = {}
+    acc = 0
+    for col, n in sorted(colors.items(), key=lambda kv: luma(kv[0])):
+        mid = (acc + n / 2) / total
+        out[col] = ramp[min(len(ramp) - 1, int(mid * len(ramp)))]
+        acc += n
+    return out
+
+
+def snap(im, g, scale, ramp=None):
     im = im.convert('RGBA')
     px = im.load()
     w, h = im.size
@@ -74,12 +96,15 @@ def snap(im, g, scale):
     ch = max(c[1] for c in cells) + 1
     out = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
     op = out.load()
+    picked = []
     for cx, cy, c in cells:
         n = sum(c.values())
         if c[(0, 0, 0, 0)] * 2 >= n:
             continue
-        col = next(k for k, _ in c.most_common() if k[3])
-        op[cx, cy] = nearest(col[:3], pal) + (255,)
+        picked.append((cx, cy, next(k for k, _ in c.most_common() if k[3])[:3]))
+    tone = ramp_map(Counter(col for _, _, col in picked), ramp) if ramp else None
+    for cx, cy, col in picked:
+        op[cx, cy] = (tone[col] if tone else nearest(col, pal)) + (255,)
     bbox = out.getbbox()
     if bbox:
         out = out.crop(bbox)
@@ -108,7 +133,15 @@ def selftest():
                for y in range(ref.height) for x in range(ref.width)) if out.size == ref.size else 0
     ok = out.size == ref.size and same / (ref.width * ref.height) > 0.95 and off == (2, 2)
     print(f"selftest {'ok' if ok else 'FAIL'} — размер {out.size} vs {ref.size}, совпало {same}, сдвиг {off}")
-    return ok
+    # --ramp: тёмное остаётся тёмным, порядок яркости сохраняется
+    grad = Image.new('RGBA', (4, 1))
+    for x, c in enumerate([(10, 20, 90), (200, 60, 30), (90, 160, 220), (250, 240, 200)]):
+        grad.putpixel((x, 0), c + (255,))
+    rout, _, _ = snap(grad, 1, 1, ramp=[(17, 17, 17), (46, 46, 46), (128, 128, 128), (255, 255, 255)])
+    got = [rout.getpixel((x, 0))[0] for x in range(4)]
+    rok = got == sorted(got) and got[0] == 17 and got[-1] == 255
+    print(f"selftest ramp {'ok' if rok else 'FAIL'} — {got}")
+    return ok and rok
 
 
 def main():
@@ -117,6 +150,7 @@ def main():
     ap.add_argument('dst', nargs='?')
     ap.add_argument('--grain', default='4', help='размер клетки в пикселях входа или auto (2..8)')
     ap.add_argument('--scale', type=int, default=1, help='множитель вывода (4 → как портреты карт)')
+    ap.add_argument('--ramp', default='', help='тоны по яркости вместо снапа: 111111,2E2E2E,4A4A4A')
     ap.add_argument('--selftest', action='store_true')
     a = ap.parse_args()
     if a.selftest:
@@ -130,7 +164,8 @@ def main():
         g = max(cands)[1]
     else:
         g = int(a.grain)
-    out, score, off = snap(im, g, a.scale)
+    ramp = [tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) for h in a.ramp.split(',')] if a.ramp else None
+    out, score, off = snap(im, g, a.scale, ramp)
     out.save(a.dst)
     print(f'{a.dst}: клетка {g}, сдвиг {off}, однородность {score:.0%}, {out.size[0]}×{out.size[1]}')
 

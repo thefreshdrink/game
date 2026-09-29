@@ -33,13 +33,21 @@ export default {
     images.dogWalkFrames = sliceStrip(images.dogWalkStrip, 18, 14);
     images.dogSitFrames = sliceStrip(images.dogSitStrip, 18, 14);
     images.foolIdleFrames = sliceStrip(images.foolIdleStrip, 44, 48);
-    // Над фоном — его же верхний тон, чтобы небо не обрывалось.
+    // Под фоном — самый частый тон его нижнего ряда, чтобы картинка не
+    // обрывалась: угловой пиксель мог попасть в облако и дать светлый шов.
+    const bd = images.foolBackdrop;
     const c = document.createElement('canvas');
-    c.width = c.height = 1;
+    c.width = bd.width;
+    c.height = 1;
     const g = c.getContext('2d');
-    g.drawImage(images.foolBackdrop, 0, 0, 1, 1, 0, 0, 1, 1);
-    const [r, gg, b] = g.getImageData(0, 0, 1, 1).data;
-    images.foolBackdropTop = `rgb(${r}, ${gg}, ${b})`;
+    g.drawImage(bd, 0, bd.height - 1, bd.width, 1, 0, 0, bd.width, 1);
+    const row = g.getImageData(0, 0, bd.width, 1).data;
+    const votes = new Map();
+    for (let i = 0; i < row.length; i += 4) {
+      const k = `${row[i]}, ${row[i + 1]}, ${row[i + 2]}`;
+      votes.set(k, (votes.get(k) ?? 0) + 1);
+    }
+    images.foolBackdropBottom = `rgb(${[...votes].sort((x, y) => y[1] - x[1])[0][0]})`;
   },
 
   createScene: createLeapScreen,

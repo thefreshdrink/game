@@ -80,18 +80,28 @@ function drawLayer(ctx, images, L, w, h, camX, t) {
   });
 }
 
-/** Дальний фон: низ картинки у низа кадра, выше — её верхний тон. Почти
- * не движется (parallax 0.04 по x, 0.03 по y). Вширь повторяется зеркально —
- * у отражения стык незаметен. */
+/** Дальний фон (Pixen по референсам, правка 29.09; тоны — tools/pixel-grid.py
+ * --ramp до #808080): верх картинки у верха кадра, ниже — её нижний тон,
+ * который и так закрывает пропасть (abyss.js, от 0.8 кадра). У верха —
+ * чтобы облака картинки не обрезались посреди экрана о заливку.
+ * Почти не движется (parallax 0.04 по x, 0.03 по y). Шире экрана — одной
+ * картинкой: зеркальная склейка на стыке давала купол из краевой горы.
+ * Уже экрана (десктоп) — зеркально вширь, у отражения стык незаметен. */
 export function drawBackdrop(ctx, images, w, h, camX, camY) {
   const img = images.foolBackdrop;
   if (!img) return;
   const bw = img.width * GRAIN;
   const bh = img.height * GRAIN;
-  const top = Math.round((h - bh + Math.min(40, Math.max(-40, -camY * 0.03))) / 2) * 2;
-  if (images.foolBackdropTop) {
-    ctx.fillStyle = images.foolBackdropTop;
-    ctx.fillRect(0, 0, w, Math.max(0, top));
+  const top = Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
+  if (images.foolBackdropBottom && top + bh < h) {
+    ctx.fillStyle = images.foolBackdropBottom;
+    ctx.fillRect(0, top + bh, w, h - top - bh);
+  }
+  if (bw >= w) {
+    const slack = (bw - w) / 2;
+    const x = Math.round((-slack - Math.max(-slack, Math.min(slack, camX * 0.04 - slack))) / 2) * 2;
+    ctx.drawImage(img, x, top, bw, bh);
+    return;
   }
   const period = bw * 2;
   const base = ((((-camX * 0.04) % period) + period) % period) - period;
