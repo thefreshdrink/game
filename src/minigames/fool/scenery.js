@@ -5,66 +5,76 @@
 // ближе.
 //
 // Облака нарезаны из генерации (tools/cut-sprites.py) в двух тонах: near —
-// светлее, ближний слой; far — почти туман. Композиция собирается из них
-// кодом: разные облачка, часть зеркально, постоянный разброс.
+// светлее, far — почти туман. Из них собраны ФОРМАЦИИ (правка в чате
+// 2026-09-29: «большие с маленькими рядышком»): крупное облако, за ним
+// дальнее тёмное, спереди мелкие светлые. Раскладка задана руками, как в
+// Фигме; формация зеркалится целиком.
 
 const GRAIN = 2;
-export const CLOUD_IDS = [
-  ...Array.from({ length: 15 }, (_, i) => `a_${String(i + 1).padStart(2, '0')}`),
-  ...Array.from({ length: 5 }, (_, i) => `b_${String(i + 1).padStart(2, '0')}`),
-];
+export const CLOUD_IDS = Array.from({ length: 11 }, (_, i) => `p_${String(i + 1).padStart(2, '0')}`);
 
-// Постоянный псевдослучай: раскладка одинакова при каждом заходе.
-function rng(seed) {
-  let s = seed >>> 0;
-  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-}
+// Части формации: [облако, сдвиг x, сдвиг y (арт-px), тон]. Порядок — от
+// дальнего к ближнему.
+const FORMATIONS = {
+  heap: [['p_03', 26, -4, 'far'], ['p_08', 0, 0, 'near'], ['p_05', 52, 14, 'near'], ['p_04', -10, 20, 'near']],
+  ridge: [['p_11', 0, 6, 'far'], ['p_02', 8, 0, 'near'], ['p_06', 54, 2, 'near']],
+  pair: [['p_10', 0, 0, 'far'], ['p_09', 18, 6, 'near'], ['p_01', -18, 14, 'near']],
+  puffs: [['p_07', 0, 0, 'near'], ['p_04', 26, 6, 'near']],
+};
 
-/** Слой облаков: count штук на периоде period px по x, в полосе высоты
- * [y0, y1] (доли кадра), тон, параллакс к камере и собственный снос. */
-function layout({ seed, count, period, y0, y1, tone, parallax, drift }) {
-  const r = rng(seed);
-  return {
-    period, tone, parallax, drift,
-    items: Array.from({ length: count }, (_, k) => ({
-      id: CLOUD_IDS[Math.floor(r() * CLOUD_IDS.length)],
-      x: (k + r() * 0.7) * (period / count),
-      yFrac: y0 + r() * (y1 - y0),
-      flip: r() < 0.5,
-    })),
-  };
-}
-
+// Слои: формации на периоде period px, высота — доля кадра, параллакс к
+// камере и снос. Верх — две полосы, пропасть — две.
 const TOP = [
-  layout({ seed: 11, count: 5, period: 900, y0: 0.03, y1: 0.16, tone: 'far', parallax: 0.08, drift: 3 }),
-  layout({ seed: 23, count: 4, period: 760, y0: 0.06, y1: 0.24, tone: 'near', parallax: 0.18, drift: 6 }),
+  { period: 820, parallax: 0.08, drift: 3, items: [['ridge', 40, 0.05, false], ['puffs', 470, 0.13, true]] },
+  { period: 760, parallax: 0.18, drift: 6, items: [['heap', 180, 0.09, false], ['pair', 560, 0.17, true]] },
 ];
 const BOTTOM = [
-  layout({ seed: 37, count: 6, period: 820, y0: 0.80, y1: 0.90, tone: 'far', parallax: 0.22, drift: 5 }),
-  layout({ seed: 41, count: 5, period: 700, y0: 0.86, y1: 0.97, tone: 'near', parallax: 0.35, drift: 9 }),
+  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.84, true], ['pair', 430, 0.82, false]] },
+  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.9, true], ['puffs', 600, 0.95, false]] },
 ];
+
+function formationBounds(parts, images) {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  parts.forEach(([id, dx, , tone]) => {
+    const img = images[`cloud_${tone}_${id}`];
+    if (!img) return;
+    x0 = Math.min(x0, dx);
+    x1 = Math.max(x1, dx + img.width);
+  });
+  return [x0, x1];
+}
+
+function drawFormation(ctx, images, name, x, y, flip) {
+  const parts = FORMATIONS[name];
+  const [x0, x1] = formationBounds(parts, images);
+  parts.forEach(([id, dx, dy, tone]) => {
+    const img = images[`cloud_${tone}_${id}`];
+    if (!img) return;
+    const w = img.width * GRAIN;
+    const h = img.height * GRAIN;
+    const ox = flip ? (x1 - dx - img.width) : (dx - x0);
+    const px = Math.round((x + ox * GRAIN) / 2) * 2;
+    const py = Math.round((y + dy * GRAIN) / 2) * 2;
+    if (flip) {
+      ctx.save();
+      ctx.translate(px + w, py);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, px, py, w, h);
+    }
+  });
+}
 
 function drawLayer(ctx, images, L, w, h, camX, t) {
   const shift = camX * L.parallax + t * L.drift;
-  L.items.forEach((c) => {
-    const img = images[`cloud_${L.tone}_${c.id}`];
-    if (!img) return;
-    const cw = img.width * GRAIN;
-    const ch = img.height * GRAIN;
-    const base = (((c.x - shift) % L.period) + L.period) % L.period;
-    for (let x = base - L.period; x < w + cw; x += L.period) {
-      if (x + cw < 0) continue;
-      const px = Math.round(x / 2) * 2;
-      const py = Math.round((h * c.yFrac) / 2) * 2;
-      if (c.flip) {
-        ctx.save();
-        ctx.translate(px + cw, py);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, cw, ch);
-        ctx.restore();
-      } else {
-        ctx.drawImage(img, px, py, cw, ch);
-      }
+  L.items.forEach(([name, x, yFrac, flip]) => {
+    const base = (((x - shift) % L.period) + L.period) % L.period;
+    for (let fx = base - L.period; fx < w + 200; fx += L.period) {
+      if (fx + 200 < 0) continue;
+      drawFormation(ctx, images, name, fx, h * yFrac, flip);
     }
   });
 }
