@@ -13,6 +13,9 @@ const RUBBLE_DISSOLVE = 1.6;   // сколько растворяется
 const MARK_REVEAL = 1.0;       // сколько проступает знак вопроса
 const RUBBLE_CELL = 4;         // ячейка растворения — как у оракула
 const MARK_SIZE = 96;
+// Шрифт заголовков (правка 29.09), ровно ×2 от кегля title (text.js, 46):
+// пиксель шрифта ложится тем же шагом, что у заголовка над ним.
+const MARK_FONT = '92px Kingdom';
 
 export function createReleaseAfterscene() {
   let rubbleBuf = null;  // куча, снятая в буфер: её растворяем целиком
@@ -37,7 +40,14 @@ export function createReleaseAfterscene() {
     drawRubble(rc, baseX, baseY - top, rubbleSnapshot.blocks);
     if (rubbleSnapshot.crown) drawCrown(rc, baseX, baseY - top, rubbleSnapshot.crown, 0, false);
     rubbleBuf.top = top;
+    markBuf = null;
+  }
 
+  /** Знак рисуется в буфер один раз — поэтому только когда Kingdom уже
+   * загружен, иначе в буфере навсегда останется запасной serif. */
+  function markReady() {
+    if (markBuf) return true;
+    if (!document.fonts.check(MARK_FONT)) { document.fonts.load(MARK_FONT); return false; }
     markBuf = document.createElement('canvas');
     markBuf.width = MARK_SIZE;
     markBuf.height = MARK_SIZE;
@@ -46,8 +56,9 @@ export function createReleaseAfterscene() {
     mc.fillStyle = '#EBA331';   // акцент: дальше решать тому, кто читает
     mc.textAlign = 'center';
     mc.textBaseline = 'middle';
-    mc.font = `${Math.round(MARK_SIZE * 0.8)}px Alagard, serif`;
+    mc.font = MARK_FONT;
     mc.fillText('?', MARK_SIZE / 2, MARK_SIZE / 2 + 2);
+    return true;
   }
 
   return {
@@ -71,7 +82,7 @@ export function createReleaseAfterscene() {
         );
       }
       const markT = dissolveT - RUBBLE_DISSOLVE * 0.7;
-      if (markT > 0) {
+      if (markT > 0 && markReady()) {
         drawPixelReveal(
           ctx, markBuf,
           Math.round(w / 2 - MARK_SIZE / 2), Math.round(baseY - MARK_SIZE / 2),
