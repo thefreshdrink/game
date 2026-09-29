@@ -40,6 +40,19 @@ const TREMOR_FROM = 0.35;
 const TREMOR_MAX = 6;       // экранных px на пике
 const TREMOR_EASE = 1.2;    // скорость, с которой дрожь догоняет нагрузку
 
+// Вынутый брусок не падает куда придётся, а перелетает в стопку сбоку
+// (правка 29.09): поперечные — в левую стопку, продольные — в правую,
+// каждый в своей ориентации. Видно, сколько уже отпустила, и ничего не
+// прячется под башней. Стопки стоят ЗА башней по бокам (x = −2 / y = −2):
+// перед ней они закрыли бы нижние ряды, за которые и хватаются, а на
+// 390 px брусок (128 px) рядом с башней без перекрытия не встаёт.
+const FLY_TIME = 0.5;       // сек перелёта в стопку
+const FLY_ARC = 1.6;        // высота дуги, в рядах
+const STACKS = {
+  left: { x: -2, y: 0, dx: 1, dy: 3 },
+  right: { x: 0, y: -2, dx: 3, dy: 1 },
+};
+
 // Куда ложится корона: на край пола со стороны крена, ближе к зрителю.
 const CROWN_EDGE = 6.5;
 const CROWN_REST_Z = 0.2;
@@ -56,6 +69,8 @@ export const RUBBLE_BOTTOM_GAP = 150;
 export function createReleaseScene({ input, goto }) {
   let rows = [];
   let debris = [];
+  let flying = [];
+  let stackH = { left: 0, right: 0 };
   let dust = [];
   const pile = createPile();
   let phase = 'play';
@@ -86,6 +101,8 @@ export function createReleaseScene({ input, goto }) {
       });
     }
     debris = [];
+    flying = [];
+    stackH = { left: 0, right: 0 };
     dust = [];
     pile.reset();
     phase = 'play';
@@ -231,6 +248,36 @@ export function createReleaseScene({ input, goto }) {
     crown.vy = (ty - crown.y) / tFly;
   }
 
+  /** Брусок вышел из кладки — летит дугой на верх своей стопки. */
+  function sendToStack(o) {
+    const side = o.dx >= o.dy ? 'right' : 'left';
+    const to = { ...STACKS[side], z: stackH[side]++ };
+    flying.push({ from: { x: o.x, y: o.y, z: o.z }, to, tone: o.tone, k: 0 });
+  }
+
+  function stepFlying(dt) {
+    flying = flying.filter((f) => {
+      f.k = Math.min(1, f.k + dt / FLY_TIME);
+      if (f.k < 1) return true;
+      const d = { ...f.to, tone: f.tone, vx: 0, vy: 0, vz: 0, rest: true };
+      debris.push(d);
+      pile.claim(d);
+      puff(d);
+      return false;
+    });
+  }
+
+  function flyingPos(f) {
+    const e = f.k * f.k * (3 - 2 * f.k);
+    const L = (a, b) => a + (b - a) * e;
+    return {
+      x: L(f.from.x, f.to.x),
+      y: L(f.from.y, f.to.y),
+      z: L(f.from.z, f.to.z) + Math.sin(Math.PI * f.k) * FLY_ARC,
+      dx: f.to.dx, dy: f.to.dy, tone: f.tone,
+    };
+  }
+
   function stepDebris(dt, slow, crownSlow = slow) {
     const d2 = dt * slow;
     const c2 = dt * crownSlow;
@@ -322,14 +369,7 @@ export function createReleaseScene({ input, goto }) {
           if (pulling.t >= PULL_TIME) {
             const o = cellPos(pulling.r, pulling.i);
             rows[pulling.r].slots[pulling.i] = 0;
-            debris.push({
-              ...o,
-              vx: o.dx === 3 ? 2.4 : 0.7,
-              vy: o.dy === 3 ? 2.4 : 0.7,
-              vz: 0.5,
-              rest: false,
-            });
-            puff(o);
+            sendToStack(o);
             pulling = null;
           }
         }
@@ -348,12 +388,13 @@ export function createReleaseScene({ input, goto }) {
       // переведён в картинку (BUILD-SPEC-06 §6).
       if (phase !== 'play') tremor = 0;
 
+      stepFlying(dt);
       stepDebris(dt, phase === 'fall' ? FALL_FAST : 1, phase === 'crown' ? CROWN_SLOW : 1);
 
       // Удар короны о пол и есть толчок: здание рушится с первого касания.
       if (phase === 'crown' && crown.landed) startCollapse();
 
-      if (phase === 'fall' && debris.every((d) => d.rest) && crown.rest && tPhase > 1.5) {
+      if (phase === 'fall' && !flying.length && debris.every((d) => d.rest) && crown.rest && tPhase > 1.5) {
         phase = 'settle'; tPhase = 0;
       }
       if (phase === 'settle' && tPhase > SETTLE_HOLD) { phase = 'lower'; tPhase = 0; }
@@ -382,7 +423,11 @@ export function createReleaseScene({ input, goto }) {
       ctx.fillRect(0, 0, w, h);
 
       drawGround(ctx, baseX, baseY, 4, phase === 'play' ? ROWS : 0);
+      // Лежащее — до башни: пока она стоит, это стопки за ней; после обвала
+      // башни уже нет, и порядок решает сама куча. Летящий в стопку брусок
+      // вторую половину пути уже за башней.
       drawRubble(ctx, baseX, baseY, debris.filter((d) => d.rest));
+      flying.filter((f) => f.k >= 0.5).forEach((f) => drawBlock(ctx, baseX, baseY, flyingPos(f), false));
 
       // Раскачка — медленная синусоида по чётным px, а не случайный рывок
       // каждый кадр: рывок читался вибрацией экрана, а не башней.
@@ -410,6 +455,8 @@ export function createReleaseScene({ input, goto }) {
         drawCrown(ctx, baseX, baseY, { x: crown.x + sx, y: crown.y + sy, z: crown.z + bob }, t, true);
       }
       ctx.restore();
+
+      flying.filter((f) => f.k < 0.5).forEach((f) => drawBlock(ctx, baseX, baseY, flyingPos(f), false));
 
       debris.filter((d) => !d.rest).sort((a, b) => a.z - b.z)
         .forEach((d) => drawBlock(ctx, baseX, baseY, d, false));

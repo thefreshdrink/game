@@ -23,6 +23,9 @@ export function createPile() {
   return {
     reset() { taken.clear(); },
 
+    /** Место уже занято тем, что легло не обвалом (стопки сбоку). */
+    claim(d) { cellKeys(d).forEach((k) => taken.add(k)); },
+
     /** Кладёт брусок d на ближайшее к центру свободное место с опорой. */
     settle(d) {
       const cx = 1.5;
