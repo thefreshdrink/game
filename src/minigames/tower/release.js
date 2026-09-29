@@ -11,16 +11,16 @@
 //   собирается из того, что вынули, и отдельные «состояния распада» не нужны;
 // — ракурс изометрический: в лоб кладка крест-накрест читалась стеной.
 //
-// Такты: play → fall (обвал, дрожь обрывается) → settle (тишина) →
+// Такты: play → crown (дрожь обрывается, корона в замедленной съёмке
+// падает на край пола) → fall (башня рушится быстро) → settle (тишина) →
 // lower (композиция едет вниз, к месту предсказания) → экран 6.
 
 import { defineMinigame } from '../../core/minigame.js';
-import { applyShake } from '../../core/juice.js';
 import { drawTopHint } from '../../core/hints.js';
 import { uiScale } from '../../core/text.js';
 import {
   ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
-  drawCastle, drawCrown, crownLift,
+  drawCastle, drawCrown, crownLift, project, towerReach,
 } from './blocks.js';
 import { createPile } from './pile.js';
 
@@ -28,8 +28,24 @@ const PULL_TIME = 0.8;      // сек удержания до выхода бр�
 const PULL_DIST = 2.6;      // насколько выезжает, в единицах бруска
 const SETTLE_HOLD = 2.2;    // тишина после того, как всё легло
 const LOWER_TIME = 1.2;     // сколько едет вниз перед предсказанием
-const FALL_SLOW = 0.55;     // замедление в такте обвала (BUILD-SPEC-06 §11)
+const CROWN_SLOW = 0.55;    // корона падает в лёгкой замедленной съёмке (правка 29.09)
+const FALL_FAST = 1.3;      // а здание за ней — быстро
 const GRAVITY = 26;
+
+// Дрожь нарастает плавно: до TREMOR_FROM нагрузки башня стоит мёртво,
+// дальше раскачка растёт квадратично и сглаживается во времени — правка
+// 29.09 «очень рано начинается, хочется, чтобы плавно надвигалась».
+// Качается только башня, пол стоит: дрожит то, что вот-вот упадёт.
+const TREMOR_FROM = 0.35;
+const TREMOR_MAX = 6;       // экранных px на пике
+const TREMOR_EASE = 1.2;    // скорость, с которой дрожь догоняет нагрузку
+
+// Куда ложится корона: на край пола со стороны крена, ближе к зрителю.
+const CROWN_EDGE = 6.5;
+const CROWN_REST_Z = 0.2;
+
+// Подсказка жеста живёт над башней: верх короны с искрами не заходит на неё.
+const HINT_CLEAR = 104;     // экранных px от верха экрана, ×uiScale
 
 // Где стоит основание башни и куда оно приезжает к предсказанию. Второе
 // значение — отступ от НИЖНЕЙ кромки: тот же в prediction.js, иначе на
@@ -44,7 +60,7 @@ export function createReleaseScene({ input, goto }) {
   const pile = createPile();
   let phase = 'play';
   let tPhase = 0;
-  let shake = 0;
+  let tremor = 0;
   let pulling = null;
   let pivotRow = -1;
   let crown = null;
@@ -74,10 +90,10 @@ export function createReleaseScene({ input, goto }) {
     pile.reset();
     phase = 'play';
     tPhase = 0;
-    shake = 0;
+    tremor = 0;
     pulling = null;
     pivotRow = -1;
-    crown = { x: 1.5, y: 1.5, z: ROWS + crownLift(), vx: 0, vy: 0, vz: 0, live: false, rest: false };
+    crown = { x: 1.5, y: 1.5, z: ROWS + crownLift(), vx: 0, vy: 0, vz: 0, live: false, rest: false, landed: false };
     castleUp = true;
     movedEver = false;
   }
@@ -193,18 +209,31 @@ export function createReleaseScene({ input, goto }) {
         puff(o);
       });
     }
-    // Корона — первой: подлетает и падает (решение в чате).
+  }
+
+  /** Корона уходит первой (правка 29.09): башня замирает, корона в
+   * замедленной съёмке соскальзывает на край пола со стороны крена, и
+   * только когда она легла, рушится здание. Баллистика считается под
+   * точку падения, чтобы корона легла ровно на край, а не куда вынесет. */
+  function startCrownFall() {
+    phase = 'crown';
+    tPhase = 0;
+    const dir = rows[pivotRow].lean <= 0 ? -1 : 1;
     const [cx, cy] = shiftAt(ROWS);
     crown.x += cx;
     crown.y += cy;
     crown.live = true;
-    crown.vx = dir * 1.1;
-    crown.vy = dir * 1.1;
-    crown.vz = 3.2;
+    crown.vz = 2.2;
+    const z0 = crown.z - CROWN_REST_Z;
+    const tFly = (crown.vz + Math.sqrt(crown.vz * crown.vz + 2 * GRAVITY * z0)) / GRAVITY;
+    const [tx, ty] = dir > 0 ? [CROWN_EDGE, 1.5] : [1.5, CROWN_EDGE];
+    crown.vx = (tx - crown.x) / tFly;
+    crown.vy = (ty - crown.y) / tFly;
   }
 
-  function stepDebris(dt, slow) {
+  function stepDebris(dt, slow, crownSlow = slow) {
     const d2 = dt * slow;
+    const c2 = dt * crownSlow;
     debris.forEach((d) => {
       if (d.rest) return;
       d.vz -= GRAVITY * d2;
@@ -221,13 +250,13 @@ export function createReleaseScene({ input, goto }) {
       }
     });
     if (crown.live && !crown.rest) {
-      crown.vz -= GRAVITY * d2;
-      crown.x += crown.vx * d2; crown.y += crown.vy * d2; crown.z += crown.vz * d2;
-      if (crown.z <= 0.2) {
-        crown.z = 0.2;
-        if (Math.abs(crown.vz) < 3) { crown.rest = true; crown.vx = 0; crown.vy = 0; } else {
-          crown.vz *= -0.3; crown.vx *= 0.6; crown.vy *= 0.6;
-        }
+      crown.vz -= GRAVITY * c2;
+      crown.x += crown.vx * c2; crown.y += crown.vy * c2; crown.z += crown.vz * c2;
+      if (crown.z <= CROWN_REST_Z) {
+        crown.z = CROWN_REST_Z;
+        crown.vx = 0; crown.vy = 0;   // точка падения рассчитана — не уезжаем с края
+        crown.landed = true;
+        if (Math.abs(crown.vz) < 3) crown.rest = true; else crown.vz *= -0.15;
       }
     }
   }
@@ -274,7 +303,9 @@ export function createReleaseScene({ input, goto }) {
     update(dt, w, h, finish) {
       baseX = Math.round(w / 2);
       if (phase !== 'lower') {
-        baseY = Math.round(h * BASE_Y_FRAC);
+        // Ниже доли экрана, если иначе корона залезает на подсказку.
+        const clear = Math.round(HINT_CLEAR * uiScale(w, 1.15)) + towerReach();
+        baseY = Math.round(Math.max(h * BASE_Y_FRAC, clear) / 2) * 2;
         lowerFrom = baseY;
         lowerTo = h - RUBBLE_BOTTOM_GAP;
       }
@@ -307,16 +338,20 @@ export function createReleaseScene({ input, goto }) {
       rows.forEach((r) => { r.lean += (r.leanTo - r.lean) * Math.min(1, dt * 4); });
 
       if (phase === 'play') {
-        shake = tension() * 3;
+        const k = Math.max(0, (tension() - TREMOR_FROM) / (1 - TREMOR_FROM));
+        tremor += (k * k - tremor) * Math.min(1, dt * TREMOR_EASE);
         const p = updateStability();
-        if (p >= 0) { pivotRow = p; startCollapse(); }
+        if (p >= 0) { pivotRow = p; startCrownFall(); }
       }
 
       // Дрожь обрывается ровно в кадр отрыва — канонный «гул в тишину»
       // переведён в картинку (BUILD-SPEC-06 §6).
-      if (phase !== 'play') shake = 0;
+      if (phase !== 'play') tremor = 0;
 
-      stepDebris(dt, phase === 'fall' ? FALL_SLOW : 1);
+      stepDebris(dt, phase === 'fall' ? FALL_FAST : 1, phase === 'crown' ? CROWN_SLOW : 1);
+
+      // Удар короны о пол и есть толчок: здание рушится с первого касания.
+      if (phase === 'crown' && crown.landed) startCollapse();
 
       if (phase === 'fall' && debris.every((d) => d.rest) && crown.rest && tPhase > 1.5) {
         phase = 'settle'; tPhase = 0;
@@ -346,11 +381,14 @@ export function createReleaseScene({ input, goto }) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
 
-      ctx.save();
-      applyShake(ctx, shake);
-
       drawGround(ctx, baseX, baseY, 4, phase === 'play' ? ROWS : 0);
       drawRubble(ctx, baseX, baseY, debris.filter((d) => d.rest));
+
+      // Раскачка — медленная синусоида по чётным px, а не случайный рывок
+      // каждый кадр: рывок читался вибрацией экрана, а не башней.
+      const sway = Math.round(Math.sin(t * (5 + tremor * 9)) * tremor * TREMOR_MAX / 2) * 2;
+      ctx.save();
+      ctx.translate(sway, 0);
 
       for (let r = 0; r < ROWS; r++) {
         const list = [];
@@ -366,27 +404,26 @@ export function createReleaseScene({ input, goto }) {
         const [sx, sy] = shiftAt(ROWS);
         drawCastle(ctx, baseX, baseY, 1.5 + sx, 1.5 + sy, ROWS);
       }
-
-      debris.filter((d) => !d.rest).sort((a, b) => a.z - b.z)
-        .forEach((d) => drawBlock(ctx, baseX, baseY, d, false));
-
-      // Корона парит над крепостью и чуть дышит; после обвала — лежит в куче.
-      if (crown.live) {
-        drawCrown(ctx, baseX, baseY, crown, t, false);
-      } else {
+      if (!crown.live) {
         const [sx, sy] = shiftAt(ROWS);
         const bob = Math.round(Math.sin(t * 2) * 1.5) * 0.08;
         drawCrown(ctx, baseX, baseY, { x: crown.x + sx, y: crown.y + sy, z: crown.z + bob }, t, true);
       }
+      ctx.restore();
+
+      debris.filter((d) => !d.rest).sort((a, b) => a.z - b.z)
+        .forEach((d) => drawBlock(ctx, baseX, baseY, d, false));
+
+      // Корона над крепостью дышит (выше, вместе с башней); сорвавшись —
+      // падает и лежит на краю пола.
+      if (crown.live) drawCrown(ctx, baseX, baseY, crown, t, false);
 
       // Пыль — процедурно, как везде в проекте (ASSETS.md).
       dust.forEach((d) => {
-        const sx = baseX + (d.wx - d.wy) * 26;
-        const sy = baseY + (d.wx + d.wy) * 13 - d.wz * 20;
+        const [sx, sy] = project(baseX, baseY, d.wx, d.wy, d.wz);
         ctx.fillStyle = d.t / d.life < 0.5 ? '#B8B8B8' : '#808080';
-        ctx.fillRect(Math.round(sx), Math.round(sy), d.s, d.s);
+        ctx.fillRect(Math.round(sx / 2) * 2, Math.round(sy / 2) * 2, d.s, d.s);
       });
-      ctx.restore();
 
       // Подсказка жеста — как у Шута: словом, один раз, пока не тронули.
       if (phase === 'play' && !movedEver) {

@@ -83,9 +83,12 @@ export function blockRect(ox, oy, o) {
   const pts = [...f.top, ...f.front, ...f.right];
   const xs = pts.map((p) => p[0]);
   const ys = pts.map((p) => p[1]);
-  const x = Math.round(Math.min(...xs));
-  const y = Math.round(Math.min(...ys));
-  return { x, y, w: Math.round(Math.max(...xs)) - x, h: Math.round(Math.max(...ys)) - y };
+  // На сетку зерна: крен рядов дробный, и без этого брусок встаёт на
+  // нечётный px — между соседями вылезает белая щель в 1 px (скрин 29.09).
+  const g = (v) => Math.round(v / GRAIN) * GRAIN;
+  const x = g(Math.min(...xs));
+  const y = g(Math.min(...ys));
+  return { x, y, w: g(Math.max(...xs)) - x, h: g(Math.max(...ys)) - y };
 }
 
 /** Силуэт бруска — обводка поверх спрайта, когда он под пальцем. */
@@ -292,13 +295,23 @@ export function crownLift() {
   return top.castle ? (top.height * GRAIN + 10) / ZH : 0.5;
 }
 
+/** Сколько экранных px башня с крепостью, короной и искрами занимает над
+ * основанием — по ней сцена опускает башню под подсказку. */
+export function towerReach() {
+  const crownH = top.crown ? top.crown.height * GRAIN : 0;
+  const [, y] = project(0, 0, 1.5, 1.5, ROWS + crownLift());
+  return Math.round(-y + crownH + 44);   // 44 — верхняя искра (drawSparkles)
+}
+
 /** Крепость на крыше: (x, y) — центр крыши в единицах бруска, z — её уровень. */
 export function drawCastle(ctx, ox, oy, x, y, z) {
   if (!top.castle) return;
   const [px, py] = project(ox, oy, x, y, z);
   const w = top.castle.width * GRAIN;
   const h = top.castle.height * GRAIN;
-  ctx.drawImage(top.castle, Math.round(px - top.anchor[0] * GRAIN), Math.round(py - top.anchor[1] * GRAIN), w, h);
+  const sx = Math.round((px - top.anchor[0] * GRAIN) / GRAIN) * GRAIN;
+  const sy = Math.round((py - top.anchor[1] * GRAIN) / GRAIN) * GRAIN;
+  ctx.drawImage(top.castle, sx, sy, w, h);
 }
 
 /** Корона: нижний край — в точке (x, y, z). sparkle — искры вокруг (пока
