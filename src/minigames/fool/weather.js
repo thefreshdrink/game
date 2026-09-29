@@ -1,41 +1,5 @@
-// Погода дороги Шута (правка в чате 2026-09-10): дождевые облака наверху и
-// морось всю дорогу до финального прыжка. Экранное пространство.
-
-// Дождевые облака НАВЕРХУ (правка в чате 2026-09-10: «там же дождь идёт»).
-// Крупные блочные силуэты группами, тон #4A4A4A с более тёмным низом и
-// светлой кромкой сверху — объёмнее прежних; медленный параллакс.
-const RAIN_CELL = 8;
-const RAIN_CLOUDS = [
-  // group A
-  { bx: 40,   y: 40,  blocks: [[0, 0, 7, 3], [5, -1, 6, 3], [10, 1, 5, 2]] },
-  { bx: 150,  y: 96,  blocks: [[0, 0, 5, 2], [3, -1, 5, 3]] },
-  // group B
-  { bx: 620,  y: 30,  blocks: [[0, 0, 8, 3], [6, 1, 6, 2], [11, -1, 5, 3]] },
-  { bx: 760,  y: 110, blocks: [[0, 0, 5, 2], [4, 0, 6, 3]] },
-  // group C
-  { bx: 1180, y: 56,  blocks: [[0, 0, 7, 3], [5, -1, 6, 2]] },
-];
-const RAIN_PERIOD = 1500;
-
-export function drawRainClouds(ctx, w, h, camX, t) {
-  for (const c of RAIN_CLOUDS) {
-    const drift = c.bx - camX * 0.18 - t * 3;
-    const base = ((drift % RAIN_PERIOD) + RAIN_PERIOD) % RAIN_PERIOD;
-    for (let sx = base - RAIN_PERIOD; sx < w + 160; sx += RAIN_PERIOD) {
-      if (sx < -160) continue;
-      for (const [ox, oy, bw, bh] of c.blocks) {
-        const x = Math.round(sx + ox * RAIN_CELL);
-        const y = Math.round(c.y + oy * RAIN_CELL);
-        ctx.fillStyle = '#4A4A4A';
-        ctx.fillRect(x, y, bw * RAIN_CELL, bh * RAIN_CELL);
-        ctx.fillStyle = '#2E2E2E';                       // тёмный низ
-        ctx.fillRect(x, y + (bh - 1) * RAIN_CELL, bw * RAIN_CELL, RAIN_CELL);
-        ctx.fillStyle = '#808080';                       // светлая кромка сверху
-        ctx.fillRect(x + RAIN_CELL, y, (bw - 2) * RAIN_CELL, 2);
-      }
-    }
-  }
-}
+// Погода дороги Шута: морось всю дорогу до финального прыжка (правка в
+// чате 2026-09-10). Экранное пространство. Облака — scenery.js.
 
 // Моросящий дождик (правка в чате 2026-09-10) — редкие короткие
 // диагональные штрихи тоном дальней детали, низкий контраст, падают с

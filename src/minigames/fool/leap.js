@@ -22,7 +22,8 @@ import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, ARRIVE_MAIN_W,
 } from './platforms.js';
 import { drawAbyss } from './abyss.js';
-import { drawRainClouds, drawDrizzle } from './weather.js';
+import { drawDrizzle } from './weather.js';
+import { drawBackdrop, drawCloudsTop, drawCloudsBottom } from './scenery.js';
 import {
   PLAYER_H, createDog, placeDog, scheduleDogHop, updateDog, drawPlayer, drawDog, relaxSquash,
 } from './actors.js';
@@ -343,7 +344,7 @@ export function createLeapScreen({ input, images, goto }) {
       if (state === 'fall' || state === 'arrive') {
         drawFallSequence(ctx, w, h, {
           state, stateT, t, images, groundStrip,
-          fallScroll: fall.scroll, fallFromX: fall.fromX, fallFromY: fall.fromY,
+          fallScroll: fall.scroll, fallSpeed: fall.speed, fallFromX: fall.fromX, fallFromY: fall.fromY,
           camX: cam.x, camY: cam.y, player, dust: dust.list,
         });
         return;
@@ -352,8 +353,12 @@ export function createLeapScreen({ input, images, goto }) {
       const camX = cam.x, camY = cam.y;
       const last = platforms[platforms.length - 1];
       // Дождевые облака наверху + пропасть с облачками внизу (правка 2026-09-10).
-      drawRainClouds(ctx, w, h, camX, t);
+      // Дальний фон, облака сверху, туман пропасти, облака в пропасти — от
+      // дальнего к ближнему (правка в чате 2026-09-29).
+      drawBackdrop(ctx, images, w, h, camX, camY);
+      drawCloudsTop(ctx, images, w, h, camX, t);
       drawAbyss(ctx, w, h, t);
+      drawCloudsBottom(ctx, images, w, h, camX, t);
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       ghost.draw(ctx, last, camX, camY);
 
