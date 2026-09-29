@@ -64,7 +64,7 @@ const HINT_CLEAR = 104;     // экранных px от верха экрана,
 // значение — отступ от НИЖНЕЙ кромки: тот же в prediction.js, иначе на
 // склейке 5→6 куча прыгает.
 const BASE_Y_FRAC = 0.66;
-export const RUBBLE_BOTTOM_GAP = 150;
+export const RUBBLE_BOTTOM_GAP = 190;   // 150 → 190 (правка 29.09): перед кучи и корона упирались в нижний край
 
 export function createReleaseScene({ input, goto }) {
   let rows = [];

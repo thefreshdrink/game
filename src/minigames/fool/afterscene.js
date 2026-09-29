@@ -1,12 +1,12 @@
 // Под предсказанием Шута — та же композиция, что в такте 3 падения: Шут с
 // псом на дороге у нижней кромки (правка в чате 2026-08-30: «размести сцену
 // внизу экрана, предсказание проявляй поверх фона верхней части») — экраны
-// 5→6 склеиваются без скачка. «Другой мир»: солнце в верхнем углу, трава и
-// кустик на плите (правка 2026-09-10). Второй плиты над Шутом нет — конец
-// пути, пришли и всё. Статична: прибытие уже отыграно.
+// 5→6 склеиваются без скачка. «Другой мир»: солнце в верхнем углу и кусок
+// дороги на ступень выше справа (правка 29.09). Статична: прибытие уже
+// отыграно.
 
 import { buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W } from './platforms.js';
-import { drawArrivalSun, drawArrivalLife } from './arrivalScene.js';
+import { drawArrivalSun, arrivalStep } from './arrivalScene.js';
 import { PLAYER_W, PLAYER_H, DOG_W, DOG_H, IDLE_FPS } from './actors.js';
 
 export function createLeapAfterscene({ images }) {
@@ -26,7 +26,8 @@ export function createLeapAfterscene({ images }) {
       // Солнце проступает вместе с заголовком.
       drawArrivalSun(ctx, w - 6, 22, t, Math.min(1, t / 0.3));
       ctx.drawImage(ground, gx, gy);
-      drawArrivalLife(ctx, gx, gw, gy);
+      const step = arrivalStep(images, gx, gw, gy);
+      ctx.drawImage(step.img, step.x, step.y);
       const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
       ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
       const fr = images.foolIdleFrames;

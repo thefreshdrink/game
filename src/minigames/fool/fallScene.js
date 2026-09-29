@@ -5,7 +5,7 @@
 import { clamp01 } from '../../core/ease.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { drawPlatform, PLATE_H, ARRIVE_GROUND_FRAC } from './platforms.js';
-import { drawArrivalLife } from './arrivalScene.js';
+import { arrivalStep } from './arrivalScene.js';
 import { PLAYER_W, PLAYER_H, PAIR_W, DOG_W, DOG_H, IDLE_FPS } from './actors.js';
 
 export const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
@@ -98,7 +98,7 @@ const FALL_BAYER = [
 const STAR_LAYERS = [
   { n: 30, factor: 0.35, head: '#4A4A4A', tail: '#2E2E2E', size: 2 },
   { n: 20, factor: 0.7, head: '#808080', tail: '#4A4A4A', size: 2 },
-  { n: 10, factor: 1.25, head: '#FFFFFF', tail: '#808080', size: 4 },
+  { n: 8, factor: 1.25, head: '#FFFFFF', tail: '#808080', size: 2, sparkle: true },
 ];
 const FALL_STARS = [];
 STAR_LAYERS.forEach((L, li) => {
@@ -111,15 +111,16 @@ STAR_LAYERS.forEach((L, li) => {
 // ── Визуал финального падения «сквозь миры» ──
 
 // Пары тонов «миров», через которые падаешь (правка в чате 2026-09-10:
-// вернули смену оттенков — «так было лучше»). Все — из «градаций
-// пустоты» палитры. Тьма → чуть светлеет к середине → снова к тьме.
+// вернули смену оттенков). Все — из «градаций пустоты» палитры. Тьма →
+// чуть светлеет к середине → снова к тьме; потолок #212121 — правка
+// 29.09 «на более тёмном фоне», звёзды на нём читаются загадочнее.
 const FALL_WORLDS = [
-  ['#000000', '#161616'],
+  ['#000000', '#111111'],
+  ['#111111', '#161616'],
   ['#161616', '#1C1C1C'],
-  ['#1C1C1C', '#252525'],
-  ['#212121', '#2E2E2E'],
   ['#161616', '#212121'],
-  ['#000000', '#161616'],
+  ['#111111', '#161616'],
+  ['#000000', '#111111'],
 ];
 
 /** Фон полёта — Bayer-дизер, где ОТТЕНКИ сменяются по фазе: текущий мир
@@ -183,9 +184,28 @@ function drawFallStars(ctx, w, h, scroll, speed, t) {
       ctx.fillStyle = L.tail;
       ctx.fillRect(x + (L.size - 2) / 2, hy + L.size, 2, tail);
     }
-    const dim = Math.sin(t * 3 + s.tw) < -0.6;
-    ctx.fillStyle = dim ? L.tail : L.head;
-    ctx.fillRect(x, hy, L.size, L.size);
+    const tw = Math.sin(t * 1.3 + s.tw);
+    if (L.sparkle) {
+      // Ближние — не точки, а пиксельные искры, которые медленно
+      // раскрываются и гаснут (правка 29.09: «более загадочные звёзды»).
+      const open = tw > 0.2 ? (tw > 0.7 ? 2 : 1) : 0;
+      drawSparkle(ctx, x, hy, open, tw < -0.6 ? L.tail : L.head);
+    } else {
+      ctx.fillStyle = tw < -0.6 ? L.tail : L.head;
+      ctx.fillRect(x, hy, L.size, L.size);
+    }
+  }
+}
+
+/** Четырёхлучевая искра по сетке 2: ядро 2×2 и лучи длиной open ячеек. */
+function drawSparkle(ctx, x, y, open, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 2, 2);
+  for (let d = 1; d <= open; d++) {
+    ctx.fillRect(x, y - d * 2, 2, 2);
+    ctx.fillRect(x, y + d * 2, 2, 2);
+    ctx.fillRect(x - d * 2, y, 2, 2);
+    ctx.fillRect(x + d * 2, y, 2, 2);
   }
 }
 
@@ -327,7 +347,7 @@ export function drawFallSequence(ctx, w, h, s) {
   }
 
   // arrive — «другой мир», БЫСТРО (правка в чате 2026-09-10, чтобы не
-  // тянуло тапать): сперва плита + трава/кустик/лесенка, дальше сразу
+  // тянуло тапать): сперва плита и ступень справа, дальше сразу
   // предсказание с заголовком и солнцем (правка 2026-09-11: цветы и
   // мелькание солнца при приземлении убраны — солнце теперь только там).
   ctx.fillStyle = '#000000';
@@ -337,11 +357,10 @@ export function drawFallSequence(ctx, w, h, s) {
   // Основная плита — быстро дотягивается.
   const mainP = clamp01(0.8 + 0.2 * (p / 0.3));
   drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, PLATE_H, mainP, 4, 0.42, 0.4);
-  // Жизнь на плите — сразу следом за плитой. Солнце здесь больше НЕ
-  // мелькает (правка в чате 2026-09-11: «на секунду при приземлении» не
-  // читалось) — целиком его дело теперь экран предсказания, где оно
-  // проступает плавно вместе с заголовком (prediction.js).
-  drawArrivalLife(ctx, groundX, gw, groundY, clamp01(p / 0.3));
+  // Ступень справа — сразу следом за плитой. Солнце здесь НЕ мелькает
+  // (правка в чате 2026-09-11) — оно проступает на экране предсказания.
+  const step = arrivalStep(images, groundX, gw, groundY);
+  drawPixelReveal(ctx, step.img, step.x, step.y, step.img.width, PLATE_H, clamp01(p / 0.3), 4, 0.42, 0.4);
 
   // Пара: первые ~0.3 такта ещё во «влётном» спрайте у самой земли, потом
   // встаёт — Шут дышит, пёс садится, с коротким доседанием.

@@ -60,6 +60,10 @@ function holdProgress(elapsed) {
   return 0.75 + clamp01((elapsed - HOLD_T1) / HOLD_T2) * 0.25;
 }
 
+// Подсказка свайпа не гаснет в момент прыжка, а держится ещё 2 с — правка
+// 29.09: пропадала раньше, чем успевала прочитаться.
+const SWIPE_LINGER = 2;
+
 export function createLeapScreen({ input, images, goto }) {
   let platforms = [];
   let idx = 0; // индекс текущей/последней плиты под ногами
@@ -71,6 +75,7 @@ export function createLeapScreen({ input, images, goto }) {
   let pointerDown = false; // сырое состояние пальца на экране, отдельно от walking (BUILD-SPEC-04 задача 2)
   let walkImpulse = 0;  // остаток авто-ходьбы после тапа, сек (TAP_STEP)
   let movedEver = false; // хоть раз пошёл — стартовая подсказка больше не нужна
+  let swipeHintUntil = 0; // SWIPE UP TO JUMP держится ещё SWIPE_LINGER после первого прыжка
   let lean = 0; // наклон Шута у финального края, 0..1 (задача 6, вместо полоски HOLD)
   // Плита прибытия — офскрин-полоса под пиксельное проявление (задача 7).
   let groundStrip = null;
@@ -136,6 +141,7 @@ export function createLeapScreen({ input, images, goto }) {
     player.vx = v.vx;
     player.sqx = 0.8;
     player.sqy = 1.24;
+    if (idx === 0 && swipeHintUntil === 0) swipeHintUntil = t + SWIPE_LINGER;
     state = 'air';
     stateT = 0;
     walkImpulse = 0;
@@ -168,6 +174,7 @@ export function createLeapScreen({ input, images, goto }) {
       pointerDown = false;
       walkImpulse = 0;
       movedEver = false;
+      swipeHintUntil = 0;
       respawnFlash.reset();
       lean = 0;
       resetFall(fall);
@@ -393,7 +400,9 @@ export function createLeapScreen({ input, images, goto }) {
         drawDrizzle(ctx, w, h, t, camX);
       }
 
-      drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver, idx, lean, player });
+      drawLeapHints(ctx, w, camX, camY, {
+        state, stateT, t, movedEver, idx, lean, player, swipeLinger: t < swipeHintUntil,
+      });
       respawnFlash.draw(ctx, w, h);
     },
   });

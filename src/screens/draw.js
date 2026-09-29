@@ -1,10 +1,9 @@
-// Экран 3 — Вытягивание. Одна карта рубашкой вверх, тап переворачивает.
+// Экран 3 — Вытягивание. Одна карта рубашкой вверх и переворачивается сама:
+// тап, подпись TAP THE CARD и искра на рубашке сняты (правка 29.09).
 // Референс: docs/interfaces/Tap to see.png
 
 import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
-import { blinkAlpha } from '../core/textReveal.js';
-import { drawTapStar } from '../core/gestureGlyph.js';
 import { easeInOutQuad } from '../core/ease.js';
 
 // «Не быстрее ~0.8 сек» — это ритуал (BUILD-SPEC). BUILD-SPEC-05 задача 3c:
@@ -17,17 +16,11 @@ import { easeInOutQuad } from '../core/ease.js';
 const TITLE = 'The deck offers itself…';
 
 const FLIP_DURATION = 1.1;
-const STAR_DELAY = 0.6;   // сек после появления карты — знак тапа проступает
-const STAR_PERIOD = 1.4;  // сек — период пульса знака
-const STAR_FADE = 0.15;   // сек — знак гаснет с началом переворота
+const FLIP_DELAY = 0.8;   // сек рубашкой вверх до переворота: карта успевает прочитаться
 
-export function createDrawScreen({ input, images, goto }) {
-  let offTap = null;
+export function createDrawScreen({ images, goto }) {
   let state = 'waiting'; // waiting | flipping
   let t = 0;
-  // Отдельный от t таймер: t стоит на 0, пока не начался флип (используется
-  // только для прогресса переворота), а мигать CLICK TO DRAW и пульсировать
-  // звёздочка должны всё время ожидания тапа.
   let idleT = 0;
   let box = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -50,19 +43,11 @@ export function createDrawScreen({ input, images, goto }) {
       state = 'waiting';
       t = 0;
       idleT = 0;
-      offTap = input.on('tap', () => {
-        if (state !== 'waiting') return;
-        state = 'flipping';
-        t = 0;
-      });
-    },
-
-    exit() {
-      offTap?.();
     },
 
     update(dt) {
       idleT += dt;
+      if (state === 'waiting' && idleT >= FLIP_DELAY) { state = 'flipping'; t = 0; }
       if (state !== 'flipping') return;
       t += dt;
       if (t >= FLIP_DURATION) {
@@ -87,19 +72,6 @@ export function createDrawScreen({ input, images, goto }) {
       // Kingdom уже Alagard и влезает в одну.
       const titleLines = wrapLines(ctx, TITLE, w - marginX * 2);
       titleLines.forEach((line, i) => ctx.fillText(line, marginX, ty + i * titleLH));
-
-      if (state === 'waiting') {
-        // Тот же стиль/размер, что у вспомогательного текста на экране 1
-        // (правка в чате: «вспомогательный текст по размеру как на первом»).
-        // Текст ОСТАЁТСЯ (BUILD-SPEC-05 3b: он объясняет, звёздочка
-        // показывает куда). Отступ считаем от ПЕРВОЙ строки заголовка на
-        // всю высоту двух строк — иначе подпись налезает на вторую строку.
-        setFont(ctx, 'menuOption', scale);
-        ctx.fillStyle = '#EBA331';
-        ctx.globalAlpha = blinkAlpha(idleT);
-        ctx.fillText('TAP THE CARD', marginX, ty + titleLines.length * titleLH + Math.round(9 * scale));
-        ctx.globalAlpha = 1;
-      }
 
       layout(w, h);
       // Прогресс переворота через easing — разгон и торможение, без жёсткой
@@ -133,33 +105,6 @@ export function createDrawScreen({ input, images, goto }) {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(Math.round(cx - 1), box.y - 6, 2, box.h + 12);
         ctx.restore();
-      }
-
-      // Знак тапа — пиксельная искра на рубашке, В ГЕОМЕТРИЧЕСКОМ ЦЕНТРЕ
-      // карты. Было чуть выше центра (0.40h, правка 2026-09-10: «ровно
-      // посередине смотрелось тупо») — но у самой рубашки
-      // (back_side_card_final.png) узор — сходящийся крест, и у него
-      // СВОЯ пустота ровно посередине (проверено по PNG); искра поверх
-      // штриха узора и есть та «грязь», о которой шла речь, а не сам факт
-      // центра. Возвращено на true center — совпадает с cy (центр флипа
-      // чуть выше, уже посчитан). Лучи «расходятся» — длина по циклу
-      // растёт и убывает, вертикальные длиннее. Проступает через
-      // STAR_DELAY, гаснет с началом переворота.
-      const starCy = cy;
-      let starA = 0;
-      let grow = 1;
-      if (state === 'waiting' && idleT > STAR_DELAY) {
-        const ph = (idleT - STAR_DELAY) / STAR_PERIOD;
-        const pulse = 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2));
-        grow = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
-        starA = Math.min(1, (idleT - STAR_DELAY) / 0.4) * pulse;
-      } else if (state === 'flipping') {
-        starA = Math.max(0, 1 - t / STAR_FADE) * 0.7;
-      }
-      if (starA > 0) {
-        const reachV = 5 + Math.round(grow * 7);  // 5..12 арт-px
-        const reachH = 4 + Math.round(grow * 4);  // 4..8
-        drawTapStar(ctx, cx, starCy, starA, reachV, reachH);
       }
     },
   };

@@ -1,11 +1,12 @@
-// «Жизнь» на плите прибытия (правка в чате 2026-09-10). После того как
-// вторая плита над Шутом убрана, между миром до прыжка и после нет
-// видимой разницы. Здесь — трава, кустик и большое пиксельное солнце с
-// изящными лучами: единственная плита прибытия становится «другим миром».
+// Плита прибытия — «другой мир»: большое пиксельное солнце с лучами и
+// кусок дороги на ступень выше справа (правка 29.09 — вместо травы,
+// кустика и лесенки).
 //
 // Общее для такта 'arrive' мини-игры (leap.js) и экрана предсказания
 // (prediction.js) — одна композиция в двух местах. Всё из графического
 // языка проекта, целыми пикселями, тонами палитры.
+
+import { buildRoadStrip } from './platforms.js';
 
 const C = 4; // ячейка рисунка, 2 арт-px
 
@@ -50,70 +51,16 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
   ctx.restore();
 }
 
-/** Кустики травы вдоль верхней кромки плиты. Тон дальней детали. */
-export function drawArrivalGrass(ctx, plateX, plateW, groundY, a = 1) {
-  if (a <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, a));
-  ctx.fillStyle = '#4A4A4A';
-  for (let g = plateX + 10; g < plateX + plateW - 10; g += 18) {
-    const j = (g * 37) % 4;                 // стабильный джиттер высоты
-    const jj = j & ~1;                      // сетка 2: высоты и сдвиги чётные
-    ctx.fillRect(g, groundY - 6 - jj, 2, 6 + jj);
-    ctx.fillRect(g + 4, groundY - 4, 2, 4);
-    ctx.fillRect(g - 4, groundY - 4, 2, 4);
-    ctx.fillRect(g + 6, groundY - 2, 2, 2);
-  }
-  ctx.restore();
-}
+/** Кусок той же дороги на ступень выше, справа за плитой прибытия —
+ * вместо лесенки (правка 29.09: трава, кустик и лесенка убраны, «такой же
+ * маленький кусочек, как тот, где стоит Шут, на одну ступеньку выше»).
+ * Два тайла — торец + торец; ступень и зазор по 32, как дельты уровня. */
+export const ARRIVE_STEP_W = 64;
+const STEP_GAP = 32;
+const STEP_UP = 32;
+let stepStrip = null;
 
-/** Кустик — три перекрытые доли + тонкий ствол + пара бликов. Стоит
- * вплотную на плите, вписан в пространство, не отдельным блоком. */
-export function drawArrivalBush(ctx, x, groundY, a = 1) {
-  if (a <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, a));
-  ctx.fillStyle = '#4A4A4A';
-  ctx.fillRect(x + 10, groundY - 6, 4, 6); // ствол
-  const lobes = [
-    [x, groundY - 16, 12, 12],
-    [x + 8, groundY - 22, 14, 16],
-    [x + 16, groundY - 14, 12, 10],
-  ];
-  lobes.forEach(([lx, ly, lw, lh]) => {
-    ctx.fillRect(lx, ly + 2, lw, lh - 2);
-    ctx.fillRect(lx + 2, ly, lw - 4, lh);   // скруглённая макушка
-  });
-  ctx.fillStyle = '#808080';                // блики
-  ctx.fillRect(x + 4, groundY - 14, 4, 2);
-  ctx.fillRect(x + 12, groundY - 20, 4, 2);
-  ctx.fillRect(x + 20, groundY - 12, 2, 2);
-  ctx.restore();
-}
-
-/** Лесенка из блоков вверх-вправо за правым краем плиты — «дальше будет
- * рост» (правка в чате 2026-09-10). Каменные тона тайлсета дороги. */
-export function drawArrivalStairs(ctx, x0, groundY, a = 1) {
-  if (a <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, a));
-  const sw = 26;
-  for (let i = 0; i < 3; i++) {
-    const sx = Math.round(x0 + 4 + i * 22);
-    const sy = Math.round(groundY - (i + 1) * 14);
-    ctx.fillStyle = '#232323';
-    ctx.fillRect(sx, sy, sw, groundY - sy);
-    ctx.fillStyle = '#A0A0A0';
-    ctx.fillRect(sx + 2, sy + 2, sw - 4, 2);
-    ctx.fillRect(sx + 2, sy + 2, 2, 8);
-  }
-  ctx.restore();
-}
-
-/** Трава + кустик на плите, и лесенка-рост за её правым краем. Цветочки
- * были здесь (BUILD-SPEC-05/2026-09-10) — убраны правкой в чате 2026-09-11. */
-export function drawArrivalLife(ctx, plateX, plateW, groundY, a = 1) {
-  drawArrivalGrass(ctx, plateX, plateW, groundY, a);
-  drawArrivalBush(ctx, plateX + plateW - 44, groundY, a);
-  drawArrivalStairs(ctx, plateX + plateW, groundY, a);
+export function arrivalStep(images, plateX, plateW, groundY) {
+  if (!stepStrip) stepStrip = buildRoadStrip(images, ARRIVE_STEP_W);
+  return { img: stepStrip, x: plateX + plateW + STEP_GAP, y: groundY - STEP_UP };
 }

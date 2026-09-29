@@ -28,9 +28,10 @@ const TOP = [
   { period: 820, parallax: 0.08, drift: 3, items: [['ridge', 40, 0.05, false], ['puffs', 470, 0.13, true]] },
   { period: 760, parallax: 0.18, drift: 6, items: [['heap', 180, 0.09, false], ['pair', 560, 0.17, true]] },
 ];
+// Нижние подняты на 0.1 кадра (правка 29.09: «слишком низко»).
 const BOTTOM = [
-  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.84, true], ['pair', 430, 0.82, false]] },
-  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.9, true], ['puffs', 600, 0.95, false]] },
+  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.74, true], ['pair', 430, 0.72, false]] },
+  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.8, true], ['puffs', 600, 0.85, false]] },
 ];
 
 function formationBounds(parts, images) {

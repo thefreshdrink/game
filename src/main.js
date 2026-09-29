@@ -92,7 +92,15 @@ function buildManifest() {
   return manifest;
 }
 
-loadSprites(buildManifest()).then((images) => {
+// --- Шрифты --------------------------------------------------------------
+// canvas не ждёт @font-face: шрифт грузится при первом fillText и до того
+// рисуется запасным (номер на карте проступал чужим шрифтом — правка
+// 29.09). Грузим все три вместе с картинками, до первого экрана. Вес 500
+// — роли cardNumeral/cardName (text.js).
+const FONTS = ['16px Kingdom', '16px Alagard', '500 16px Alagard', '16px "Pixelify Sans"', '700 16px "Pixelify Sans"'];
+const loadFonts = () => Promise.all(FONTS.map((f) => document.fonts.load(f)));
+
+Promise.all([loadSprites(buildManifest()), loadFonts()]).then(([images]) => {
   Object.values(MINIGAMES).forEach((m) => m.prepare?.(images));
   const deps = { input, images, goto };
   registerScene('question', createQuestionScreen(deps));
@@ -110,11 +118,17 @@ loadSprites(buildManifest()).then((images) => {
 // --- Игровой цикл -------------------------------------------------------
 
 let lastTime = performance.now();
-function loop(now) {
-  const dt = Math.min((now - lastTime) / 1000, 0.1);
-  lastTime = now;
+function frame(dt) {
   current?.update?.(dt, screen.width, screen.height);
   current?.draw?.(screen.ctx, screen.width, screen.height);
+}
+function loop(now) {
+  frame(Math.min((now - lastTime) / 1000, 0.1));
+  lastTime = now;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
+// Отладка, как gameGoto: n кадров по 1/60 с мимо requestAnimationFrame —
+// прогон петли в скрытой вкладке, где браузер кадры не выдаёт.
+window.gameStep = (n = 1) => { for (let i = 0; i < n; i++) frame(1 / 60); };

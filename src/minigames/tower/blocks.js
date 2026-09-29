@@ -30,6 +30,7 @@ const TEX = '#808080';
 const FAR = '#4A4A4A';
 const UI = '#232323';
 const ACCENT = '#EBA331';
+const GOLD_SHADE = '#B07A1C';
 
 /** Точка мира (x,y,z) в экранные координаты относительно основания (ox,oy). */
 export function project(ox, oy, x, y, z) {
@@ -118,7 +119,14 @@ export const TONES = ['light', 'mid', 'dark', 'black', 'gold'];
 
 // Доли тонов — как на референсе из чата (2026-09-28): белых и тёмных
 // больше, серых меньше, контраст между соседями сильный.
-const TONE_WEIGHTS = { light: 8, mid: 3, dark: 9, black: 5, gold: 3 };
+// Правка 29.09: чёрного меньше, серого больше — чёрный брусок на фоне и на
+// плитах пола пропадал. Золото — то же число (5), доля им понравилась.
+const TONE_WEIGHTS = { light: 9, mid: 7, dark: 8, black: 3, gold: 3 };
+
+// Семьи тонов для правила соседства: dark и black на глаз один тёмный
+// (#4A4A4A/#232323 против #2E2E2E/#1C1C1C), рядом они сливались в пятно.
+const FAMILY = { light: 'L', mid: 'M', dark: 'D', black: 'D', gold: 'G' };
+const FLOOR_ROWS = 2;   // нижние ряды — без тёмных: плиты пола #232323/#1C1C1C
 const sprites = {};
 
 export function setBlockSprites(imgs) {
@@ -141,10 +149,11 @@ function goldSpots(rows, cols, count) {
   return spots;
 }
 
-/** Раскладка тонов на всю башню, считается один раз: точные доли
- * TONE_WEIGHTS, золото — по goldSpots, у остальных другой тон, чем у соседа
- * по ряду и у бруска на том же месте рядом ниже и через ряд (там лежит
- * брусок той же ориентации, одинаковые тона выстраивались бы столбиком).
+/** Раскладка тонов на всю башню, считается один раз: доли TONE_WEIGHTS,
+ * золото — по goldSpots. Остальным тон подбирается штрафом: та же семья,
+ * что у соседа по ряду или у бруска того же места рядом ниже, тот же тон
+ * через ряд (там брусок той же ориентации — выстроились бы столбиком) и
+ * тёмная семья у пола. Из равных берётся тон с бо́льшим остатком доли.
  * Порядок кандидатов крутится постоянным шагом — башня одинаковая при
  * каждом заходе. */
 function buildToneGrid(rows, cols) {
@@ -153,19 +162,20 @@ function buildToneGrid(rows, cols) {
   const left = {};
   TONES.forEach((t) => { left[t] = Math.round((TONE_WEIGHTS[t] / sum) * total); });
   const gold = goldSpots(rows, cols, left.gold);
-  left.gold = 0;
   const grid = [];
   let step = 0;
   for (let r = 0; r < rows; r++) {
     grid.push([]);
     for (let i = 0; i < cols; i++) {
       if (gold.get(r) === i) { grid[r].push('gold'); continue; }
-      const banned = new Set([grid[r][i - 1], grid[r - 1]?.[i], grid[r - 2]?.[i], 'gold']);
-      const order = TONES.map((_, k) => TONES[(k + step) % TONES.length]);
+      const fam = (t) => FAMILY[t];
+      const penalty = (t) => 3 * (fam(t) === fam(grid[r][i - 1]))
+        + 2 * (fam(t) === fam(grid[r - 1]?.[i]))
+        + 2 * (t === grid[r - 2]?.[i])
+        + 3 * (r < FLOOR_ROWS && fam(t) === 'D');
+      const order = TONES.filter((t) => t !== 'gold').map((_, k, a) => a[(k + step) % a.length]);
       step += 3;
-      const pick = order
-        .filter((t) => !banned.has(t))
-        .sort((x, y) => left[y] - left[x])[0] ?? order[0];
+      const pick = order.slice().sort((x, y) => (penalty(x) - penalty(y)) || (left[y] - left[x]))[0];
       left[pick] = Math.max(0, left[pick] - 1);
       grid[r].push(pick);
     }
@@ -237,21 +247,31 @@ function drawBlockFaces(ctx, ox, oy, o, hot) {
   edge(ctx, f.front[3], f.front[0], L2);
 }
 
-/** Золотые искры вокруг короны — четырёхлучевые звёздочки, как на
- * референсе из чата. Процедурно: своя картинка им не нужна, а мерцание
- * спрайтом не запечёшь. Акцентом их красить законно — корона и есть то,
- * что игрок отпускает первым. */
+/** Золотые искры вокруг короны — четырёхлучевые звёздочки. Правка 29.09:
+ * дальше от короны, мельче, с белым ядром 2×2 и тенью золота по диагоналям
+ * — лёгкое свечение в середине, а не плоский крест. Процедурно: мерцание
+ * спрайтом не запечёшь. Акцент законен — корону игрок отпускает первой. */
+const SPARKLE_SPOTS = [[-38, -18, 2], [32, -28, 1], [-20, -50, 1], [44, 4, 1], [-48, 6, 1], [10, -58, 2]];
+export const SPARKLE_REACH = 64;   // верх самой высокой искры над центром короны
+
 export function drawSparkles(ctx, cx, cy, t) {
-  const spots = [[-26, -14, 3], [22, -20, 2], [-14, -34, 2], [30, 2, 2], [-34, 4, 2], [8, -40, 3]];
-  ctx.fillStyle = ACCENT;
-  spots.forEach(([dx, dy, arm], k) => {
+  SPARKLE_SPOTS.forEach(([dx, dy, arm], k) => {
     const blink = 0.5 + 0.5 * Math.sin(t * 2.2 + k * 1.7);
     if (blink < 0.35) return;
-    const x = Math.round(cx + dx);
-    const y = Math.round(cy + dy);
-    const a = Math.round(arm * (0.6 + blink * 0.4)) * 2;
-    ctx.fillRect(x - a, y - 1, a * 2 + 2, 2);
-    ctx.fillRect(x - 1, y - a, 2, a * 2 + 2);
+    const x = Math.round((cx + dx) / 2) * 2;
+    const y = Math.round((cy + dy) / 2) * 2;
+    const a = (blink > 0.75 ? arm + 1 : arm) * 2;
+    ctx.fillStyle = ACCENT;
+    ctx.fillRect(x - a, y, a, 2);
+    ctx.fillRect(x + 2, y, a, 2);
+    ctx.fillRect(x, y - a, 2, a);
+    ctx.fillRect(x, y + 2, 2, a);
+    if (blink > 0.75) {
+      ctx.fillStyle = GOLD_SHADE;
+      [[-2, -2], [2, -2], [-2, 2], [2, 2]].forEach(([ox, oy]) => ctx.fillRect(x + ox, y + oy, 2, 2));
+    }
+    ctx.fillStyle = LINE;
+    ctx.fillRect(x, y, 2, 2);
   });
 }
 
@@ -300,7 +320,7 @@ export function crownLift() {
 export function towerReach() {
   const crownH = top.crown ? top.crown.height * GRAIN : 0;
   const [, y] = project(0, 0, 1.5, 1.5, ROWS + crownLift());
-  return Math.round(-y + crownH + 44);   // 44 — верхняя искра (drawSparkles)
+  return Math.round(-y + crownH / 2 + SPARKLE_REACH);
 }
 
 /** Крепость на крыше: (x, y) — центр крыши в единицах бруска, z — её уровень. */

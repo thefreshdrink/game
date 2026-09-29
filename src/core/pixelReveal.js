@@ -7,6 +7,27 @@
 // обратно в точку origin — уход в темноту.
 
 const jitterCache = new Map();
+const scratchCache = new Map();
+
+/** Буфер картинки и маска ячеек под размер — один раз на размер. */
+function scratch(bufW, bufH, cols, rows) {
+  const key = `${bufW}x${bufH}:${cols}x${rows}`;
+  let s = scratchCache.get(key);
+  if (!s) {
+    const buf = document.createElement('canvas');
+    buf.width = bufW;
+    buf.height = bufH;
+    const bctx = buf.getContext('2d');
+    bctx.imageSmoothingEnabled = false;
+    const mask = document.createElement('canvas');
+    mask.width = cols;
+    mask.height = rows;
+    const mctx = mask.getContext('2d');
+    s = { buf, bctx, mask, mctx, imgData: mctx.createImageData(cols, rows) };
+    scratchCache.set(key, s);
+  }
+  return s;
+}
 
 function getJitterGrid(cols, rows) {
   const key = `${cols}x${rows}`;
@@ -31,15 +52,15 @@ export function drawPixelReveal(
 
   const bufW = Math.round(w);
   const bufH = Math.round(h);
-  const buf = document.createElement('canvas');
-  buf.width = bufW;
-  buf.height = bufH;
-  const bctx = buf.getContext('2d');
-  bctx.imageSmoothingEnabled = false;
-  bctx.drawImage(image, 0, 0, bufW, bufH);
-
   const cols = Math.ceil(bufW / cellSize);
   const rows = Math.ceil(bufH / cellSize);
+  // Холсты переиспользуются: новый canvas на каждый кадр — мусор, на
+  // котором iPhone подтормаживал растворение кучи Башни (правка 29.09).
+  const { buf, bctx, mask, mctx, imgData } = scratch(bufW, bufH, cols, rows);
+  bctx.globalCompositeOperation = 'source-over';
+  bctx.clearRect(0, 0, bufW, bufH);
+  bctx.drawImage(image, 0, 0, bufW, bufH);
+
   const jitterGrid = getJitterGrid(cols, rows);
 
   const originX = originXFrac * cols;
@@ -49,11 +70,6 @@ export function drawPixelReveal(
     Math.max(originY, rows - originY),
   ) || 1;
 
-  const mask = document.createElement('canvas');
-  mask.width = cols;
-  mask.height = rows;
-  const mctx = mask.getContext('2d');
-  const imgData = mctx.createImageData(cols, rows);
   for (let ry = 0; ry < rows; ry++) {
     for (let rx = 0; rx < cols; rx++) {
       const i = ry * cols + rx;

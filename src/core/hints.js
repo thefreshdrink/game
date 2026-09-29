@@ -34,7 +34,9 @@ export function drawHintStack(ctx, words, { figX, headTop, w, t, fadeIn = 1, sca
 
 /** Одна строка сверху по центру — когда фигуры нет (кладка, поле). */
 export function drawTopHint(ctx, text, { w, t, scale }) {
-  setFont(ctx, 'caption', scale);
+  // Тот же кегль, что у подсказок у фигуры (drawHintStack) — правка 29.09:
+  // HOLD A BLOCK читался мельче, чем подсказки Шута.
+  setFont(ctx, 'menuOption', scale);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#EBA331';
   ctx.globalAlpha = blinkAlpha(t);
