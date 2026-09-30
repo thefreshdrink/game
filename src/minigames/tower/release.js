@@ -309,17 +309,20 @@ export function createReleaseScene({ input, goto }) {
   }
 
   // --- ввод ---------------------------------------------------------------
+  /** Брусок под пальцем — тот, что виден в этой точке: обход в порядке
+   * отрисовки (ряды снизу вверх, в ряду по x + y), побеждает последний
+   * попавший. Выбор по одной глубине x + y отдавал касание верхней грани
+   * бруска рядом ниже — она лежит на экране там же, где передняя грань
+   * бруска над ним, — и видимые бруски не вытягивались (правка 30.09). */
   function pickAt(px, py) {
-    let found = null; // ближний к зрителю выигрывает
+    let found = null;
     for (let r = 0; r < ROWS; r++) {
-      rows[r].slots.forEach((v, i) => {
-        if (!v) return;
-        const o = cellPos(r, i);
+      const list = [];
+      rows[r].slots.forEach((v, i) => { if (v) list.push({ i, o: cellPos(r, i) }); });
+      list.sort((a, b) => (a.o.x + a.o.y) - (b.o.x + b.o.y));
+      list.forEach(({ i, o }) => {
         const f = facesOf(baseX, baseY, o);
-        if (inPoly(px, py, f.top) || inPoly(px, py, f.front) || inPoly(px, py, f.right)) {
-          const depth = (o.x + o.y) + r * 0.01;
-          if (!found || depth > found.depth) found = { r, i, depth };
-        }
+        if (inPoly(px, py, f.top) || inPoly(px, py, f.front) || inPoly(px, py, f.right)) found = { r, i };
       });
     }
     return found;
