@@ -132,3 +132,18 @@ requestAnimationFrame(loop);
 // Отладка, как gameGoto: n кадров по 1/60 с мимо requestAnimationFrame —
 // прогон петли в скрытой вкладке, где браузер кадры не выдаёт.
 window.gameStep = (n = 1) => { for (let i = 0; i < n; i++) frame(1 / 60); };
+
+// --- PWA ------------------------------------------------------------------
+// Воркер версии этой сборки (public/sw.js). Новая выкладка ставит новый
+// воркер; страница, открытая до неё, доигрывает старую версию, а новая
+// подхватывается перезагрузкой — только на экране вопроса, когда игрок
+// вернулся в приложение: посреди расклада страница не перезагружается.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  let updated = false;
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js?v=${__ASSET_VERSION__}`, { scope: import.meta.env.BASE_URL })
+    .catch((err) => console.warn('sw', err));
+  navigator.serviceWorker.addEventListener('controllerchange', () => { updated = true; });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && updated && currentName === 'question') location.reload();
+  });
+}

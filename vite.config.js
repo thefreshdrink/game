@@ -14,11 +14,12 @@ const REPO = 'game';
 // меняющийся между ними. Локально — метка времени запуска сборки.
 const ASSET_VERSION = (process.env.GITHUB_SHA || '').slice(0, 8) || Date.now().toString(36);
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, isPreview }) => ({
   define: {
     __ASSET_VERSION__: JSON.stringify(ASSET_VERSION),
   },
-  base: command === 'build' ? `/${REPO}/` : '/',
+  // preview отдаёт собранный dist — с тем же префиксом, что GitHub Pages.
+  base: command === 'build' || isPreview ? `/${REPO}/` : '/',
   build: {
     outDir: 'dist',
     assetsInlineLimit: 0,   // never inline sprites as base64 — they must stay real files
