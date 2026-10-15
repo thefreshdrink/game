@@ -35,3 +35,25 @@ ALLOWED = CANON | EXCEPTIONS   # всё, что может встретитьс�
 GREY_RAMP = [BODY, AIR, STONE_DARK, FAR, TEXTURE, LINE2, LINE]
 
 assert set(GREY_RAMP) <= ALLOWED
+
+
+def strip(path, cell=4):
+    """Полоса канонических цветов — для color_image у pixflux."""
+    from PIL import Image
+    cols = sorted(CANON)
+    im = Image.new('RGB', (cell * len(cols), cell))
+    for i, c in enumerate(cols):
+        im.paste(c, (i * cell, 0, (i + 1) * cell, cell))
+    im.save(path)
+
+
+if __name__ == '__main__':
+    import sys
+    if sys.argv[1:2] == ['--strip'] and len(sys.argv) == 3:
+        strip(sys.argv[2])
+        print('записана полоса', len(CANON), 'цветов:', sys.argv[2])
+    elif sys.argv[1:] == ['--hex']:
+        print(' '.join('#%02X%02X%02X' % c for c in sorted(CANON)))
+    else:
+        print('python3 tools/palette.py --strip out.png | --hex')
+        sys.exit(2)

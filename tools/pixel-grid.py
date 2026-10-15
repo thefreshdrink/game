@@ -8,7 +8,7 @@
      внутри себя однороднее всего;
   2. каждую клетку сводит к её самому частому цвету (прозрачность — если
      прозрачна хотя бы половина клетки);
-  3. снапит цвета в палитру игры (design-system/tarot-journey.hex);
+  3. снапит цвета в палитру игры (tools/palette.py);
   4. пишет либо нативный размер (1 клетка = 1 пиксель), либо --scale N.
 
 --ramp вместо п.3: цветную генерацию (фон по цветным референсам) не снапить
@@ -27,12 +27,12 @@ import sys
 from collections import Counter
 from PIL import Image
 
-HEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'design-system', 'tarot-journey.hex')
+from palette import CANON, STONE_DARK  # tools/palette.py
 
 
 def palette():
-    with open(HEX) as f:
-        return [tuple(int(l.strip()[i:i + 2], 16) for i in (0, 2, 4)) for l in f if l.strip()]
+    """Канон плюс тёмный камень — тот же набор, что в tarot-journey.hex."""
+    return sorted(CANON | {STONE_DARK})
 
 
 def nearest(c, pal):
