@@ -21,8 +21,9 @@ import {
 } from '../core/oracle.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { clamp01 } from '../core/ease.js';
+import { t as str } from '../data/strings.js';
 
-const LABELS = { work: 'WORK', love: 'LOVE', mental: 'MENTAL' };
+const LABELS = { work: str('category.work'), love: str('category.love'), mental: str('category.mental') };
 
 // Без пальца/курсора на экране пункты сами по очереди загораются —
 // динамика, о которой просили в чате. Резкое переключение, без fade
@@ -42,8 +43,8 @@ const MENU_ITEM_ON = 0.8;
 const EYES_FADE = 0.5;
 const EYES_HOLD = 0.4; // одни глаза в темноте, до первой реплики
 
-const TEXT1 = 'Do you want to see the future?';
-const TEXT2 = 'What is your question about?';
+const TEXT1 = str('question.ask');
+const TEXT2 = str('question.about');
 
 const TEXT1_REVEAL = revealDuration(TEXT1.split(' ').length);
 const TEXT1_READ_HOLD = 1.4; // держим прочитанной, прежде чем гасить

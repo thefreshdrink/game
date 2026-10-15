@@ -5,15 +5,15 @@
 import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { drawCardBack, drawCardBlank, CARD_W, CARD_H } from '../core/cardRender.js';
 import { easeInOutQuad } from '../core/ease.js';
+import { t as str } from '../data/strings.js';
 
 // «Не быстрее ~0.8 сек» — это ритуал (BUILD-SPEC). BUILD-SPEC-05 задача 3c:
 // 0.8 → 1.1 и через easing, а не линейно, — переворот как жест, не как
 // переключение кадра.
 // Слово в слово заголовок экрана 2 (deck.js, NEW_TITLE): игрок переходит
-// 2 → 3 и должен видеть один непрерывный текст, а не новый. Пока это две
-// копии одной строки в двух файлах — схлопнутся, когда появится слой строк
-// для локализации (CLAUDE.md: строки идут через один слой, не хардкодом).
-const TITLE = 'The deck offers itself…';
+// 2 → 3 и должен видеть один непрерывный текст, а не новый — поэтому один
+// ключ строки на оба экрана (data/strings.js).
+const TITLE = str('deck.title');
 
 const FLIP_DURATION = 1.1;
 const FLIP_DELAY = 0.8;   // сек рубашкой вверх до переворота: карта успевает прочитаться

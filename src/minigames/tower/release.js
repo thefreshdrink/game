@@ -23,6 +23,7 @@ import {
   drawCastle, drawCrown, crownLift, project, towerReach,
 } from './blocks.js';
 import { createPile } from './pile.js';
+import { t as str } from '../../data/strings.js';
 
 const PULL_TIME = 0.8;      // сек удержания до выхода бруска
 const PULL_DIST = 2.6;      // насколько выезжает, в единицах бруска
@@ -477,7 +478,7 @@ export function createReleaseScene({ input, goto }) {
 
       // Подсказка жеста — как у Шута: словом, один раз, пока не тронули.
       if (phase === 'play' && !movedEver) {
-        drawTopHint(ctx, 'HOLD A BLOCK', { w, t: tPhase, scale: uiScale(w, 1.15) });
+        drawTopHint(ctx, str('tower.hold'), { w, t: tPhase, scale: uiScale(w, 1.15) });
       }
     },
   });

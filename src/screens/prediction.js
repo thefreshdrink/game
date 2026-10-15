@@ -18,6 +18,7 @@ import { session, resetSession } from '../core/session.js';
 import { setFont, wrapLines, uiScale } from '../core/text.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import { MINIGAMES } from '../minigames/index.js';
+import { t as str } from '../data/strings.js';
 
 const CHAR_INTERVAL = 0.022; // сек/символ — «~22 мс», значение из прототипа
 const CURSOR_BLINK = 0.5;
@@ -152,7 +153,7 @@ export function createPredictionScreen({ input, images, goto }) {
         const lineHeight = setFont(ctx, 'menuOption', scale);
         ctx.fillStyle = '#EBA331';
         const promptY = bodyStartY + lineIndex * bodyLH + Math.round(28 * scale);
-        const label = '›ONE MORE QUESTION';
+        const label = `›${str('prediction.again')}`;
         ctx.fillText(label, marginX, promptY);
         const width = ctx.measureText(label).width;
         // Одна формула хит-зоны на все экраны (задача 9). Своей подсветки
@@ -167,7 +168,7 @@ export function createPredictionScreen({ input, images, goto }) {
         // же рода», не разжалованная в текстуру. Логики шаринга ещё нет.
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = '#EBA331';
-        ctx.fillText('›SHARE', marginX, promptY + lineHeight + Math.round(6 * scale));
+        ctx.fillText(`›${str('prediction.share')}`, marginX, promptY + lineHeight + Math.round(6 * scale));
         ctx.globalAlpha = 1;
       }
     },

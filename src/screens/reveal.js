@@ -19,6 +19,7 @@ import {
 import { drawCardFace, CARD_W, CARD_H } from '../core/cardRender.js';
 import { textButtonZone, zoneHit } from '../core/textButton.js';
 import { clamp01 } from '../core/ease.js';
+import { t as str } from '../data/strings.js';
 
 const REVEAL_DURATION = 1.6; // сек — портрет проступает пикселями от лица
 const REVEAL_CELL_SIZE = 4;
@@ -123,7 +124,7 @@ export function createRevealScreen({ input, images, goto }) {
         // мини-игра (Шут идёт и прыгает через провалы, экран 5, «Leap»).
         // Потом «›TAKE THE STEP» — тоже не понравилось. Выбрано из
         // предложенных вариантов в чате.
-        const label = '›KEEP GOING';
+        const label = `›${str('reveal.continue')}`;
         const width = ctx.measureText(label).width;
         const x0 = Math.round(w / 2 - width / 2);
         continueZone = textButtonZone(x0, continueY, width, lineHeight);
