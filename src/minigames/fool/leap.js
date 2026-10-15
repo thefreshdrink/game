@@ -163,6 +163,15 @@ export function createLeapScreen({ input, images, goto }) {
     resetFall(fall, player.x - cam.x, player.y - cam.y - PLAYER_H / 2);
   }
 
+  // Отладка, как gameGoto: снимок состояния для автопрогона петли, только чтение.
+  window.gameLeapProbe = () => {
+    const p = platforms[idx], q = platforms[idx + 1];
+    return {
+      state, idx, n: platforms.length, t, x: player.x, y: player.y,
+      edge: p ? p.x + p.w : 0, next: q ? { x: q.x, y: q.y, jumpIn: q.jumpIn } : null,
+    };
+  };
+
   return defineMinigame({ input, goto }, {
     enter() {
       t = 0;
