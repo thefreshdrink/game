@@ -9,6 +9,7 @@ import { uiScale } from '../../core/text.js';
 import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
 import { clamp01 } from '../../core/ease.js';
 import { PLAYER_H } from './actors.js';
+import { t as str } from '../../data/strings.js';
 
 export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver, idx, lean, player, swipeLinger }) {
   const scale = uiScale(w);
@@ -18,7 +19,7 @@ export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver,
     w, t, scale,
   };
   if (state === 'charge' || state === 'wait_leap') {
-    const box = drawHintStack(ctx, ['HOLD', 'TO JUMP'], { ...at, fadeIn: stateT / 0.3 });
+    const box = drawHintStack(ctx, str('fool.hold'), { ...at, fadeIn: stateT / 0.3 });
     if (state === 'charge' && lean > 0.02) {
       // Кольцо справа от надписи на уровне середины двух строк (правка
       // 29.09) — середина между базовыми линиями минус полвысоты заглавной.
@@ -28,9 +29,9 @@ export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver,
     }
   } else if (state === 'walk' && !movedEver) {
     // Первая подсказка — практически сразу.
-    drawHintStack(ctx, ['TAP OR HOLD', 'TO WALK'], { ...at, fadeIn: t / 0.2 });
+    drawHintStack(ctx, str('fool.walk'), { ...at, fadeIn: t / 0.2 });
   } else if (movedEver && ((state === 'walk' && idx === 0) || (swipeLinger && (state === 'walk' || state === 'air')))) {
-    const box = drawHintStack(ctx, ['SWIPE UP', 'TO JUMP'], at);
+    const box = drawHintStack(ctx, str('fool.swipe'), at);
     // Центр знака — на базовой линии нижней строки, не по середине стека.
     drawSwipeTick(ctx, Math.round(at.figX + box.widest / 2 + 28), Math.round(box.bottom), 1, t);
   }

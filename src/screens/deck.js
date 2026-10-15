@@ -22,6 +22,7 @@ import { isPlayable } from '../minigames/index.js';
 import { CARD_W, CARD_H, fillCardBody } from '../core/cardRender.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { easeInOutQuad, clamp01 } from '../core/ease.js';
+import { t as str } from '../data/strings.js';
 
 // Число карт в вере — чисто визуальное (правка в чате: сначала 5
 // читалось «мало для колоды», подняли до 9, потом ещё раз попросили
@@ -32,11 +33,11 @@ const CARD_COUNT = 20;
 // Текст, с которым игрок пришёл с экрана 1 (должен быть слово-в-слово
 // тем же — это финальная реплика question.js) — гаснет тут же, на той
 // же высоте, будто это один непрерывный текст, а не новый экран.
-const OLD_TEXT = 'What is your question about?';
-const NEW_TITLE = 'The deck offers itself…';
+const OLD_TEXT = str('question.about');
+const NEW_TITLE = str('deck.title');
 // Две строки подписи (правка в чате 2026-09-10): сначала про руку, потом
 // про доверие и выбор. Одинаковой насыщенности, чуть меньше кеглем.
-const SUBTITLE_LINES = ['DRAG ACROSS THE DECK.', 'TRUST THE POOL. PICK THE CARD'];
+const SUBTITLE_LINES = [str('deck.hint.1'), str('deck.hint.2')];
 
 // Волна-подсказка (BUILD-SPEC-05 2b.1; правка в чате 2026-09-10: не
 // одновременно по двум рядам, а ПО ОЧЕРЕДИ — сперва задний ряд слева
