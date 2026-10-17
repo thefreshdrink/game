@@ -19,10 +19,14 @@ import { defineMinigame } from '../../core/minigame.js';
 import { drawTopHint } from '../../core/hints.js';
 import { uiScale } from '../../core/text.js';
 import {
-  ROWS, COLS, cellsOf, facesOf, drawBlock, drawGround, drawRubble, saveRubble, toneOf,
-  drawCastle, drawCrown, crownLift, project, towerReach,
+  ROWS, crownLift, drawBlock, drawGround, drawRubble, saveRubble, drawCastle, drawCrown,
+  project, towerReach,
 } from './blocks.js';
 import { createPile } from './pile.js';
+import { buildRows, shiftAt, cellPos, updateStability, tension } from './release/masonry.js';
+import { pickAt } from './release/pick.js';
+import { sendToStack, stepFlying, flyingPos } from './release/stacks.js';
+import { puff, stepDust, collapse, launchCrown, stepDebris } from './release/fall.js';
 import { t as str } from '../../data/strings.js';
 
 const PULL_TIME = 0.8;      // сек удержания до выхода бруска
@@ -31,7 +35,6 @@ const SETTLE_HOLD = 2.2;    // тишина после того, как всё �
 const LOWER_TIME = 1.2;     // сколько едет вниз перед предсказанием
 const CROWN_SLOW = 0.55;    // корона падает в лёгкой замедленной съёмке (правка 29.09)
 const FALL_FAST = 1.3;      // а здание за ней — быстро
-const GRAVITY = 26;
 
 // Дрожь нарастает плавно: до TREMOR_FROM нагрузки башня стоит мёртво,
 // дальше раскачка растёт квадратично и сглаживается во времени — правка
@@ -41,22 +44,8 @@ const TREMOR_FROM = 0.35;
 const TREMOR_MAX = 6;       // экранных px на пике
 const TREMOR_EASE = 1.2;    // скорость, с которой дрожь догоняет нагрузку
 
-// Вынутый брусок не падает куда придётся, а перелетает в стопку сбоку
-// (правка 29.09): поперечные — в левую стопку, продольные — в правую,
-// каждый в своей ориентации. Видно, сколько уже отпустила, и ничего не
-// прячется под башней. Стопки стоят ЗА башней по бокам (x = −2 / y = −2):
-// перед ней они закрыли бы нижние ряды, за которые и хватаются, а на
-// 390 px брусок (128 px) рядом с башней без перекрытия не встаёт.
-const FLY_TIME = 0.5;       // сек перелёта в стопку
-const FLY_ARC = 1.6;        // высота дуги, в рядах
-const STACKS = {
-  left: { x: -2, y: 0, dx: 1, dy: 3 },
-  right: { x: 0, y: -2, dx: 3, dy: 1 },
-};
-
-// Куда ложится корона: на край пола со стороны крена, ближе к зрителю.
-const CROWN_EDGE = 6.5;
-const CROWN_REST_Z = 0.2;
+// Стопки, куда перелетают вынутые бруски, — release/stacks.js; обвал,
+// корона и пыль — release/fall.js; кладка и устойчивость — release/masonry.js.
 
 // Подсказка жеста живёт над башней: верх короны с искрами не заходит на неё.
 const HINT_CLEAR = 104;     // экранных px от верха экрана, ×uiScale
@@ -89,18 +78,7 @@ export function createReleaseScene({ input, goto }) {
   let t = 0;             // для искр короны
 
   function reset() {
-    rows = [];
-    for (let r = 0; r < ROWS; r++) {
-      rows.push({
-        r,
-        slots: [1, 1, 1],
-        lean: 0,
-        leanTo: 0,
-        // Пара брусков изначально чуть выдвинута: идеально ровная кладка
-        // читается кирпичом, неровная сразу говорит «в это уже играли».
-        jitter: [0, 1, 2].map(() => (Math.random() < 0.3 ? 0.1 + Math.random() * 0.12 : 0)),
-      });
-    }
+    rows = buildRows();
     debris = [];
     flying = [];
     stackH = { left: 0, right: 0 };
@@ -116,227 +94,18 @@ export function createReleaseScene({ input, goto }) {
     movedEver = false;
   }
 
-  /** Просадка рядов ниже сдвигает всё, что выше, поперёк своего ряда. */
-  function shiftAt(r) {
-    let sx = 0;
-    let sy = 0;
-    for (let i = 0; i < r; i++) {
-      if (i % 2 === 0) sy += rows[i].lean; else sx += rows[i].lean;
-    }
-    return [sx, sy];
-  }
-
-  function cellPos(r, i) {
-    const c = cellsOf(r)[i];
-    const [sx, sy] = shiftAt(r);
-    const out = (pulling && pulling.r === r && pulling.i === i) ? pulling.out : 0;
-    const push = out + rows[r].jitter[i];
-    return {
-      x: c.x + sx + (r % 2 === 0 ? push : 0),
-      y: c.y + sy + (r % 2 === 0 ? 0 : push),
-      z: r, dx: c.dx, dy: c.dy, tone: toneOf(r, i),
-    };
-  }
-
-  /** Два бруска в ряду держат, один — ряд проседает на его сторону. Башня
-   * падает, когда центр тяжести верха уходит за опору ряда. Возвращает
-   * номер ряда-излома или −1. */
-  function updateStability() {
-    rows.forEach((row) => {
-      const n = row.slots.filter(Boolean).length;
-      const side = row.slots.reduce((a, v, i) => a + (v ? [-1, 0, 1][i] : 0), 0);
-      row.leanTo = n >= 2 ? 0 : (n === 1 ? side * 0.5 : 0);
-    });
-    for (let r = 0; r < ROWS; r++) {
-      const kept = rows[r].slots.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
-      if (!kept.length) return r;
-      let mass = 0; let mx = 0; let my = 0;
-      for (let q = r + 1; q < ROWS; q++) {
-        rows[q].slots.forEach((v, i) => {
-          if (!v) return;
-          const p = cellPos(q, i);
-          mass += 1; mx += p.x + p.dx / 2; my += p.y + p.dy / 2;
-        });
-      }
-      if (!mass) continue;
-      const com = r % 2 === 0 ? my / mass : mx / mass;
-      const [sx, sy] = shiftAt(r);
-      const base = r % 2 === 0 ? sy : sx;
-      if (com < base + Math.min(...kept) - 0.35 || com > base + Math.max(...kept) + 1.35) return r;
-    }
-    return -1;
-  }
-
-  const blocksLeft = () => rows.reduce((a, r) => a + r.slots.filter(Boolean).length, 0);
-  const tension = () => Math.min(1,
-    (COLS * ROWS - blocksLeft()) / 16 + rows.reduce((a, r) => a + Math.abs(r.lean), 0) / 3);
-
-
-  function puff(o) {
-    for (let k = 0; k < 6; k++) {
-      dust.push({
-        wx: o.x + (o.dx || 1) / 2,
-        wy: o.y + (o.dy || 1) / 2,
-        wz: o.z + 0.5,
-        vx: (Math.random() * 2 - 1) * 0.6,
-        vy: (Math.random() * 2 - 1) * 0.6,
-        vz: 0.8 + Math.random(),
-        t: 0,
-        life: 0.5 + Math.random() * 0.5,
-        s: Math.random() < 0.5 ? 2 : 4,
-      });
-    }
-  }
-
   function startCollapse() {
     phase = 'fall';
     tPhase = 0;
-    const dir = rows[pivotRow].lean <= 0 ? -1 : 1;
-    for (let r = 0; r < ROWS; r++) {
-      rows[r].slots.forEach((v, i) => {
-        if (!v) return;
-        const o = cellPos(r, i);
-        const lever = Math.max(0.1, r - pivotRow) * 0.16 + 0.3;
-        debris.push({
-          ...o,
-          // часть брусьев разворачивается — куча не должна лечь орнаментом
-          ...(Math.random() < 0.45 ? { dx: o.dy, dy: o.dx } : {}),
-          vx: (r % 2 === 0 ? dir * lever * 0.7 : dir * lever * 1.1) + (Math.random() - 0.5) * 1.2,
-          vy: (r % 2 === 0 ? dir * lever * 1.1 : dir * lever * 0.7) + (Math.random() - 0.5) * 1.2,
-          vz: 0.6 + Math.random(),
-          rest: false,
-        });
-        rows[r].slots[i] = 0;
-        puff(o);
-      });
-    }
-    // Крепость уходит обломками вместе с кладкой (решение в чате): светлый
-    // камень с крыши летит дальше всех — у него самый длинный рычаг.
-    if (castleUp) {
-      castleUp = false;
-      const [sx, sy] = shiftAt(ROWS);
-      [[0, 1, 3, 1, 'light'], [1, 0, 1, 3, 'light'], [0.5, 0.5, 3, 1, 'mid']].forEach(([ox, oy, dx, dy, tone]) => {
-        const o = { x: ox + sx, y: oy + sy, z: ROWS, dx, dy, tone };
-        debris.push({
-          ...o,
-          vx: dir * 2 + (Math.random() - 0.5) * 1.2,
-          vy: dir * 2 + (Math.random() - 0.5) * 1.2,
-          vz: 1 + Math.random(),
-          rest: false,
-        });
-        puff(o);
-      });
-    }
+    collapse(rows, pulling, pivotRow, castleUp, debris, dust);
+    castleUp = false;
   }
 
-  /** Корона уходит первой (правка 29.09): башня замирает, корона в
-   * замедленной съёмке соскальзывает на край пола со стороны крена, и
-   * только когда она легла, рушится здание. Баллистика считается под
-   * точку падения, чтобы корона легла ровно на край, а не куда вынесет. */
+  /** Корона уходит первой, здание — когда она легла (release/fall.js). */
   function startCrownFall() {
     phase = 'crown';
     tPhase = 0;
-    const dir = rows[pivotRow].lean <= 0 ? -1 : 1;
-    const [cx, cy] = shiftAt(ROWS);
-    crown.x += cx;
-    crown.y += cy;
-    crown.live = true;
-    crown.vz = 2.2;
-    const z0 = crown.z - CROWN_REST_Z;
-    const tFly = (crown.vz + Math.sqrt(crown.vz * crown.vz + 2 * GRAVITY * z0)) / GRAVITY;
-    const [tx, ty] = dir > 0 ? [CROWN_EDGE, 1.5] : [1.5, CROWN_EDGE];
-    crown.vx = (tx - crown.x) / tFly;
-    crown.vy = (ty - crown.y) / tFly;
-  }
-
-  /** Брусок вышел из кладки — летит дугой на верх своей стопки. */
-  function sendToStack(o) {
-    const side = o.dx >= o.dy ? 'right' : 'left';
-    const to = { ...STACKS[side], z: stackH[side]++ };
-    flying.push({ from: { x: o.x, y: o.y, z: o.z }, to, tone: o.tone, k: 0 });
-  }
-
-  function stepFlying(dt) {
-    flying = flying.filter((f) => {
-      f.k = Math.min(1, f.k + dt / FLY_TIME);
-      if (f.k < 1) return true;
-      const d = { ...f.to, tone: f.tone, vx: 0, vy: 0, vz: 0, rest: true };
-      debris.push(d);
-      pile.claim(d);
-      puff(d);
-      return false;
-    });
-  }
-
-  function flyingPos(f) {
-    const e = f.k * f.k * (3 - 2 * f.k);
-    const L = (a, b) => a + (b - a) * e;
-    return {
-      x: L(f.from.x, f.to.x),
-      y: L(f.from.y, f.to.y),
-      z: L(f.from.z, f.to.z) + Math.sin(Math.PI * f.k) * FLY_ARC,
-      dx: f.to.dx, dy: f.to.dy, tone: f.tone,
-    };
-  }
-
-  function stepDebris(dt, slow, crownSlow = slow) {
-    const d2 = dt * slow;
-    const c2 = dt * crownSlow;
-    debris.forEach((d) => {
-      if (d.rest) return;
-      d.vz -= GRAVITY * d2;
-      d.x += d.vx * d2; d.y += d.vy * d2; d.z += d.vz * d2;
-      d.vx *= (1 - 1.4 * d2); d.vy *= (1 - 1.4 * d2);
-      if (d.z <= 0) {
-        d.z = 0;
-        if (Math.abs(d.vz) < 3) {
-          d.rest = true; d.vx = 0; d.vy = 0; d.vz = 0;
-          pile.settle(d);
-        } else {
-          d.vz *= -0.24; d.vx *= 0.4; d.vy *= 0.4; puff(d);
-        }
-      }
-    });
-    if (crown.live && !crown.rest) {
-      crown.vz -= GRAVITY * c2;
-      crown.x += crown.vx * c2; crown.y += crown.vy * c2; crown.z += crown.vz * c2;
-      if (crown.z <= CROWN_REST_Z) {
-        crown.z = CROWN_REST_Z;
-        crown.vx = 0; crown.vy = 0;   // точка падения рассчитана — не уезжаем с края
-        crown.landed = true;
-        if (Math.abs(crown.vz) < 3) crown.rest = true; else crown.vz *= -0.15;
-      }
-    }
-  }
-
-  // --- ввод ---------------------------------------------------------------
-  /** Брусок под пальцем — тот, что виден в этой точке: обход в порядке
-   * отрисовки (ряды снизу вверх, в ряду по x + y), побеждает последний
-   * попавший. Выбор по одной глубине x + y отдавал касание верхней грани
-   * бруска рядом ниже — она лежит на экране там же, где передняя грань
-   * бруска над ним, — и видимые бруски не вытягивались (правка 30.09). */
-  function pickAt(px, py) {
-    let found = null;
-    for (let r = 0; r < ROWS; r++) {
-      const list = [];
-      rows[r].slots.forEach((v, i) => { if (v) list.push({ i, o: cellPos(r, i) }); });
-      list.sort((a, b) => (a.o.x + a.o.y) - (b.o.x + b.o.y));
-      list.forEach(({ i, o }) => {
-        const f = facesOf(baseX, baseY, o);
-        if (inPoly(px, py, f.top) || inPoly(px, py, f.front) || inPoly(px, py, f.right)) found = { r, i };
-      });
-    }
-    return found;
-  }
-
-  function inPoly(px, py, pts) {
-    let hit = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const [xi, yi] = pts[i];
-      const [xj, yj] = pts[j];
-      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) hit = !hit;
-    }
-    return hit;
+    launchCrown(crown, rows, pivotRow);
   }
 
   return defineMinigame({ input, goto }, {
@@ -345,7 +114,7 @@ export function createReleaseScene({ input, goto }) {
     input: {
       pressstart(e) {
         if (phase !== 'play') return;
-        const hit = pickAt(e.x, e.y);
+        const hit = pickAt(rows, pulling, baseX, baseY, e.x, e.y);
         if (hit) { pulling = { r: hit.r, i: hit.i, t: 0, out: 0 }; movedEver = true; }
       },
       pressend() { if (pulling) pulling.releasing = true; },
@@ -371,9 +140,9 @@ export function createReleaseScene({ input, goto }) {
           pulling.t += dt;
           pulling.out = Math.min(PULL_DIST, (pulling.t / PULL_TIME) * PULL_DIST);
           if (pulling.t >= PULL_TIME) {
-            const o = cellPos(pulling.r, pulling.i);
+            const o = cellPos(rows, pulling, pulling.r, pulling.i);
             rows[pulling.r].slots[pulling.i] = 0;
-            sendToStack(o);
+            sendToStack(flying, stackH, o);
             pulling = null;
           }
         }
@@ -382,9 +151,9 @@ export function createReleaseScene({ input, goto }) {
       rows.forEach((r) => { r.lean += (r.leanTo - r.lean) * Math.min(1, dt * 4); });
 
       if (phase === 'play') {
-        const k = Math.max(0, (tension() - TREMOR_FROM) / (1 - TREMOR_FROM));
+        const k = Math.max(0, (tension(rows) - TREMOR_FROM) / (1 - TREMOR_FROM));
         tremor += (k * k - tremor) * Math.min(1, dt * TREMOR_EASE);
-        const p = updateStability();
+        const p = updateStability(rows, pulling);
         if (p >= 0) { pivotRow = p; startCrownFall(); }
       }
 
@@ -392,8 +161,12 @@ export function createReleaseScene({ input, goto }) {
       // переведён в картинку (BUILD-SPEC-06 §6).
       if (phase !== 'play') tremor = 0;
 
-      stepFlying(dt);
-      stepDebris(dt, phase === 'fall' ? FALL_FAST : 1, phase === 'crown' ? CROWN_SLOW : 1);
+      flying = stepFlying(flying, dt, (d) => {
+        debris.push(d);
+        pile.claim(d);
+        puff(dust, d);
+      });
+      stepDebris(debris, crown, pile, dust, dt, phase === 'fall' ? FALL_FAST : 1, phase === 'crown' ? CROWN_SLOW : 1);
 
       // Удар короны о пол и есть толчок: здание рушится с первого касания.
       if (phase === 'crown' && crown.landed) startCollapse();
@@ -414,12 +187,7 @@ export function createReleaseScene({ input, goto }) {
         }
       }
 
-      dust = dust.filter((d) => {
-        d.t += dt;
-        d.wx += d.vx * dt; d.wy += d.vy * dt; d.wz += d.vz * dt;
-        d.vz -= 2 * dt;
-        return d.t < d.life;
-      });
+      dust = stepDust(dust, dt);
     },
 
     draw(ctx, w, h) {
@@ -443,18 +211,18 @@ export function createReleaseScene({ input, goto }) {
         const list = [];
         rows[r].slots.forEach((v, i) => {
           if (!v) return;
-          list.push({ o: cellPos(r, i), hot: !!(pulling && pulling.r === r && pulling.i === i) });
+          list.push({ o: cellPos(rows, pulling, r, i), hot: !!(pulling && pulling.r === r && pulling.i === i) });
         });
         list.sort((a, b) => (a.o.x + a.o.y) - (b.o.x + b.o.y));
         list.forEach((e) => drawBlock(ctx, baseX, baseY, e.o, e.hot));
       }
 
       if (castleUp) {
-        const [sx, sy] = shiftAt(ROWS);
+        const [sx, sy] = shiftAt(rows, ROWS);
         drawCastle(ctx, baseX, baseY, 1.5 + sx, 1.5 + sy, ROWS);
       }
       if (!crown.live) {
-        const [sx, sy] = shiftAt(ROWS);
+        const [sx, sy] = shiftAt(rows, ROWS);
         const bob = Math.round(Math.sin(t * 2) * 1.5) * 0.08;
         drawCrown(ctx, baseX, baseY, { x: crown.x + sx, y: crown.y + sy, z: crown.z + bob }, t, true);
       }
