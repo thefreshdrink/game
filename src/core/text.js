@@ -1,4 +1,5 @@
-// Общая типографика экранов. Alagard — заголовки и имена карт, Pixelify
+// Общая типографика экранов. Kingdom — заголовки и имена карт, Alagard —
+// римский номер карты, Pixelify
 // Sans — текст и метки (docs/design-system.md, §3). Кегли заданы для
 // референсного холста 430 экранных px (docs/interfaces/*.png) и
 // приводятся к реальной ширине окна через uiScale.
@@ -11,8 +12,9 @@ export function uiScale(width, max = 1.25) {
 }
 
 // Заголовки экранов переведены на Kingdom (решение 18.09, decisions-log):
-// он покрывает все пять языков продукта, Alagard — только латиницу. Лицо
-// карты пока осталось на Alagard, там замена ещё не решена (B6).
+// он покрывает все пять языков продукта, Alagard — только латиницу. Имя
+// карты — тоже Kingdom (решение 2026-10-18, B6); на Alagard остался только
+// римский номер: латиница одинакова во всех языках.
 const FONT_TITLE = 'Kingdom, serif';
 const FONT_DISPLAY = 'Alagard, serif';
 const FONT_BODY = '"Pixelify Sans", monospace';
@@ -29,7 +31,7 @@ const ROLES = {
   // Имя мельче номера (26 против фигмовских 30) — правка в чате: на длинных
   // именах строка вставала в бирку впритык. Номер остался на 30: его бирка
   // вдвое уже, но и строка в ней максимум три знака.
-  cardName:   { family: FONT_DISPLAY, size: 26, lineHeight: 30, weight: 500, letterSpacing: -0.04 },
+  cardName:   { family: FONT_TITLE,   size: 26, lineHeight: 30, weight: 500, letterSpacing: -0.04 },
   body:       { family: FONT_BODY,    size: 16, lineHeight: 26 },
   caption:    { family: FONT_BODY,    size: 12, lineHeight: 18 },
   // Пункты меню категорий — отдельная роль от body: крупнее (22 —
