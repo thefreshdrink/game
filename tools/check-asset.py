@@ -16,7 +16,10 @@
 
     python3 tools/check-asset.py public/assets/tower/block.png
     python3 tools/check-asset.py public/assets/**/*.png
+    python3 tools/check-asset.py --all      # все PNG в public/assets + итог
+                                            # (то же: npm run check-assets)
 """
+import os
 import sys
 from PIL import Image
 
@@ -94,10 +97,30 @@ def check(path):
     return True
 
 
+ASSETS = os.path.join(os.path.dirname(__file__), '..', 'public', 'assets')
+
+
+def all_assets():
+    """Все PNG в public/assets по порядку. Сам обходит папки, поэтому
+    имена с пробелами не ломаются, как при раскрытии шаблона в shell."""
+    root = os.path.normpath(ASSETS)
+    found = []
+    for d, _, files in os.walk(root):
+        found += [os.path.join(d, f) for f in files if f.lower().endswith('.png')]
+    return sorted(found)
+
+
 def main(argv):
     if not argv:
         print(__doc__)
         return 1
+    if argv == ['--all']:
+        paths = all_assets()
+        bad = [p for p in paths if not check(p)]
+        print(f'\nитого: {len(paths) - len(bad)} из {len(paths)} в порядке')
+        for p in bad:
+            print(f'  ✗ {os.path.relpath(p)}')
+        return 1 if bad else 0
     ok = all([check(p) for p in argv])
     return 0 if ok else 1
 

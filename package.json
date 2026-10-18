@@ -8,7 +8,8 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "new-minigame": "node tools/new-minigame.mjs"
+    "new-minigame": "node tools/new-minigame.mjs",
+    "check-assets": "python3 tools/check-asset.py --all"
   },
   "devDependencies": {
     "vite": "^5.4.0"

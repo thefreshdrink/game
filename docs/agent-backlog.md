@@ -18,6 +18,18 @@
   `back_side_card_final`, `fool_on_the_card`). Включить «падать» — сборка
   сломается сразу. Ждёт решения Алисы: какие файлы проверять и что делать с
   этими десятью.
+  2026-10-18, честная часть без решения: `npm run check-assets`
+  (`check-asset.py --all`) проверяет все PNG в `public/assets`, сам обходит
+  папки (имена с пробелами больше не ломают проверку), печатает итог и
+  выходит с ошибкой, если есть плохие. В сборку пока не включено. Сейчас
+  53 из 63 в порядке. Из десяти плохих игра грузит четыре:
+  `oracle_body`, `oracle_eyes` (`main.js`, `core/oracle.js`),
+  `back_side_card_final` (`main.js`), `fool_on_the_card` (путь из id карты).
+  Остальные шесть (`back_side_card_detailed`, `card_the_fool`,
+  `Future_Teller_Eyes`, `Future_Teller_Yellow`, `Retro Diffusion Spectral`,
+  `character`) в коде не упоминаются, но лежат в `public/` и копируются в
+  `dist/`. Для сборки на GitHub нужен будет ещё Pillow на раннере
+  (`pip install pillow` в `deploy.yml`).
 - [x] 4. Строки интерфейса (`LABELS` в `question.js`, `HOLD A BLOCK` в
   `release.js`, `SHARE` в `prediction.js` и др.) собрать в один модуль строк.
   Сделано 2026-10-15: `src/data/strings.js`, функция `t(key)` (в файлах
