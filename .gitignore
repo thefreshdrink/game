@@ -12,3 +12,4 @@ tools/.kingdom-charset.txt
 **/__pycache__/
 public/_preview/
 art-source/wip/
+docs/lenses/

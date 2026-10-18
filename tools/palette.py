@@ -23,7 +23,7 @@ ACCENT = _rgb('#EBA331')       # «это можно тронуть»
 GOLD_SHADE = _rgb('#B07A1C')   # тень золота — бруски и корона Башни, 2026-09-28
 
 # Исключения, принятые сознательно (CLAUDE.md, «Визуал»)
-STONE_DARK = _rgb('#232323')   # каменный тайлсет дороги, 2026-08-27
+STONE_DARK = _rgb('#232323')   # камень дороги (2026-08-27) и кладка Башни (2026-10-18)
 STONE_LIGHT = _rgb('#A0A0A0')  # он же
 
 CANON = {AIR, BODY, LINE, LINE2, FAR, TEXTURE, *VOID, ACCENT, GOLD_SHADE}
