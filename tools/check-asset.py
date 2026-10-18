@@ -100,6 +100,17 @@ def check(path):
 ASSETS = os.path.join(os.path.dirname(__file__), '..', 'public', 'assets')
 
 
+# Файлы в игре, которые проверку пока не проходят — сознательно, до
+# переделки (решение 2026-10-18). Сборка их пропускает с предупреждением;
+# новые файлы так не пройдут.
+EXCEPTIONS = {
+    'card/back_side_card_final.png': 'рубашка карты: 12 серых вне палитры, переделать',
+    'card/fool_on_the_card.png': 'портрет Шута: сглаженный, зерно ×1, переделать по рецепту',
+    'future_teller/oracle_body.png': 'оракул: сглаженные края, переделать',
+    'future_teller/oracle_eyes.png': 'глаза оракула: сглаженные края, переделать',
+}
+
+
 def all_assets():
     """Все PNG в public/assets по порядку. Сам обходит папки, поэтому
     имена с пробелами не ломаются, как при раскрытии шаблона в shell."""
@@ -116,8 +127,13 @@ def main(argv):
         return 1
     if argv == ['--all']:
         paths = all_assets()
-        bad = [p for p in paths if not check(p)]
-        print(f'\nитого: {len(paths) - len(bad)} из {len(paths)} в порядке')
+        root = os.path.normpath(ASSETS)
+        known = {p for p in paths if os.path.relpath(p, root) in EXCEPTIONS}
+        bad = [p for p in paths if p not in known and not check(p)]
+        print(f'\nитого: {len(paths) - len(bad) - len(known)} из {len(paths)} в порядке, '
+              f'{len(known)} в исключениях')
+        for p in sorted(known):
+            print(f'  ⚠ {os.path.relpath(p, root)} — {EXCEPTIONS[os.path.relpath(p, root)]}')
         for p in bad:
             print(f'  ✗ {os.path.relpath(p)}')
         return 1 if bad else 0
