@@ -43,9 +43,12 @@ def walk_line(im):
 
 def fit(target, src, tol):
     im = Image.open(src).convert('RGBA')
-    im = im.crop(im.getbbox())
-    w, h = im.size
+    box = im.getbbox()
     problems = []
+    if box[0] == 0 or box[2] == im.width:
+        problems.append('плита касается края холста — генератор её обрезал, перегенерировать')
+    im = im.crop(box)
+    w, h = im.size
     if abs(w - target) > tol:
         problems.append(f'ширина {w}, нужна {target} (±{tol}) — перегенерировать')
     top = walk_line(im)
