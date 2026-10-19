@@ -2,10 +2,10 @@
 """Плиты дороги из сгенерированного островка: одна команда от PNG генератора
 до атласа столбиков и превью дороги рядом с Шутом.
 
-Островок (вид сбоку, ровный верх, рваный низ) режется на столбики по 16
-арт-px: первый — левый торец, последний — правый, всё между ними — середины.
-Дорога собирается как торец + случайные середины + торец, поэтому низ у
-каждой плиты свой. Ничего не дорисовывается: только кроп, выравнивание по
+Островок (вид сбоку, ровный верх) режется на столбики по 16 арт-px: первые
+--cap — левый торец, последние --cap — правый. Середины — только столбики
+ровной части низа, поэтому дорога любой длины = торец + середины + торец, и
+плавное брюхо не ломается ступеньками. Для рваного низа хватает --cap 1. Ничего не дорисовывается: только кроп, выравнивание по
 верху и раскладка столбиков (правило «никакой дорисовки руками»).
 
     python3 tools/island-tiles.py incoming/road/is1.png               # превью
@@ -53,9 +53,20 @@ def check(cols):
     return sorted(bad)
 
 
-def road(cols, mids, rng):
-    """Одна плита: торец + mids случайных середин + торец."""
-    parts = [cols[0]] + [rng.choice(cols[1:-1]) for _ in range(mids)] + [cols[-1]]
+def middles(cols, cap):
+    """Середины: только ровная часть брюха. Столбики между торцами, у
+    которых нижний край не дальше 2 px от самого глубокого, — так плавный
+    низ не ломается ступеньками при случайной раскладке."""
+    inner = cols[cap:len(cols) - cap] or cols[1:-1]
+    depth = [c.getbbox()[3] if c.getbbox() else 0 for c in inner]
+    best = max(depth)
+    return [c for c, d in zip(inner, depth) if best - d <= 2]
+
+
+def road(cols, mids, rng, cap=1):
+    """Одна плита: торец (cap столбиков) + mids середин + торец."""
+    pool = middles(cols, cap)
+    parts = cols[:cap] + [rng.choice(pool) for _ in range(mids)] + cols[len(cols) - cap:]
     h = cols[0].height
     out = Image.new('RGBA', (CELL * len(parts), h), (0, 0, 0, 0))
     for i, p in enumerate(parts):
@@ -63,11 +74,11 @@ def road(cols, mids, rng):
     return out
 
 
-def preview(cols, seed):
+def preview(cols, seed, cap=1):
     rng = random.Random(seed)
     fool = Image.open(FOOL).convert('RGBA').crop((0, 0, 44, 48))
     h = cols[0].height
-    plates = [road(cols, m, rng) for m in (2, 5, 3, 7)]
+    plates = [road(cols, m, rng, cap) for m in (1, 4, 2, 5)]
     W, H = 215, 48 + 2 * (h + 24) + 8
     scene = Image.new('RGBA', (W, H), '#111111')
     # дорога вниз-вправо, как у Шута: две плиты в ряд, ниже ещё две
@@ -86,6 +97,8 @@ def main():
     ap.add_argument('src')
     ap.add_argument('--out', help='куда положить атлас (по умолчанию рядом с src)')
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--cap', type=int, default=1,
+                    help='ширина торца в столбиках: 2–3 для плавного брюха, весь изгиб уходит в торец')
     a = ap.parse_args()
     src = Path(a.src)
     cols = columns(Image.open(src).convert('RGBA'))
@@ -96,9 +109,9 @@ def main():
         atlas.alpha_composite(c, (i * CELL, 0))
     atlas.save(out)
     prev = out.with_name(out.stem + '_preview.png')
-    preview(cols, a.seed).save(prev)
+    preview(cols, a.seed, a.cap).save(prev)
     print(f'{"✗" if bad else "✓"} {out.name}: {len(cols)} столбиков '
-          f'(торцы + {len(cols) - 2} середин), {atlas.width}×{atlas.height}'
+          f'(торцы по {a.cap}, ровных середин {len(middles(cols, a.cap))}), {atlas.width}×{atlas.height}'
           + (f'; чужое: {", ".join(bad)}' if bad else ''))
     print(f'  превью: {prev}')
 
