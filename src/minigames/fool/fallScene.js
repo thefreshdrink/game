@@ -332,7 +332,7 @@ export function drawFallSequence(ctx, w, h, s) {
     // Плита прибытия проступает ПОД парой, пока та подлетает (до 0.8 —
     // такт 'arrive' дотянет до 1).
     if (dv > 0) {
-      drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, PLATE_H, dv * 0.8, 4, 0.42, 0.4);
+      drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, dv * 0.8, 4, 0.42, 0.4);
     }
 
     const pw = PAIR_W;
@@ -356,11 +356,11 @@ export function drawFallSequence(ctx, w, h, s) {
 
   // Основная плита — быстро дотягивается.
   const mainP = clamp01(0.8 + 0.2 * (p / 0.3));
-  drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, PLATE_H, mainP, 4, 0.42, 0.4);
+  drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, mainP, 4, 0.42, 0.4);
   // Ступень справа — сразу следом за плитой. Солнце здесь НЕ мелькает
   // (правка в чате 2026-09-11) — оно проступает на экране предсказания.
   const step = arrivalStep(images, groundX, gw, groundY);
-  drawPixelReveal(ctx, step.img, step.x, step.y, step.img.width, PLATE_H, clamp01(p / 0.3), 4, 0.42, 0.4);
+  drawPixelReveal(ctx, step.img, step.x, step.y, step.img.width, step.img.height, clamp01(p / 0.3), 4, 0.42, 0.4);
 
   // Пара: первые ~0.3 такта ещё во «влётном» спрайте у самой земли, потом
   // встаёт — Шут дышит, пёс садится, с коротким доседанием.
