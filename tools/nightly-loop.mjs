@@ -1,7 +1,8 @@
 // Ночной прогон петли по собранному dist/: вопрос → веер → карта → мини-игра →
 // предсказание → ONE MORE QUESTION → снова вопрос. Мышь = палец
 // (pointerdown/move/up). Инструмент агента, в игру не входит; Playwright не
-// ставится в проект (в devDependencies только Vite) — берётся глобальный.
+// ставится в проект (в devDependencies только Vite) — берётся глобальный
+// (сам находит его через `npm root -g`, ставить в проект не нужно).
 //
 //   npm run build && npx vite preview --port 4173 &
 //   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower 390x844,1440x860
@@ -18,7 +19,19 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 const OUT = process.env.LOOP_OUT || tmpdir(); // results.jsonl и снимки — не в репозиторий
 const PW = process.env.PLAYWRIGHT_MODULE || 'playwright';
-const { chromium } = await import(PW);
+// ESM не видит глобальные пакеты (NODE_PATH не работает для import) — если
+// 'playwright' рядом не нашёлся, берём его из `npm root -g`. Playwright —
+// CommonJS: chromium может лежать в default.
+async function loadPlaywright() {
+  try { return await import(PW); } catch (e) {
+    if (PW !== 'playwright' || e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+    const { execSync } = await import('child_process');
+    const root = execSync('npm root -g', { encoding: 'utf8' }).trim();
+    return import(join(root, 'playwright', 'index.js'));
+  }
+}
+const pw = await loadPlaywright();
+const chromium = pw.chromium ?? pw.default?.chromium;
 
 const BASE = process.argv[2] || 'http://localhost:4173/game/';
 const cards = (process.argv[3] || 'fool,tower').split(',');
