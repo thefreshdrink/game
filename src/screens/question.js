@@ -21,7 +21,7 @@ import {
 } from '../core/oracle.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { clamp01 } from '../core/ease.js';
-import { t as str } from '../data/strings.js';
+import { t as str, getLang, cycleLang } from '../data/strings.js';
 
 const LABELS = { work: str('category.work'), love: str('category.love'), mental: str('category.mental') };
 
@@ -112,6 +112,11 @@ export function createQuestionScreen({ input, images, goto }) {
   let text2Start = TEXT2_START;
   let optionsStart = OPTIONS_START;
 
+  // Кнопка языка (2026-10-24): правый верхний угол, «›EN» тем же языком,
+  // что пункты меню, мельче. Тап — следующий язык по кругу (strings.js, cycleLang).
+  let langZone = null;
+  let langActive = false; // палец или курсор на кнопке
+
   function itemAt(x, y) {
     const idx = items.findIndex((it) => zoneHit(it.zone, x, y));
     return idx === -1 ? null : idx;
@@ -156,6 +161,7 @@ export function createQuestionScreen({ input, images, goto }) {
       offHandlers = [
         input.on('pressstart', (e) => {
           pressedIndex = optionsReady() ? itemAt(e.x, e.y) : null;
+          langActive = optionsReady() && langZone !== null && zoneHit(langZone, e.x, e.y);
         }),
         input.on('pressmove', (e) => {
           if (pressedIndex === null && !optionsReady()) return;
@@ -163,16 +169,20 @@ export function createQuestionScreen({ input, images, goto }) {
         }),
         input.on('pressend', () => {
           pressedIndex = null;
+          langActive = false;
           hoverIndex = null; // тач: pointermove после отрыва не придёт, чистим руками
         }),
         input.on('hover', (e) => {
           hoverIndex = optionsReady() ? itemAt(e.x, e.y) : null;
+          langActive = optionsReady() && langZone !== null && zoneHit(langZone, e.x, e.y);
         }),
         input.on('hoverend', () => {
           hoverIndex = null;
+          langActive = false;
         }),
         input.on('tap', (e) => {
           if (!optionsReady()) return;
+          if (langZone !== null && zoneHit(langZone, e.x, e.y)) { cycleLang(); return; }
           const idx = itemAt(e.x, e.y);
           if (idx === null) return;
           session.category = items[idx].category;
@@ -327,6 +337,19 @@ export function createQuestionScreen({ input, images, goto }) {
             ctx.fillText(it.label, it.x, it.y);
           }
         });
+
+        // Кнопка языка — вместе с последним пунктом меню.
+        if (t >= optionsStart + (items.length - 1) * OPTION_ITEM_STAGGER) {
+          // Правый верхний угол, над заголовком: внизу кнопка ложилась на
+          // светлую мантию оракула и терялась.
+          const lh = setFont(ctx, 'menuOption', scale * 0.7);
+          const label = `›${getLang().toUpperCase()}`;
+          const lx = w - marginX - Math.round(ctx.measureText(label).width);
+          const ly = Math.round(26 * scale);
+          langZone = textButtonZone(lx, ly, ctx.measureText(label).width, lh);
+          ctx.fillStyle = langActive ? '#EBA331' : '#808080';
+          ctx.fillText(label, lx, ly);
+        }
       }
     },
   };

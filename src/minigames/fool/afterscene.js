@@ -7,10 +7,10 @@
 //
 // ПРОБА 2026-10-24 — что проступает над плитой, адрес ?above=:
 //   sun  — (по умолчанию) солнце с лучами низко над плитой, как было;
-//   rise — фон холмов как в игре, солнце простым кругом медленно выходит
-//          из-за дальнего гребня;
-//   rose — фон холмов, над плитой с задержкой проступает белая роза
-//          (символ карты Шута в колоде Райдера–Уэйта).
+//   rise — фон холмов как в игре, мягкое солнце медленно встаёт из-за
+//          гребня и останавливается наполовину;
+//   rose — фон холмов, на плите рядом с Шутом с задержкой вырастает белая
+//          роза (символ карты Шута в колоде Райдера–Уэйта).
 // После выбора оставить один путь.
 
 import { buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W } from './platforms.js';
@@ -26,17 +26,61 @@ const ABOVE = (() => {
 
 const RISE_DELAY = 0.6;  // с, после входа на экран
 const RISE_TIME = 5;     // с, круг выходит из-за гребня целиком
-const RISE_R = 22;       // радиус круга, экранных px
+const RISE_R = 26;       // радиус круга, экранных px
 const ROSE_DELAY = 1.6;  // с — роза проступает, когда текст уже пошёл
-const ROSE_TIME = 1.4;
+const ROSE_TIME = 2.2;  // медленно — растёт, а не вспыхивает
 
-/** Простой пиксельный круг ячейками 2×2 — без лучей и бликов. */
-function drawDisc(ctx, cx, cy, r, color) {
-  ctx.fillStyle = color;
-  for (let dy = -r; dy <= r; dy += 2) {
-    const hw = Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy)) / 2) * 2;
-    ctx.fillRect(cx - hw, cy + dy, hw * 2, 2);
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+// От центра к краю и дальше в свечение: тоны палитры, переход — дизером.
+const SUN_RAMP = ['#808080', '#4A4A4A', '#2E2E2E', '#252525', '#212121'];
+
+/** Мягкое солнце (правка 2026-10-24: «мягче, градиентно»): круг ячейками
+ * 2×2, тон по расстоянию от центра, между тонами — Байер 4×4, снаружи —
+ * редкое свечение до 1.7 R. Без лучей. */
+function drawSoftSun(ctx, cx, cy, r) {
+  const outer = r * 1.7;
+  for (let dy = -outer; dy <= outer; dy += 2) {
+    for (let dx = -outer; dx <= outer; dx += 2) {
+      const d = Math.hypot(dx, dy);
+      if (d > outer) continue;
+      // 0..1 внутри круга, 1..2 — свечение
+      const g = d <= r ? (d / r) * 1.5 : 1.5 + ((d - r) / (outer - r)) * 2.5;
+      const lo = Math.min(SUN_RAMP.length - 1, Math.floor(g));
+      const frac = g - lo;
+      const bx = ((cx + dx) / 2) & 3;
+      const by = ((cy + dy) / 2) & 3;
+      let idx = frac * 16 > BAYER[by][bx] + 0.5 ? lo + 1 : lo;
+      if (idx >= SUN_RAMP.length) continue; // за краем свечения — небо
+      if (d > r && BAYER[by][bx] < 8 + (d - r) / (outer - r) * 8) continue; // свечение редкое
+      ctx.fillStyle = SUN_RAMP[idx];
+      ctx.fillRect(cx + dx, cy + dy, 2, 2);
+    }
   }
+}
+
+/** Высота гребня переднего плана холмов в экранной колонке x: первая
+ * непрозрачная строка картинки foolBackdropFront (кешируется). */
+let ridgeCache = null;
+function ridgeScreenY(images, w, x) {
+  const img = images.foolBackdropFront;
+  if (!ridgeCache) {
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, img.width, img.height).data;
+    ridgeCache = new Array(img.width).fill(img.height);
+    for (let ix = 0; ix < img.width; ix++) {
+      for (let iy = 0; iy < img.height; iy++) {
+        if (d[(iy * img.width + ix) * 4 + 3]) { ridgeCache[ix] = iy; break; }
+      }
+    }
+  }
+  // фон шире экрана кладётся по центру (scenery.js drawBackdrop)
+  const bw = img.width * 2;
+  const ix = Math.max(0, Math.min(img.width - 1, Math.floor((x - (w - bw) / 2) / 2)));
+  return BACKDROP_DROP + ridgeCache[ix] * 2;
 }
 
 export function createLeapAfterscene({ images }) {
@@ -61,14 +105,15 @@ export function createLeapAfterscene({ images }) {
       } else {
         drawBackdrop(ctx, images, w, h, 0, 0);
         if (ABOVE === 'rise') {
-          // Круг встаёт из-за самого дальнего гребня (слой 0, ≈ 200 арт-px
-          // картинки фона): за всеми холмами, ease-out, и останавливается
-          // над гребнем.
-          const ridgeY = BACKDROP_DROP + 200 * 2;
+          // Солнце встаёт из-за гребня и останавливается НАПОЛОВИНУ — центр
+          // ровно на линии холма, нижняя половина срезана передним планом
+          // (правка 2026-10-24).
+          const sx = Math.round((w * 0.72) / 2) * 2;
+          const ridgeY = ridgeScreenY(images, w, sx);
           const k = clamp01((t - RISE_DELAY) / RISE_TIME);
           const e = 1 - (1 - k) * (1 - k);
-          const cy = Math.round((ridgeY + RISE_R + 4 - e * (RISE_R * 2 + 60)) / 2) * 2;
-          drawDisc(ctx, Math.round((w * 0.7) / 2) * 2, cy, RISE_R, '#808080');
+          const cy = Math.round((ridgeY + RISE_R * 1.8 - e * RISE_R * 1.8) / 2) * 2;
+          drawSoftSun(ctx, sx, cy, RISE_R);
           drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdropFront, false);
         }
       }
@@ -76,12 +121,13 @@ export function createLeapAfterscene({ images }) {
       ctx.drawImage(ground, gx, gy); // ступеньки справа нет (решение 2026-10-24)
 
       if (ABOVE === 'rose' && images.foolRose) {
+        // Роза растёт на той же плите, справа от Шута: проявление идёт от
+        // основания стебля вверх (правка 2026-10-24: «как растение»).
         const r = images.foolRose;
         const rw = r.width * 2;
         const rh = r.height * 2;
         const p = clamp01((t - ROSE_DELAY) / ROSE_TIME);
-        // над плитой справа от Шута, на уровне его головы
-        drawPixelReveal(ctx, r, gx + gw - rw - 8, gy - PLAYER_H - 24, rw, rh, p, 2, 0.5, 1, 0.35);
+        drawPixelReveal(ctx, r, fcx + 44, gy - rh, rw, rh, p, 2, 0.5, 1, 0.15);
       }
 
       const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];

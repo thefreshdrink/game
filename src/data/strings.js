@@ -1,11 +1,17 @@
 // Строки интерфейса — один слой (CLAUDE.md: «строки идут через один слой, а
-// не хардкодом по файлам»). Сейчас язык один — EN, тексты слово в слово те,
-// что раньше жили по экранам. Тексты предсказаний сюда не входят — они в
-// банке `cards.js`. Глиф «›» перед пунктом меню — часть рисунка, а не
-// перевода, поэтому ставится на экране, а не здесь.
+// не хардкодом по файлам»). Тексты предсказаний и имена карт сюда не входят —
+// они в банке `cards.js` и пока только на EN. Глиф «›» перед пунктом меню —
+// часть рисунка, а не перевода, поэтому ставится на экране, а не здесь.
 //
-// Как устроен выбор языка — ещё не решено (open-questions B6 про лицо карты;
-// переключатель — оболочка). Пока `t()` всегда отдаёт EN.
+// Выбор языка (2026-10-24): кнопка на экране 1, по тапу — следующий язык.
+// Экраны читают строки при загрузке модулей (и тайминги интро считают по
+// числу слов), поэтому смена языка перезапускает страницу — один раз, на
+// экран 1, с коротким входом (session.js). Выбор помнится в localStorage —
+// это настройка, не прогресс; решение о хранилище прогресса (2026-08-20) не
+// затрагивает.
+//
+// RU, UK, ES, PT — ЧЕРНОВИКИ Claude, носителями не проверены (план, недели
+// 6–7). В UK нет «ґ»: строчной ґ нет в Pixelify (open-questions B13).
 
 const EN = {
   // экран 1 (question.js)
@@ -35,8 +41,110 @@ const EN = {
   'prediction.share': 'SHARE',
 };
 
-const DICTS = { en: EN };
-const lang = 'en';
+// Черновики (Claude, 2026-10-24), не проверены носителями.
+const RU = {
+  'question.ask': 'Хочешь увидеть будущее?',
+  'question.about': 'О чём твой вопрос?',
+  'category.work': 'РАБОТА',
+  'category.love': 'ЛЮБОВЬ',
+  'category.mental': 'РАЗУМ',
+  'deck.title': 'Колода открывается…',
+  'deck.hint.1': 'ПРОВЕДИ ПО КОЛОДЕ.',
+  'deck.hint.2': 'ДОВЕРЬСЯ. ВЫБЕРИ КАРТУ',
+  'reveal.continue': 'ДАЛЬШЕ',
+  'fool.walk': ['НАЖМИ ИЛИ ДЕРЖИ', 'ЧТОБЫ ИДТИ'],
+  'fool.swipe': ['СВАЙП ВВЕРХ', 'ЧТОБЫ ПРЫГНУТЬ'],
+  'fool.hold': ['ДЕРЖИ', 'ЧТОБЫ ПРЫГНУТЬ'],
+  'tower.hold': 'ДЕРЖИ БРУСОК',
+  'prediction.again': 'ЕЩЁ ВОПРОС',
+  'prediction.share': 'ПОДЕЛИТЬСЯ',
+};
+
+const UK = {
+  'question.ask': 'Хочеш побачити майбутнє?',
+  'question.about': 'Про що твоє питання?',
+  'category.work': 'РОБОТА',
+  'category.love': 'КОХАННЯ',
+  'category.mental': 'РОЗУМ',
+  'deck.title': 'Колода відкривається…',
+  'deck.hint.1': 'ПРОВЕДИ ПО КОЛОДІ.',
+  'deck.hint.2': 'ДОВІРСЯ. ОБЕРИ КАРТУ',
+  'reveal.continue': 'ДАЛІ',
+  'fool.walk': ['ТОРКНИСЬ АБО ТРИМАЙ', 'ЩОБ ЙТИ'],
+  'fool.swipe': ['СВАЙП УГОРУ', 'ЩОБ СТРИБНУТИ'],
+  'fool.hold': ['ТРИМАЙ', 'ЩОБ СТРИБНУТИ'],
+  'tower.hold': 'ТРИМАЙ БРУСОК',
+  'prediction.again': 'ЩЕ ПИТАННЯ',
+  'prediction.share': 'ПОДІЛИТИСЯ',
+};
+
+const ES = {
+  'question.ask': '¿Quieres ver el futuro?',
+  'question.about': '¿Sobre qué es tu pregunta?',
+  'category.work': 'TRABAJO',
+  'category.love': 'AMOR',
+  'category.mental': 'MENTE',
+  'deck.title': 'La baraja se ofrece…',
+  'deck.hint.1': 'DESLIZA POR LA BARAJA.',
+  'deck.hint.2': 'CONFÍA. ELIGE LA CARTA',
+  'reveal.continue': 'SIGUE',
+  'fool.walk': ['TOCA O MANTÉN', 'PARA CAMINAR'],
+  'fool.swipe': ['DESLIZA ARRIBA', 'PARA SALTAR'],
+  'fool.hold': ['MANTÉN', 'PARA SALTAR'],
+  'tower.hold': 'MANTÉN UN BLOQUE',
+  'prediction.again': 'OTRA PREGUNTA',
+  'prediction.share': 'COMPARTIR',
+};
+
+const PT = {
+  'question.ask': 'Quer ver o futuro?',
+  'question.about': 'Sobre o que é a sua pergunta?',
+  'category.work': 'TRABALHO',
+  'category.love': 'AMOR',
+  'category.mental': 'MENTE',
+  'deck.title': 'O baralho se oferece…',
+  'deck.hint.1': 'DESLIZE PELO BARALHO.',
+  'deck.hint.2': 'CONFIE. ESCOLHA A CARTA',
+  'reveal.continue': 'CONTINUE',
+  'fool.walk': ['TOQUE OU SEGURE', 'PARA ANDAR'],
+  'fool.swipe': ['DESLIZE PARA CIMA', 'PARA PULAR'],
+  'fool.hold': ['SEGURE', 'PARA PULAR'],
+  'tower.hold': 'SEGURE UM BLOCO',
+  'prediction.again': 'MAIS UMA PERGUNTA',
+  'prediction.share': 'COMPARTILHAR',
+};
+
+const DICTS = { en: EN, ru: RU, uk: UK, es: ES, pt: PT };
+/** Порядок на кнопке — по кругу. Подпись — код языка заглавными. */
+export const LANGS = ['en', 'ru', 'uk', 'es', 'pt'];
+const STORE_KEY = 'tj.lang';
+
+function readLang() {
+  try {
+    const q = new URLSearchParams(location.search).get('lang');
+    if (q && DICTS[q]) return q;
+    const v = localStorage.getItem(STORE_KEY);
+    if (v && DICTS[v]) return v;
+  } catch { /* приватный режим, превью — просто EN */ }
+  return 'en';
+}
+
+const lang = readLang();
+try { document.documentElement.lang = lang; } catch { /* вне браузера */ }
+
+export function getLang() { return lang; }
+
+/** Следующий язык по кругу: запомнить и перезапустить страницу. */
+export function cycleLang() {
+  const next = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length];
+  try {
+    localStorage.setItem(STORE_KEY, next);
+    sessionStorage.setItem('tj.langSwitched', '1'); // короткий вход после перезапуска
+  } catch { /* без хранилища язык живёт до перезагрузки — не страшно */ }
+  const url = new URL(location.href);
+  url.searchParams.delete('lang');
+  location.replace(url.toString());
+}
 
 export function t(key) {
   const v = DICTS[lang][key] ?? EN[key];
