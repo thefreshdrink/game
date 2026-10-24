@@ -51,13 +51,13 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1, { R = 28, longRay = 12 } =
 
 // ПРОБА 2026-10-24 (задача «солнце срезано краем поля»): варианты места
 // солнца на экране предсказания, переключаются адресом ?sun=a|b|c, без
-// параметра — как было (центр у самого угла, срезано). После выбора
-// оставить один.
+// параметра — вариант c (выбран 24.10), ?sun=now — прежнее срезанное.
+// После окончательного выбора оставить один.
 //   a — то же солнце целиком в правом верхнем углу;
 //   b — солнце поменьше, целиком, чуть ниже заголовка;
 //   c — низкое солнце над плитой справа, «встаёт» за Шутом.
 const SUN_VARIANT = (() => {
-  try { return new URLSearchParams(location.search).get('sun') || 'now'; } catch { return 'now'; }
+  try { return new URLSearchParams(location.search).get('sun') || 'c'; } catch { return 'c'; }
 })();
 
 /** Где и какое солнце рисовать на экране предсказания. gy — верх плиты. */
@@ -65,7 +65,9 @@ export function arrivalSunPlace(w, h, gy) {
   switch (SUN_VARIANT) {
     case 'a': return { cx: w - 90, cy: 94, R: 28, longRay: 12 };
     case 'b': return { cx: w - 56, cy: 62, R: 18, longRay: 7 };
-    case 'c': return { cx: w - 92, cy: gy - 150, R: 28, longRay: 10 };
-    default: return { cx: w - 6, cy: 22, R: 28, longRay: 12 };
+    case 'now': return { cx: w - 6, cy: 22, R: 28, longRay: 12 };
+    // По умолчанию — низко над плитой (выбор 2026-10-24, «наверное»;
+    // на месте солнца может появиться другой знак — обсуждается).
+    default: return { cx: w - 92, cy: gy - 150, R: 28, longRay: 10 };
   }
 }
