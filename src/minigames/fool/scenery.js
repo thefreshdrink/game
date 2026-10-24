@@ -31,10 +31,10 @@ const TOP = [
 // Нижние подняты на 0.1 кадра (правка 29.09: «слишком низко») и ещё на
 // 0.1 (правки 2026-10-24, после того как камера опустила действие). Тона —
 // свои (тёмный тон пробовали 24.10 — сливался с фоном). Большое облако
-// (heap) ещё чуть выше — 0.66 (правка 2026-10-24).
+// (heap) ещё выше — 0.6 (правки 2026-10-24).
 const BOTTOM = [
   { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.64, true], ['pair', 430, 0.62, false]] },
-  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.66, true], ['puffs', 600, 0.75, false]] },
+  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.6, true], ['puffs', 600, 0.75, false]] },
 ];
 
 function formationBounds(parts, images) {
