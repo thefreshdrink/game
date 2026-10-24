@@ -6,7 +6,7 @@
 в соседний тон точечным дизерингом 4×4 (Байер) — как рамп пропасти в
 design-system. Только тоны пустоты #111111…#2E2E2E: фон не спорит с Шутом.
 
-    python3 tools/backdrop-hills.py out.png [--style soft|peaks|mixed] [--seed N]
+    python3 tools/backdrop-hills.py out.png [--style soft|peaks|mixed] [--layers 2..7] [--seed N]
 
 Пишет нативный размер 200×320 (зерно 2 → 400×640 на экране).
 """
@@ -43,29 +43,38 @@ def ridge(seed, base, amp, style):
     return y
 
 
-def render(style, seed):
-    # тоны: небо тёмное сверху → светлее у горизонта; слои — от светлого к тёмному
+RAMP = ['#2E2E2E', '#2A2A2A', '#252525', '#212121', '#1C1C1C', '#161616', '#111111']
+
+
+def render(style, seed, n=4):
+    """n слоёв (2–7): гребни равномерно от y_top до y_bot, тоны — ступени
+    RAMP от светлого (дальний) к тёмному (ближний); каждый слой туманом
+    переходит в следующий тон вниз."""
+    # тоны: небо тёмное сверху → светлее у горизонта
     sky_top, sky_low = rgb('#111111'), rgb('#1C1C1C')
-    layers = [  # (база гребня, амплитуда, тон верха, тон низа)
-        (185, 12, '#2E2E2E', '#252525'),
-        (215, 16, '#252525', '#1C1C1C'),
-        (248, 18, '#1C1C1C', '#161616'),
-        (285, 16, '#161616', '#111111'),
-    ]
+    y_top, y_bot = 180, 296
+    step = (len(RAMP) - 1) / max(1, n - 1) if n > 1 else 0
+    tones = [RAMP[min(len(RAMP) - 1, round(i * step))] for i in range(n)]
+    layers = []
+    for i in range(n):
+        base = y_top + (y_bot - y_top) * i / max(1, n - 1)
+        low = RAMP[min(len(RAMP) - 1, RAMP.index(tones[i]) + 1)]
+        layers.append((base, 10 + 8 * i / max(1, n - 1), tones[i], low))
     im = Image.new('RGB', (W, H))
     px = im.load()
-    horizon = 190
+    horizon = y_top
     for y in range(H):
         f = min(1, max(0, (y - 20) / (horizon - 20)))
         for x in range(W):
             px[x, y] = mix(sky_top, sky_low, f, x, y)
+    fog = max(10, (y_bot - y_top) / max(1, n - 1))
     for i, (base, amp, top, low) in enumerate(layers):
-        ry = ridge(seed * 10 + i, base, amp, style if i < 3 or style != 'mixed' else 'soft')
+        ry = ridge(seed * 10 + i, base, amp, style if i < n - 1 or style != 'mixed' else 'soft')
         top, low = rgb(top), rgb(low)
         for x in range(W):
             y0 = max(0, ry(x))
             for y in range(y0, H):
-                f = min(1, (y - y0) / 28)  # туман: светлее у гребня, темнее вниз
+                f = min(1, (y - y0) / fog)  # туман: светлее у гребня, темнее вниз
                 px[x, y] = mix(top, low, f, x, y)
     return im
 
@@ -75,9 +84,10 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--style', default='soft', choices=['soft', 'peaks', 'mixed'])
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--layers', type=int, default=4, help='число слоёв холмов, 2–7')
     a = ap.parse_args()
-    render(a.style, a.seed).save(a.out)
-    print(f'{a.out}: {W}×{H}, {a.style}, seed {a.seed}')
+    render(a.style, a.seed, a.layers).save(a.out)
+    print(f'{a.out}: {W}×{H}, {a.style}, слоёв {a.layers}, seed {a.seed}')
 
 
 if __name__ == '__main__':
