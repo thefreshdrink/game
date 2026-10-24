@@ -6,7 +6,6 @@
 // (prediction.js) — одна композиция в двух местах. Всё из графического
 // языка проекта, целыми пикселями, тонами палитры.
 
-import { buildRoadStrip } from './platforms.js';
 
 const C = 4; // ячейка рисунка, 2 арт-px
 
@@ -49,32 +48,4 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
     }
   }
   ctx.restore();
-}
-
-/** Кусок той же дороги на ступень выше, справа за плитой прибытия —
- * вместо лесенки (правка 29.09: трава, кустик и лесенка убраны, «такой же
- * маленький кусочек, как тот, где стоит Шут, на одну ступеньку выше»).
- * Два тайла — торец + торец; ступень и зазор по 32, как дельты уровня. */
-// ПРОБА 2026-10-24 (задача «плита прибытия появляется сразу — игроки
-// пытаются идти»): три варианта на выбор Алисе, переключаются адресом
-// ?arrive=a|b|c, без параметра — как было.
-//   a — плита есть, ступеньки справа нет: дорога не «продолжается»;
-//   b — пара приземляется в пустоту и парит, плита проступает под ней
-//       только вместе с предсказанием;
-//   c — плиты нет совсем: пара парит под предсказанием.
-// После выбора оставить один путь, остальные убрать.
-export const ARRIVE_VARIANT = (() => {
-  try { return new URLSearchParams(location.search).get('arrive') || 'now'; } catch { return 'now'; }
-})();
-export const ARRIVE_HAS_STEP = ARRIVE_VARIANT === 'now';
-export const ARRIVE_PLATE_IN_FALL = ARRIVE_VARIANT === 'now' || ARRIVE_VARIANT === 'a';
-
-export const ARRIVE_STEP_W = 64;
-const STEP_GAP = 32;
-const STEP_UP = 32;
-let stepStrip = null;
-
-export function arrivalStep(images, plateX, plateW, groundY) {
-  if (!stepStrip) stepStrip = buildRoadStrip(images, ARRIVE_STEP_W);
-  return { img: stepStrip, x: plateX + plateW + STEP_GAP, y: groundY - STEP_UP };
 }

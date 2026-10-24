@@ -5,7 +5,6 @@
 import { clamp01 } from '../../core/ease.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { drawPlatform, PLATE_H, ARRIVE_GROUND_FRAC } from './platforms.js';
-import { arrivalStep, ARRIVE_HAS_STEP, ARRIVE_PLATE_IN_FALL } from './arrivalScene.js';
 import { PLAYER_W, PLAYER_H, PAIR_W, DOG_W, DOG_H, IDLE_FPS } from './actors.js';
 
 export const BRACE_DUR = 0.15;   // такт 1 — стоп-кадр
@@ -331,7 +330,7 @@ export function drawFallSequence(ctx, w, h, s) {
 
     // Плита прибытия проступает ПОД парой, пока та подлетает (до 0.8 —
     // такт 'arrive' дотянет до 1).
-    if (dv > 0 && ARRIVE_PLATE_IN_FALL) {
+    if (dv > 0) {
       drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, dv * 0.8, 4, 0.42, 0.4);
     }
 
@@ -347,7 +346,7 @@ export function drawFallSequence(ctx, w, h, s) {
   }
 
   // arrive — «другой мир», БЫСТРО (правка в чате 2026-09-10, чтобы не
-  // тянуло тапать): сперва плита и ступень справа, дальше сразу
+  // тянуло тапать): сперва плита, дальше сразу
   // предсказание с заголовком и солнцем (правка 2026-09-11: цветы и
   // мелькание солнца при приземлении убраны — солнце теперь только там).
   ctx.fillStyle = '#000000';
@@ -355,24 +354,11 @@ export function drawFallSequence(ctx, w, h, s) {
   const p = clamp01(stateT / ARRIVE_DUR);
 
   // Основная плита — быстро дотягивается.
-  if (ARRIVE_PLATE_IN_FALL) {
-    const mainP = clamp01(0.8 + 0.2 * (p / 0.3));
-    drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, mainP, 4, 0.42, 0.4);
-  }
-  // Ступень справа — сразу следом за плитой. Солнце здесь НЕ мелькает
-  // (правка в чате 2026-09-11) — оно проступает на экране предсказания.
-  if (ARRIVE_HAS_STEP) {
-    const step = arrivalStep(images, groundX, gw, groundY);
-    drawPixelReveal(ctx, step.img, step.x, step.y, step.img.width, step.img.height, clamp01(p / 0.3), 4, 0.42, 0.4);
-  }
-
-  // Без плиты под ногами пара не встаёт — парит над линией прибытия.
-  if (!ARRIVE_PLATE_IN_FALL) {
-    const pw = PAIR_W;
-    const bob = Math.round(Math.sin(t * 1.3) * 2) * 2;
-    ctx.drawImage(images.foolDogFall, Math.round(standCX - pw / 2), Math.round(groundY - PLAYER_H + bob), pw, PLAYER_H);
-    return;
-  }
+  const mainP = clamp01(0.8 + 0.2 * (p / 0.3));
+  drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, mainP, 4, 0.42, 0.4);
+  // Ступеньки справа нет (решение 2026-10-24): по ней игроки пытались идти
+  // дальше. Солнце здесь НЕ мелькает (правка 2026-09-11) — оно проступает
+  // на экране предсказания.
 
   // Пара: первые ~0.3 такта ещё во «влётном» спрайте у самой земли, потом
   // встаёт — Шут дышит, пёс садится, с коротким доседанием.
