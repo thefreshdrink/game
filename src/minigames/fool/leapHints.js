@@ -1,7 +1,7 @@
 // Подсказки Шута (BUILD-SPEC-04 задача 3 + правки в чате 2026-08-31): две
 // строки чуть выше головы, со знаком жеста справа. WALK — сразу на старте;
-// SWIPE — после первого шага, только на первой плите (показали жест один
-// раз и дальше не мешаем); HOLD TO JUMP — на последнем краю, не пропадает
+// SWIPE — после первого шага, первые SWIPE_HINT_PLATES плит (половина
+// дороги, правка 2026-10-24); HOLD TO JUMP — на последнем краю, не пропадает
 // во время удержания, справа проявляется кольцо.
 
 import { drawHintStack } from '../../core/hints.js';
@@ -10,6 +10,10 @@ import { drawHoldRing, drawSwipeTick } from '../../core/gestureGlyph.js';
 import { clamp01 } from '../../core/ease.js';
 import { PLAYER_H } from './actors.js';
 import { t as str } from '../../data/strings.js';
+
+// Подсказка свайпа держится первую половину дороги (правка в чате
+// 2026-10-24: «подольше»), а не только на первой плите. Плит 9.
+const SWIPE_HINT_PLATES = 4;
 
 export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver, idx, lean, player, swipeLinger }) {
   const scale = uiScale(w);
@@ -30,7 +34,7 @@ export function drawLeapHints(ctx, w, camX, camY, { state, stateT, t, movedEver,
   } else if (state === 'walk' && !movedEver) {
     // Первая подсказка — практически сразу.
     drawHintStack(ctx, str('fool.walk'), { ...at, fadeIn: t / 0.2 });
-  } else if (movedEver && ((state === 'walk' && idx === 0) || (swipeLinger && (state === 'walk' || state === 'air')))) {
+  } else if (movedEver && ((state === 'walk' && idx < SWIPE_HINT_PLATES) || (swipeLinger && (state === 'walk' || state === 'air')))) {
     const box = drawHintStack(ctx, str('fool.swipe'), at);
     // Центр знака — на базовой линии нижней строки, не по середине стека.
     drawSwipeTick(ctx, Math.round(at.figX + box.widest / 2 + 28), Math.round(box.bottom), 1, t);

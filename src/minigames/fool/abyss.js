@@ -15,5 +15,6 @@ export function drawAbyss(ctx, w, h, t) {
     breatheAmp: 24,
     breathePeriod: 7,
     cell: 2,   // сетка сцены Шута — 2 экранных на арт-пиксель
+    feather: 24, // верх тумана растворяется в холмы, без ровной линии
   });
 }

@@ -376,6 +376,11 @@ export function createLeapScreen({ input, images, goto }) {
       drawCloudsTop(ctx, images, w, h, camX, t);
       drawAbyss(ctx, w, h, t);
       drawCloudsBottom(ctx, images, w, h, camX, t);
+      // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10),
+      // позади плит (правка 2026-10-24: передний план без дождя).
+      if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
+        drawDrizzle(ctx, w, h, t, camX);
+      }
       platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
       ghost.draw(ctx, last, camX, camY);
 
@@ -404,11 +409,6 @@ export function createLeapScreen({ input, images, goto }) {
       drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV,
         standPlat === platforms[platforms.length - 1]);
       drawDog(ctx, images, dog, camX, camY, dogPlat);
-
-      // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10).
-      if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
-        drawDrizzle(ctx, w, h, t, camX);
-      }
 
       drawLeapHints(ctx, w, camX, camY, {
         state, stateT, t, movedEver, idx, lean, player, swipeLinger: t < swipeHintUntil,

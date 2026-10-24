@@ -16,7 +16,8 @@ const BAYER = [
 
 const patterns = new Map();
 
-/** Узор одного ряда дизера: 4 ячейки, тон hi там, где порог Bayer ниже level/16. */
+/** Узор одного ряда дизера: 4 ячейки, тон hi там, где порог Bayer ниже level/16.
+ * lo = -1 — вместо нижнего тона прозрачно (растворение верхней кромки). */
 function rowPattern(ctx, cell, brow, lo, hi, level) {
   const key = `${cell}:${brow}:${lo}:${hi}:${level}`;
   let p = patterns.get(key);
@@ -26,7 +27,9 @@ function rowPattern(ctx, cell, brow, lo, hi, level) {
     c.height = cell;
     const g = c.getContext('2d');
     for (let col = 0; col < 4; col++) {
-      g.fillStyle = BAYER[brow][col] < level ? PALETTE[hi] : PALETTE[lo];
+      const tone = BAYER[brow][col] < level ? hi : lo;
+      if (tone < 0) continue;
+      g.fillStyle = PALETTE[tone];
       g.fillRect(col * cell, 0, cell, cell);
     }
     p = ctx.createPattern(c, 'repeat-x');
@@ -44,6 +47,8 @@ function rowPattern(ctx, cell, brow, lo, hi, level) {
  * @param opts.breathePeriod период «дыхания», сек
  * @param opts.maxLevel      верхний индекс палитры (кламп яркости; по умолчанию весь диапазон)
  * @param opts.cell          размер ячейки дизера, экранных px
+ * @param opts.feather       сколько ячеек сверху растворяется в то, что под
+ *                           градиентом (0 — ровная кромка, как раньше)
  */
 export function drawVoidGradient(ctx, w, h, {
   alpha = 1,
@@ -53,6 +58,7 @@ export function drawVoidGradient(ctx, w, h, {
   breathePeriod = 8,
   maxLevel = PALETTE.length - 1,
   cell = CELL,
+  feather = 0,
 } = {}) {
   const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
   if (a <= 0) return;
@@ -77,6 +83,17 @@ export function drawVoidGradient(ctx, w, h, {
     const hi = lo < last ? lo + 1 : last;
     const frac = gi - lo;
     const bh = Math.min(CELL, h - cy);
+
+    // Верхняя кромка: ячейки тона lo проступают по Bayer сквозь то, что
+    // под градиентом, — без ровной линии (правка в чате 2026-10-24).
+    if (row < feather) {
+      const level = Math.max(1, Math.ceil(((row + 1) / (feather + 1)) * 16));
+      ctx.fillStyle = rowPattern(ctx, CELL, row & 3, -1, lo, level);
+      ctx.translate(0, cy);
+      ctx.fillRect(0, 0, w, bh);
+      ctx.translate(0, -cy);
+      continue;
+    }
 
     if (frac === 0 || lo === hi) {
       ctx.fillStyle = PALETTE[lo];

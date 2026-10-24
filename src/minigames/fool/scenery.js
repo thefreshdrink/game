@@ -29,10 +29,11 @@ const TOP = [
   { period: 760, parallax: 0.18, drift: 6, items: [['heap', 180, 0.09, false], ['pair', 560, 0.17, true]] },
 ];
 // Нижние подняты на 0.1 кадра (правка 29.09: «слишком низко») и ещё на
-// 0.05 (правка 2026-10-24, после того как камера опустила действие).
+// 0.1 (правки 2026-10-24, после того как камера опустила действие). Все —
+// дальним, тёмным тоном: светлые спорили с плитами (правка 2026-10-24).
 const BOTTOM = [
-  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.69, true], ['pair', 430, 0.67, false]] },
-  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.75, true], ['puffs', 600, 0.8, false]] },
+  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.64, true], ['pair', 430, 0.62, false]] },
+  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.7, true], ['puffs', 600, 0.75, false]] },
 ];
 
 function formationBounds(parts, images) {
@@ -47,10 +48,11 @@ function formationBounds(parts, images) {
   return [x0, x1];
 }
 
-function drawFormation(ctx, images, name, x, y, flip) {
+function drawFormation(ctx, images, name, x, y, flip, toneOverride) {
   const parts = FORMATIONS[name];
   const [x0, x1] = formationBounds(parts, images);
-  parts.forEach(([id, dx, dy, tone]) => {
+  parts.forEach(([id, dx, dy, partTone]) => {
+    const tone = toneOverride ?? partTone;
     const img = images[`cloud_${tone}_${id}`];
     if (!img) return;
     const w = img.width * GRAIN;
@@ -70,13 +72,13 @@ function drawFormation(ctx, images, name, x, y, flip) {
   });
 }
 
-function drawLayer(ctx, images, L, w, h, camX, t) {
+function drawLayer(ctx, images, L, w, h, camX, t, toneOverride) {
   const shift = camX * L.parallax + t * L.drift;
   L.items.forEach(([name, x, yFrac, flip]) => {
     const base = (((x - shift) % L.period) + L.period) % L.period;
     for (let fx = base - L.period; fx < w + 200; fx += L.period) {
       if (fx + 200 < 0) continue;
-      drawFormation(ctx, images, name, fx, h * yFrac, flip);
+      drawFormation(ctx, images, name, fx, h * yFrac, flip, toneOverride);
     }
   });
 }
@@ -132,5 +134,5 @@ export function drawCloudsTop(ctx, images, w, h, camX, t) {
 }
 
 export function drawCloudsBottom(ctx, images, w, h, camX, t) {
-  BOTTOM.forEach((L) => drawLayer(ctx, images, L, w, h, camX, t));
+  BOTTOM.forEach((L) => drawLayer(ctx, images, L, w, h, camX, t, 'far'));
 }
