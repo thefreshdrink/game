@@ -30,21 +30,29 @@ def mix(a, b, f, x, y):
 
 
 def ridge(seed, base, amp, style, rag=0.0):
-    """rag 0..1 — неровность гребня: добавочные короткие волны, гребень
-    становится разным по высоте и чуть рваным, но без острых пиков."""
+    """rag 0..1 — дальний гребень из круглых бугров разной высоты и ширины:
+    сумма плавных «шапок» (cos²) поверх длинной волны. Без зубцов и пиков."""
     r = random.Random(seed)
     waves = [(r.uniform(0.6, 1.0) * amp, r.uniform(0.008, 0.02), r.uniform(0, 6.3)),
              (r.uniform(0.2, 0.45) * amp, r.uniform(0.025, 0.05), r.uniform(0, 6.3))]
-    if rag:
-        waves += [(rag * amp * 0.9, r.uniform(0.045, 0.06), r.uniform(0, 6.3)),
-                  (rag * amp * 0.45, r.uniform(0.1, 0.14), r.uniform(0, 6.3)),
-                  (rag * amp * 0.2, r.uniform(0.2, 0.26), r.uniform(0, 6.3))]
     if style in ('peaks', 'mixed'):
         waves.append((r.uniform(0.15, 0.3) * amp, r.uniform(0.06, 0.09), r.uniform(0, 6.3)))
+    bumps = []
+    if rag:
+        x = r.uniform(-30, 0)
+        while x < W + 30:
+            w = r.uniform(26, 60)
+            bumps.append((x + w / 2, w, r.uniform(0.4, 1.0) * rag * amp * 1.6))
+            x += w * r.uniform(0.55, 0.85)  # бугры заходят друг на друга
+
     def y(x):
         v = sum(a * math.sin(f * x * math.tau / 2 + p) for a, f, p in waves)
         if style == 'peaks':
             v = -abs(v) * 1.1  # острее кверху
+        for c, w, h in bumps:
+            d = (x - c) / (w / 2)
+            if abs(d) < 1:
+                v -= h * math.cos(d * math.pi / 2) ** 2
         return round(base + v)
     return y
 
@@ -74,7 +82,7 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0):
             px[x, y] = mix(sky_top, sky_low, f, x, y)
     fog = max(10, (y_bot - y_top) / max(1, n - 1))
     for i, (base, amp, top, low) in enumerate(layers):
-        ry = ridge(seed * 10 + i, base, amp * (1 + rag if i == 0 else 1),
+        ry = ridge(seed * 10 + i, base, amp,
                    style if i < n - 1 or style != 'mixed' else 'soft',
                    rag if i == 0 else 0)  # неровный — только дальний гребень
         top, low = rgb(top), rgb(low)
