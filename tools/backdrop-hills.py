@@ -29,7 +29,7 @@ def mix(a, b, f, x, y):
     return b if f * 16 > BAYER[y % 4][x % 4] + 0.5 else a
 
 
-def ridge(seed, base, amp, style, rag=0.0):
+def ridge(seed, base, amp, style, rag=0.0, size=1.0):
     """rag 0..1 — дальний гребень из круглых бугров разной высоты и ширины:
     сумма плавных «шапок» (cos²) поверх длинной волны. Без зубцов и пиков."""
     r = random.Random(seed)
@@ -41,8 +41,8 @@ def ridge(seed, base, amp, style, rag=0.0):
     if rag:
         x = r.uniform(-30, 0)
         while x < W + 30:
-            w = r.uniform(26, 60)
-            bumps.append((x + w / 2, w, r.uniform(0.4, 1.0) * rag * amp * 1.6))
+            w = r.uniform(26, 60) * size  # size — масштаб бугров: крупнее и реже
+            bumps.append((x + w / 2, w, r.uniform(0.4, 1.0) * rag * amp * 1.6 * size ** 0.7))
             x += w * r.uniform(0.55, 0.85)  # бугры заходят друг на друга
 
     def y(x):
@@ -52,7 +52,7 @@ def ridge(seed, base, amp, style, rag=0.0):
         for c, w, h in bumps:
             d = (x - c) / (w / 2)
             if abs(d) < 1:
-                v -= h * math.cos(d * math.pi / 2) ** 2
+                v -= h * math.cos(d * math.pi / 2) ** 1.2  # круглая шапка, мягкий край
         return round(base + v)
     return y
 
@@ -60,7 +60,7 @@ def ridge(seed, base, amp, style, rag=0.0):
 RAMP = ['#2E2E2E', '#2A2A2A', '#252525', '#212121', '#1C1C1C', '#161616', '#111111']
 
 
-def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0):
+def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0):
     """n слоёв (2–7): гребни равномерно от y_top до y_bot, тоны — ступени
     RAMP от светлого (дальний) к тёмному (ближний); каждый слой туманом
     переходит в следующий тон вниз."""
@@ -84,7 +84,7 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0):
     for i, (base, amp, top, low) in enumerate(layers):
         ry = ridge(seed * 10 + i, base, amp,
                    style if i < n - 1 or style != 'mixed' else 'soft',
-                   rag if i == 0 else 0)  # неровный — только дальний гребень
+                   rag if i == 0 else 0, size)  # бугры — только дальний гребень
         top, low = rgb(top), rgb(low)
         for x in range(W):
             y0 = max(0, ry(x))
@@ -103,8 +103,9 @@ def main():
     ap.add_argument('--top', type=int, default=180, help='гребень дальнего слоя, арт-px сверху')
     ap.add_argument('--bottom', type=int, default=296, help='гребень ближнего слоя')
     ap.add_argument('--rag', type=float, default=0.0, help='неровность дальнего гребня, 0..1')
+    ap.add_argument('--size', type=float, default=1.0, help='размер бугров дальнего гребня')
     a = ap.parse_args()
-    render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag).save(a.out)
+    render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag, a.size).save(a.out)
     print(f'{a.out}: {W}×{H}, {a.style}, слоёв {a.layers}, seed {a.seed}')
 
 
