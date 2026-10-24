@@ -21,7 +21,6 @@ import { PHYS, gravityFor, jumpVelocity } from './physics.js';
 import {
   buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, ARRIVE_MAIN_W,
 } from './platforms.js';
-import { drawAbyss } from './abyss.js';
 import { drawDrizzle } from './weather.js';
 import { drawBackdrop, drawCloudsTop, drawCloudsBottom } from './scenery.js';
 import {
@@ -370,11 +369,11 @@ export function createLeapScreen({ input, images, goto }) {
       const camX = cam.x, camY = cam.y;
       const last = platforms[platforms.length - 1];
       // Дождевые облака наверху + пропасть с облачками внизу (правка 2026-09-10).
-      // Дальний фон, облака сверху, туман пропасти, облака в пропасти — от
-      // дальнего к ближнему (правка в чате 2026-09-29).
+      // Дальний фон, облака сверху, облака в пропасти — от дальнего к
+      // ближнему (правка в чате 2026-09-29). Туман пропасти убран
+      // (правка 2026-10-24): холмы фона сами дают градиент.
       drawBackdrop(ctx, images, w, h, camX, camY);
       drawCloudsTop(ctx, images, w, h, camX, t);
-      drawAbyss(ctx, w, h, t);
       drawCloudsBottom(ctx, images, w, h, camX, t);
       // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10),
       // позади плит (правка 2026-10-24: передний план без дождя).
