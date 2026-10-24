@@ -12,11 +12,10 @@ const C = 4; // ячейка рисунка, 2 арт-px
 /** Большое солнце с лучами «в стиле персонажа»: пиксельный диск + 16
  * спиц через одну — длинная / короткая, к концу разрежаются (искристость),
  * медленно вращаются. Центр (cx, cy) в экранных px. `a` 0..1 — прозрачность. */
-export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
+export function drawArrivalSun(ctx, cx, cy, t, a = 1, { R = 28, longRay = 12 } = {}) {
   if (a <= 0) return;
   const acx = Math.round(cx / C) * C;
   const acy = Math.round(cy / C) * C;
-  const R = 28;
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, a));
 
@@ -39,7 +38,7 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
     const ang = rot + (k * Math.PI) / 8;
     const long = k % 2 === 0;
     const start = R + C * 2;
-    const len = long ? C * 12 : C * 4;
+    const len = long ? C * longRay : C * 4;
     for (let rr = start, step = 0; rr < start + len; rr += C, step++) {
       if (rr > start + len * 0.45 && step % 2 === 1) continue; // к концу через одну
       const px = acx + Math.round((Math.cos(ang) * rr) / C) * C;
@@ -48,4 +47,25 @@ export function drawArrivalSun(ctx, cx, cy, t, a = 1) {
     }
   }
   ctx.restore();
+}
+
+// ПРОБА 2026-10-24 (задача «солнце срезано краем поля»): варианты места
+// солнца на экране предсказания, переключаются адресом ?sun=a|b|c, без
+// параметра — как было (центр у самого угла, срезано). После выбора
+// оставить один.
+//   a — то же солнце целиком в правом верхнем углу;
+//   b — солнце поменьше, целиком, чуть ниже заголовка;
+//   c — низкое солнце над плитой справа, «встаёт» за Шутом.
+const SUN_VARIANT = (() => {
+  try { return new URLSearchParams(location.search).get('sun') || 'now'; } catch { return 'now'; }
+})();
+
+/** Где и какое солнце рисовать на экране предсказания. gy — верх плиты. */
+export function arrivalSunPlace(w, h, gy) {
+  switch (SUN_VARIANT) {
+    case 'a': return { cx: w - 90, cy: 94, R: 28, longRay: 12 };
+    case 'b': return { cx: w - 56, cy: 62, R: 18, longRay: 7 };
+    case 'c': return { cx: w - 92, cy: gy - 150, R: 28, longRay: 10 };
+    default: return { cx: w - 6, cy: 22, R: 28, longRay: 12 };
+  }
 }
