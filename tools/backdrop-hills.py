@@ -7,6 +7,7 @@
 design-system. Только тоны пустоты #111111…#2E2E2E: фон не спорит с Шутом.
 
     python3 tools/backdrop-hills.py out.png [--style soft|peaks|mixed] [--layers 2..7] [--seed N]
+    … --front 1 front.png   # + слои с 1-го на прозрачном (солнце между слоями)
 
 Пишет нативный размер 200×320 (зерно 2 → 400×640 на экране).
 """
@@ -60,7 +61,7 @@ def ridge(seed, base, amp, style, rag=0.0, size=1.0):
 RAMP = ['#2E2E2E', '#2A2A2A', '#252525', '#212121', '#1C1C1C', '#161616', '#111111']
 
 
-def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=0):
+def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=0, front_from=None):
     """n слоёв (2–7): гребни равномерно от y_top до y_bot, тоны — ступени
     RAMP от светлого (дальний) к тёмному (ближний); каждый слой туманом
     переходит в следующий тон вниз."""
@@ -77,6 +78,7 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=
         layers.append((base, 10 + 8 * i / max(1, n - 1), tones[i], low))
     im = Image.new('RGB', (W, H))
     px = im.load()
+    owner = [[-1] * W for _ in range(H)]  # какой слой нарисовал пиксель (−1 — небо)
     horizon = y_top
     for y in range(H):
         f = min(1, max(0, (y - 20) / (horizon - 20)))
@@ -93,7 +95,18 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=
             for y in range(y0, H):
                 f = min(1, (y - y0) / fog)  # туман: светлее у гребня, темнее вниз
                 px[x, y] = mix(top, low, f, x, y)
-    return im
+                owner[y][x] = i
+    if front_from is None:
+        return im
+    # Передний план: слои front_from… на прозрачном — кладётся поверх того,
+    # что должно выходить из-за холма (восход на экране предсказания).
+    front = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    fp = front.load()
+    for y in range(H):
+        for x in range(W):
+            if owner[y][x] >= front_from:
+                fp[x, y] = px[x, y] + (255,)
+    return im, front
 
 
 def main():
@@ -107,8 +120,17 @@ def main():
     ap.add_argument('--rag', type=float, default=0.0, help='неровность дальнего гребня, 0..1')
     ap.add_argument('--size', type=float, default=1.0, help='размер бугров дальнего гребня')
     ap.add_argument('--near-lift', type=int, default=0, help='поднять только ближний слой, арт-px')
+    ap.add_argument('--front', nargs=2, metavar=('СЛОЙ', 'ФАЙЛ'),
+                    help='ещё и передний план: слои с номера СЛОЙ (0 — дальний) на прозрачном')
     a = ap.parse_args()
-    render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag, a.size, a.near_lift).save(a.out)
+    front_from = int(a.front[0]) if a.front else None
+    out = render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag, a.size, a.near_lift, front_from)
+    if a.front:
+        out[0].save(a.out)
+        out[1].save(a.front[1])
+        print(f'{a.front[1]}: передний план со слоя {front_from}')
+    else:
+        out.save(a.out)
     print(f'{a.out}: {W}×{H}, {a.style}, слоёв {a.layers}, seed {a.seed}')
 
 

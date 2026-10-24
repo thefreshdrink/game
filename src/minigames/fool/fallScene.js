@@ -328,11 +328,9 @@ export function drawFallSequence(ctx, w, h, s) {
     const py = fallFromY + (floatY - fallFromY) * enter + (groundY - PLAYER_H / 2 - floatY) * dv;
     const wob = 1 - dv; // у земли качание и крен гаснут
 
-    // Плита прибытия проступает ПОД парой, пока та подлетает (до 0.8 —
-    // такт 'arrive' дотянет до 1).
-    if (dv > 0) {
-      drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, dv * 0.8, 4, 0.42, 0.4);
-    }
+    // Плиты под парой в полёте нет — она вырастет из-под ноги на 'arrive'
+    // (правка в чате 2026-10-24: «земля появляется под ногой, которая
+    // шагнула» — как в тексте предсказания).
 
     const pw = PAIR_W;
     const cx = px + Math.sin(t * 1.7) * 6 * enter * wob;
@@ -353,9 +351,10 @@ export function drawFallSequence(ctx, w, h, s) {
   ctx.fillRect(0, 0, w, h);
   const p = clamp01(stateT / ARRIVE_DUR);
 
-  // Основная плита — быстро дотягивается.
-  const mainP = clamp01(0.8 + 0.2 * (p / 0.3));
-  drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, mainP, 4, 0.42, 0.4);
+  // Плита растёт из-под ноги: волна проявления идёт от стопы Шута по
+  // верхней кромке вширь и вниз, за весь такт.
+  const footX = (standCX - groundX) / gw;
+  drawPixelReveal(ctx, groundStrip, groundX, groundY, gw, groundStrip.height, clamp01(p * 1.15), 4, footX, 0, 0.25);
   // Ступеньки справа нет (решение 2026-10-24): по ней игроки пытались идти
   // дальше. Солнце здесь НЕ мелькает (правка 2026-09-11) — оно проступает
   // на экране предсказания.
