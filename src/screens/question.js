@@ -21,7 +21,7 @@ import {
 } from '../core/oracle.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { clamp01 } from '../core/ease.js';
-import { t as str, getLang, cycleLang, setLang, LANGS } from '../data/strings.js';
+import { t as str, getLang, setLang, LANGS } from '../data/strings.js';
 
 const LABELS = { work: str('category.work'), love: str('category.love'), mental: str('category.mental') };
 
@@ -112,18 +112,16 @@ export function createQuestionScreen({ input, images, goto }) {
   let text2Start = TEXT2_START;
   let optionsStart = OPTIONS_START;
 
-  // Кнопка языка (2026-10-24): правый верхний угол, «›EN» тем же языком,
-  // что пункты меню, мельче. Тап — следующий язык по кругу (strings.js, cycleLang).
-  let langZone = null;
-  let langActive = false; // палец или курсор на кнопке
-  // ПРОБА 2026-10-24 («кнопка вообще незаметна»), адрес ?langbtn=:
-  //   a — (по умолчанию) «›EN» мелко серым в правом верхнем углу;
-  //   b — крупнее, белым, в угловых скобках (графический язык проекта);
-  //   c — строка всех языков под меню, текущий белым, тап — сразу нужный.
-  const LANG_BTN = (() => {
-    try { return new URLSearchParams(location.search).get('langbtn') || 'a'; } catch { return 'a'; }
-  })();
-  let langRow = []; // вариант c: {lang, zone}
+  // Выбор языка (решение 2026-10-24, вариант «строка»): под меню категорий
+  // строка всех языков «EN RU UK ES PT», текущий белым, остальные серым;
+  // тап — сразу нужный язык (strings.js, setLang).
+  let langRow = []; // {lang, zone}
+  let langHover = null; // язык под пальцем или курсором
+
+  function langAt(x, y) {
+    const it = langRow.find((r) => zoneHit(r.zone, x, y));
+    return it ? it.lang : null;
+  }
 
   function itemAt(x, y) {
     const idx = items.findIndex((it) => zoneHit(it.zone, x, y));
@@ -169,7 +167,7 @@ export function createQuestionScreen({ input, images, goto }) {
       offHandlers = [
         input.on('pressstart', (e) => {
           pressedIndex = optionsReady() ? itemAt(e.x, e.y) : null;
-          langActive = optionsReady() && langZone !== null && zoneHit(langZone, e.x, e.y);
+          langHover = optionsReady() ? langAt(e.x, e.y) : null;
         }),
         input.on('pressmove', (e) => {
           if (pressedIndex === null && !optionsReady()) return;
@@ -177,22 +175,21 @@ export function createQuestionScreen({ input, images, goto }) {
         }),
         input.on('pressend', () => {
           pressedIndex = null;
-          langActive = false;
+          langHover = null;
           hoverIndex = null; // тач: pointermove после отрыва не придёт, чистим руками
         }),
         input.on('hover', (e) => {
           hoverIndex = optionsReady() ? itemAt(e.x, e.y) : null;
-          langActive = optionsReady() && langZone !== null && zoneHit(langZone, e.x, e.y);
+          langHover = optionsReady() ? langAt(e.x, e.y) : null;
         }),
         input.on('hoverend', () => {
           hoverIndex = null;
-          langActive = false;
+          langHover = null;
         }),
         input.on('tap', (e) => {
           if (!optionsReady()) return;
-          if (langZone !== null && zoneHit(langZone, e.x, e.y)) { cycleLang(); return; }
-          const row = langRow.find((it) => zoneHit(it.zone, e.x, e.y));
-          if (row) { setLang(row.lang); return; }
+          const lang = langAt(e.x, e.y);
+          if (lang) { setLang(lang); return; }
           const idx = itemAt(e.x, e.y);
           if (idx === null) return;
           session.category = items[idx].category;
@@ -348,56 +345,22 @@ export function createQuestionScreen({ input, images, goto }) {
           }
         });
 
-        // Кнопка языка — вместе с последним пунктом меню.
+        // Строка языков — вместе с последним пунктом меню.
         if (t >= optionsStart + (items.length - 1) * OPTION_ITEM_STAGGER) {
-          if (LANG_BTN === 'c') {
-            // Строка всех языков под меню: «EN · RU · UK · ES · PT».
-            const lh = setFont(ctx, 'menuOption', scale * 0.75);
-            const ry = optionsY + Math.round(40 * scale);
-            const gap = Math.round(18 * scale);
-            let x = marginX;
-            langRow = [];
-            langZone = null;
-            LANGS.forEach((l) => {
-              const label = l.toUpperCase();
-              const lw = ctx.measureText(label).width;
-              const zone = textButtonZone(x, ry, lw, lh);
-              langRow.push({ lang: l, zone });
-              ctx.fillStyle = l === getLang() ? '#FFFFFF' : '#808080';
-              ctx.fillText(label, x, ry);
-              x += lw + gap;
-            });
-          } else if (LANG_BTN === 'b') {
-            // Крупнее, белым, в угловых скобках — как рамка карты.
-            const lh = setFont(ctx, 'menuOption', scale * 0.9);
-            const label = getLang().toUpperCase();
-            const lw = Math.round(ctx.measureText(label).width);
-            const pad = Math.round(8 * scale / 2) * 2;
-            const lx = w - marginX - lw - pad;
-            const ly = Math.round(30 * scale);
-            langZone = textButtonZone(lx - pad, ly, lw + pad * 2, lh);
-            ctx.fillStyle = langActive ? '#EBA331' : '#FFFFFF';
-            ctx.fillText(label, lx, ly);
-            const x0 = lx - pad;
-            const x1 = lx + lw + pad;
-            const y0 = ly - lh + Math.round(4 * scale);
-            const y1 = ly + Math.round(6 * scale);
-            const arm = Math.round(8 * scale / 2) * 2;
-            [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]].forEach(([cx, cy, sx, sy]) => {
-              ctx.fillRect(sx > 0 ? cx : cx - arm, sy > 0 ? cy : cy - 2, arm, 2);
-              ctx.fillRect(sx > 0 ? cx : cx - 2, sy > 0 ? cy : cy - arm, 2, arm);
-            });
-          } else {
-            // Правый верхний угол, над заголовком: внизу кнопка ложилась на
-            // светлую мантию оракула и терялась.
-            const lh = setFont(ctx, 'menuOption', scale * 0.7);
-            const label = `›${getLang().toUpperCase()}`;
-            const lx = w - marginX - Math.round(ctx.measureText(label).width);
-            const ly = Math.round(26 * scale);
-            langZone = textButtonZone(lx, ly, ctx.measureText(label).width, lh);
-            ctx.fillStyle = langActive ? '#EBA331' : '#808080';
-            ctx.fillText(label, lx, ly);
-          }
+          const lh = setFont(ctx, 'menuOption', scale * 0.75);
+          const ry = optionsY + Math.round(40 * scale);
+          const gap = Math.round(18 * scale);
+          let x = marginX;
+          langRow = [];
+          LANGS.forEach((l) => {
+            const label = l.toUpperCase();
+            const lw = ctx.measureText(label).width;
+            langRow.push({ lang: l, zone: textButtonZone(x, ry, lw, lh) });
+            // текущий — белым; под пальцем — акцентом («можно тронуть»)
+            ctx.fillStyle = l === langHover ? '#EBA331' : l === getLang() ? '#FFFFFF' : '#808080';
+            ctx.fillText(label, x, ry);
+            x += lw + gap;
+          });
         }
       }
     },
