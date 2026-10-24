@@ -88,12 +88,18 @@ function drawLayer(ctx, images, L, w, h, camX, t) {
  * Почти не движется (parallax 0.04 по x, 0.03 по y). Шире экрана — одной
  * картинкой: зеркальная склейка на стыке давала купол из краевой горы.
  * Уже экрана (десктоп) — зеркально вширь, у отражения стык незаметен. */
+// Фон опущен на BACKDROP_DROP экранных px (правка в чате 2026-10-24: после
+// того как камера опустила действие к середине, холмы встали за плитой).
+// Верх картинки — чистое небо #111111, как заливка сцены, поэтому над ним
+// стыка нет.
+const BACKDROP_DROP = 160;
+
 export function drawBackdrop(ctx, images, w, h, camX, camY) {
   const img = images.foolBackdrop;
   if (!img) return;
   const bw = img.width * GRAIN;
   const bh = img.height * GRAIN;
-  const top = Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
+  const top = BACKDROP_DROP + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
   if (images.foolBackdropBottom && top + bh < h) {
     ctx.fillStyle = images.foolBackdropBottom;
     ctx.fillRect(0, top + bh, w, h - top - bh);
