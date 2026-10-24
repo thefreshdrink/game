@@ -46,13 +46,12 @@ def ridge(seed, base, amp, style):
 RAMP = ['#2E2E2E', '#2A2A2A', '#252525', '#212121', '#1C1C1C', '#161616', '#111111']
 
 
-def render(style, seed, n=4):
+def render(style, seed, n=4, y_top=180, y_bot=296):
     """n слоёв (2–7): гребни равномерно от y_top до y_bot, тоны — ступени
     RAMP от светлого (дальний) к тёмному (ближний); каждый слой туманом
     переходит в следующий тон вниз."""
     # тоны: небо тёмное сверху → светлее у горизонта
     sky_top, sky_low = rgb('#111111'), rgb('#1C1C1C')
-    y_top, y_bot = 180, 296
     step = (len(RAMP) - 1) / max(1, n - 1) if n > 1 else 0
     tones = [RAMP[min(len(RAMP) - 1, round(i * step))] for i in range(n)]
     layers = []
@@ -85,8 +84,10 @@ def main():
     ap.add_argument('--style', default='soft', choices=['soft', 'peaks', 'mixed'])
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--layers', type=int, default=4, help='число слоёв холмов, 2–7')
+    ap.add_argument('--top', type=int, default=180, help='гребень дальнего слоя, арт-px сверху')
+    ap.add_argument('--bottom', type=int, default=296, help='гребень ближнего слоя')
     a = ap.parse_args()
-    render(a.style, a.seed, a.layers).save(a.out)
+    render(a.style, a.seed, a.layers, a.top, a.bottom).save(a.out)
     print(f'{a.out}: {W}×{H}, {a.style}, слоёв {a.layers}, seed {a.seed}')
 
 
