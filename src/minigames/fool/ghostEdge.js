@@ -49,7 +49,7 @@ export function createGhostEdge(images) {
         strip,
         Math.round(last.x + last.w - camX),
         Math.round(last.y - camY),
-        strip.width, PLATE_H,
+        strip.width, strip.height,
         reveal, 4, 0, 0.35,
       );
     },

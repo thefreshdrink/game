@@ -11,7 +11,32 @@
 export const PLATE_H = 32; // 16 нативных px тайлсета × 2 (решение 2026-08-28,
                            // по переписанной BUILD-SPEC-03 задача 2 п.4)
 
-// Тайлсет дороги — public/assets/road/plat_tiles.png, нарезан из
+// Целые плиты дороги (решение 2026-10-22): у каждой ширины дороги своя
+// плита целиком — каменный верх, мягко-рваный низ, Pro Flash + tools/plate-fit.py.
+// Файлы public/assets/road/plates/plate_<ширина арт-px>_<вариант>.png, верх
+// плиты = линия ходьбы (y = 0), низ свисает ниже PLATE_H. Ключ — ширина в
+// арт-px; варианты чередуются по положению плиты, чтобы соседи различались.
+// Отбор Алисы 2026-10-22: по одному варианту на ширину; образец света и
+// тени — plate_192_b (ровный низ, не пятнистый).
+export const ROAD_PLATES = { 64: ['b'], 80: ['a'], 112: ['a'], 192: ['b'] };
+export const ROAD_PLATE_ASSETS = Object.fromEntries(
+  Object.entries(ROAD_PLATES).flatMap(([w, vs]) =>
+    vs.map((v) => [`plate_${w}_${v}`, `assets/road/plates/plate_${w}_${v}.png`])),
+);
+
+/** Целая плита для ширины w (экранные px): точная по ширине, иначе самая
+ * широкая из тех, что уже w (кладётся по центру). Нет такой — null, тогда
+ * дорога собирается из прежнего тайлсета. */
+function plateFor(images, w, seed = 0) {
+  const fits = Object.keys(ROAD_PLATES).map(Number).filter((a) => a * 2 <= w);
+  if (!fits.length) return null;
+  const art = Math.max(...fits);
+  const vs = ROAD_PLATES[art];
+  return images[`plate_${art}_${vs[Math.abs(seed) % vs.length]}`] ?? null;
+}
+
+// Тайлсет дороги — запасной путь для ширин без своей плиты (ступень прибытия
+// 64). public/assets/road/plat_tiles.png, нарезан из
 // assets/1-bit Pixel Art Platformer Tile.png (design-system/extract-road-tiles.py).
 // Атлас 48×16 нативных: три ячейки 16×16 подряд — [cap_l | mid | cap_r].
 // Рисуется ФИКСИРОВАННЫМ ×2, без uiScale (BUILD-SPEC-03 задача 2: ни одного
@@ -93,28 +118,37 @@ function drawRoad(ctx, img, x, y, w) {
   blit(SRC_CELL * 2, x + w - CAP_W, CAP_W); // cap_r
 }
 
-/** Рисует плиту: чёрная подложка (тело — дыра в воздухе, design-system) +
- * тайлсет дороги, целыми плитками, фиксированный ×2. */
+/** Рисует плиту: целая плита своей ширины, фиксированный ×2. Для ширины
+ * без плиты — прежнее: чёрная подложка + тайлсет дороги целыми плитками. */
 export function drawPlatform(ctx, images, p, camX, camY) {
   const x = Math.round(p.x - camX);
   const y = Math.round(p.y - camY);
   const w = p.w; // уже экранные px, кратно 32 — без * scale
   if (x + w < -40 || x > 2000) return; // грубый culling
 
+  // Вариант плиты — от положения в мире: стабилен между кадрами.
+  const plate = plateFor(images, w, Math.round(p.x / 32));
+  if (plate) {
+    const pw = plate.width * 2;
+    ctx.drawImage(plate, x + Math.round((w - pw) / 4) * 2, y, pw, plate.height * 2);
+    return;
+  }
+
   ctx.fillStyle = '#000000';
   ctx.fillRect(x, y, w, PLATE_H);
   drawRoad(ctx, images.roadTiles, x, y, w);
 }
 
-/** Офскрин-полоса дороги шириной sw (кратно 32) — тело + тайлсет, как у
- * обычной плиты. Нужна там, где дорогу надо ПРОЯВИТЬ или РАСТВОРИТЬ
+/** Офскрин-полоса дороги шириной sw (кратно 32) — как у обычной плиты;
+ * высота — по плите вместе со свисающим низом. Нужна там, где дорогу надо ПРОЯВИТЬ или РАСТВОРИТЬ
  * попиксельно (`core/pixelReveal.js`): призрачное продолжение у финального
  * края (задача 5) и прибытие после падения (задача 7). Рисуем один раз,
  * дальше только маскируем. */
 export function buildRoadStrip(images, sw) {
   const c = document.createElement('canvas');
+  const plate = plateFor(images, sw);
   c.width = sw;
-  c.height = PLATE_H;
+  c.height = plate ? Math.max(PLATE_H, plate.height * 2) : PLATE_H; // низ плиты свисает
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = false;
   drawPlatform(g, images, { x: 0, y: 0, w: sw }, 0, 0);

@@ -1,11 +1,10 @@
-// Кадр обычной сцены Шута — дорога, фон, пропасть, Шут с псом, морось,
+// Кадр обычной сцены Шута — фон, морось, дорога, Шут с псом,
 // подсказки. Такты 2–3 падения рисует fallScene.js. Вынесено из leap.js
 // (задача 8 бэклога агента) без изменения поведения — строки кадра и
 // комментарии перенесены как были.
 
 import { clamp01 } from '../../../core/ease.js';
 import { platformAt, drawPlatform } from '../platforms.js';
-import { drawAbyss } from '../abyss.js';
 import { drawDrizzle } from '../weather.js';
 import { drawBackdrop, drawCloudsTop, drawCloudsBottom } from '../scenery.js';
 import { drawPlayer, drawDog } from '../actors.js';
@@ -18,12 +17,17 @@ export function drawWorld(ctx, w, h, {
 }) {
   const last = platforms[platforms.length - 1];
   // Дождевые облака наверху + пропасть с облачками внизу (правка 2026-09-10).
-  // Дальний фон, облака сверху, туман пропасти, облака в пропасти — от
-  // дальнего к ближнему (правка в чате 2026-09-29).
+  // Дальний фон, облака сверху, облака в пропасти — от дальнего к
+  // ближнему (правка в чате 2026-09-29). Туман пропасти убран
+  // (правка 2026-10-24): холмы фона сами дают градиент.
   drawBackdrop(ctx, images, w, h, camX, camY);
   drawCloudsTop(ctx, images, w, h, camX, t);
-  drawAbyss(ctx, w, h, t);
   drawCloudsBottom(ctx, images, w, h, camX, t);
+  // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10),
+  // позади плит (правка 2026-10-24: передний план без дождя).
+  if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
+    drawDrizzle(ctx, w, h, t, camX);
+  }
   platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
   ghost.draw(ctx, last, camX, camY);
 
@@ -52,11 +56,6 @@ export function drawWorld(ctx, w, h, {
   drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV,
     standPlat === platforms[platforms.length - 1]);
   drawDog(ctx, images, dog, camX, camY, dogPlat);
-
-  // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10).
-  if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
-    drawDrizzle(ctx, w, h, t, camX);
-  }
 
   drawLeapHints(ctx, w, camX, camY, {
     state, stateT, t, movedEver, idx, lean, player, swipeLinger: t < swipeHintUntil,

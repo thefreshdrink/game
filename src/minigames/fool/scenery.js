@@ -28,10 +28,13 @@ const TOP = [
   { period: 820, parallax: 0.08, drift: 3, items: [['ridge', 40, 0.05, false], ['puffs', 470, 0.13, true]] },
   { period: 760, parallax: 0.18, drift: 6, items: [['heap', 180, 0.09, false], ['pair', 560, 0.17, true]] },
 ];
-// Нижние подняты на 0.1 кадра (правка 29.09: «слишком низко»).
+// Нижние подняты на 0.1 кадра (правка 29.09: «слишком низко») и ещё на
+// 0.1 (правки 2026-10-24, после того как камера опустила действие). Тона —
+// свои (тёмный тон пробовали 24.10 — сливался с фоном). Большое облако
+// (heap) ещё выше — 0.54 (правки 2026-10-24).
 const BOTTOM = [
-  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.74, true], ['pair', 430, 0.72, false]] },
-  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.8, true], ['puffs', 600, 0.85, false]] },
+  { period: 780, parallax: 0.22, drift: 5, items: [['ridge', 60, 0.64, true], ['pair', 430, 0.62, false]] },
+  { period: 700, parallax: 0.35, drift: 9, items: [['heap', 250, 0.54, true], ['puffs', 600, 0.75, false]] },
 ];
 
 function formationBounds(parts, images) {
@@ -46,10 +49,11 @@ function formationBounds(parts, images) {
   return [x0, x1];
 }
 
-function drawFormation(ctx, images, name, x, y, flip) {
+function drawFormation(ctx, images, name, x, y, flip, toneOverride) {
   const parts = FORMATIONS[name];
   const [x0, x1] = formationBounds(parts, images);
-  parts.forEach(([id, dx, dy, tone]) => {
+  parts.forEach(([id, dx, dy, partTone]) => {
+    const tone = toneOverride ?? partTone;
     const img = images[`cloud_${tone}_${id}`];
     if (!img) return;
     const w = img.width * GRAIN;
@@ -69,13 +73,13 @@ function drawFormation(ctx, images, name, x, y, flip) {
   });
 }
 
-function drawLayer(ctx, images, L, w, h, camX, t) {
+function drawLayer(ctx, images, L, w, h, camX, t, toneOverride) {
   const shift = camX * L.parallax + t * L.drift;
   L.items.forEach(([name, x, yFrac, flip]) => {
     const base = (((x - shift) % L.period) + L.period) % L.period;
     for (let fx = base - L.period; fx < w + 200; fx += L.period) {
       if (fx + 200 < 0) continue;
-      drawFormation(ctx, images, name, fx, h * yFrac, flip);
+      drawFormation(ctx, images, name, fx, h * yFrac, flip, toneOverride);
     }
   });
 }
@@ -83,17 +87,23 @@ function drawLayer(ctx, images, L, w, h, camX, t) {
 /** Дальний фон (Pixen по референсам, правка 29.09; тоны — tools/pixel-grid.py
  * --ramp до #2E2E2E, «тихий» — правка 30.09: до #808080 фон спорил
  * со сценой): верх картинки у верха кадра, ниже — её нижний тон,
- * который и так закрывает пропасть (abyss.js, от 0.8 кадра). У верха —
+ * который закрывает низ кадра. У верха —
  * чтобы облака картинки не обрезались посреди экрана о заливку.
  * Почти не движется (parallax 0.04 по x, 0.03 по y). Шире экрана — одной
  * картинкой: зеркальная склейка на стыке давала купол из краевой горы.
  * Уже экрана (десктоп) — зеркально вширь, у отражения стык незаметен. */
+// Фон опущен на BACKDROP_DROP экранных px (правка в чате 2026-10-24: после
+// того как камера опустила действие к середине, холмы встали за плитой).
+// Верх картинки — чистое небо #111111, как заливка сцены, поэтому над ним
+// стыка нет.
+const BACKDROP_DROP = 160;
+
 export function drawBackdrop(ctx, images, w, h, camX, camY) {
   const img = images.foolBackdrop;
   if (!img) return;
   const bw = img.width * GRAIN;
   const bh = img.height * GRAIN;
-  const top = Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
+  const top = BACKDROP_DROP + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
   if (images.foolBackdropBottom && top + bh < h) {
     ctx.fillStyle = images.foolBackdropBottom;
     ctx.fillRect(0, top + bh, w, h - top - bh);

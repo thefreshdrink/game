@@ -6,6 +6,7 @@ import { sliceStrip } from '../../core/sprites.js';
 import { createLeapScreen } from './leap.js';
 import { createLeapAfterscene } from './afterscene.js';
 import { CLOUD_IDS } from './scenery.js';
+import { ROAD_PLATE_ASSETS } from './platforms.js';
 
 export default {
   verb: 'leap',
@@ -16,6 +17,7 @@ export default {
     foolFall: 'assets/fool/strips/fool_fall_1f_44x48.png',
     foolDogFall: 'assets/fool/strips/fool_dog_fall_1f_48x48.png',
     roadTiles: 'assets/road/plat_tiles.png',
+    ...ROAD_PLATE_ASSETS, // целые плиты дороги, 2026-10-22
     dogWalkStrip: 'assets/dog/strips/dog_walk_3f_18x14.png',
     dogSitStrip: 'assets/dog/strips/dog_sit_2f_18x14.png',
     dogLookDown: 'assets/dog/strips/dog_look_down_1f_18x14.png',
