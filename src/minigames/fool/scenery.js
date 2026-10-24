@@ -98,11 +98,11 @@ function drawLayer(ctx, images, L, w, h, camX, t, toneOverride) {
 // стыка нет.
 export const BACKDROP_DROP = 160;
 
-export function drawBackdrop(ctx, images, w, h, camX, camY, img = images.foolBackdrop, fillBottom = true) {
+export function drawBackdrop(ctx, images, w, h, camX, camY, img = images.foolBackdrop, fillBottom = true, extraDrop = 0) {
   if (!img) return;
   const bw = img.width * GRAIN;
   const bh = img.height * GRAIN;
-  const top = BACKDROP_DROP + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
+  const top = BACKDROP_DROP + extraDrop + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
   if (fillBottom && images.foolBackdropBottom && top + bh < h) {
     ctx.fillStyle = images.foolBackdropBottom;
     ctx.fillRect(0, top + bh, w, h - top - bh);

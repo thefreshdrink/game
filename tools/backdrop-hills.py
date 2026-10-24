@@ -61,7 +61,7 @@ def ridge(seed, base, amp, style, rag=0.0, size=1.0):
 RAMP = ['#2E2E2E', '#2A2A2A', '#252525', '#212121', '#1C1C1C', '#161616', '#111111']
 
 
-def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=0, front_from=None):
+def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=0, front_from=None, soft=False):
     """n слоёв (2–7): гребни равномерно от y_top до y_bot, тоны — ступени
     RAMP от светлого (дальний) к тёмному (ближний); каждый слой туманом
     переходит в следующий тон вниз."""
@@ -85,6 +85,9 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=
         for x in range(W):
             px[x, y] = mix(sky_top, sky_low, f, x, y)
     fog = max(10, (y_bot - y_top) / max(1, n - 1))
+    if soft:
+        fog *= 1.8  # туман тянется дальше вниз — переход длиннее и мягче
+    EDGE = 6 if soft else 0  # мягкий гребень: столько строк проступает дизером
     for i, (base, amp, top, low) in enumerate(layers):
         ry = ridge(seed * 10 + i, base, amp,
                    style if i < n - 1 or style != 'mixed' else 'soft',
@@ -92,7 +95,15 @@ def render(style, seed, n=4, y_top=180, y_bot=296, rag=0.0, size=1.0, near_lift=
         top, low = rgb(top), rgb(low)
         for x in range(W):
             y0 = max(0, ry(x))
-            for y in range(y0, H):
+            for y in range(max(0, y0 - EDGE), H):
+                if y < y0:
+                    # над гребнем слой проступает точками поверх того, что
+                    # за ним, — кромка без резкой линии (как у мягкого солнца)
+                    k = (y0 - y) / (EDGE + 1)
+                    if BAYER[y % 4][x % 4] + 0.5 < (1 - k) * 8:
+                        px[x, y] = top
+                        owner[y][x] = i
+                    continue
                 f = min(1, (y - y0) / fog)  # туман: светлее у гребня, темнее вниз
                 px[x, y] = mix(top, low, f, x, y)
                 owner[y][x] = i
@@ -120,11 +131,12 @@ def main():
     ap.add_argument('--rag', type=float, default=0.0, help='неровность дальнего гребня, 0..1')
     ap.add_argument('--size', type=float, default=1.0, help='размер бугров дальнего гребня')
     ap.add_argument('--near-lift', type=int, default=0, help='поднять только ближний слой, арт-px')
+    ap.add_argument('--soft', action='store_true', help='мягкие гребни и длинный туман')
     ap.add_argument('--front', nargs=2, metavar=('СЛОЙ', 'ФАЙЛ'),
                     help='ещё и передний план: слои с номера СЛОЙ (0 — дальний) на прозрачном')
     a = ap.parse_args()
     front_from = int(a.front[0]) if a.front else None
-    out = render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag, a.size, a.near_lift, front_from)
+    out = render(a.style, a.seed, a.layers, a.top, a.bottom, a.rag, a.size, a.near_lift, front_from, a.soft)
     if a.front:
         out[0].save(a.out)
         out[1].save(a.front[1])

@@ -32,7 +32,7 @@ Nearest Neighbor / «без сглаживания».
 
 | файл (в `public/assets/`) | размер | единица | множ. | где рисуется |
 |---|---|---|---|---|
-| `fool/backdrop.png` | 200×320 | арт-px | **×2** | фон дороги Шута: 5 слоёв мягких холмов, **нарисован кодом** — `tools/backdrop-hills.py --seed 3 --layers 5 --rag 0.8 --size 2.8 --top 200 --bottom 312 --near-lift 32` (2026-10-24). Перерисовать — та же команда |
+| `fool/backdrop.png` | 200×320 | арт-px | **×2** | фон дороги Шута: 5 слоёв мягких холмов, **нарисован кодом** — `tools/backdrop-hills.py --seed 3 --layers 5 --rag 0.8 --size 2.8 --top 200 --bottom 312 --near-lift 32 --soft --front 0 fool/backdrop_front.png` (2026-10-24; мягкие гребни). Перерисовать — та же команда |
 | `fool/strips/fool_idle_4f_44x48.png` | 176×48 (4×44) | арт-px | **×2** | Шут idle, `leap.js drawPlayer` |
 | `fool/strips/fool_rise_1f_44x48.png` | 44×48 | арт-px | **×2** | Шут `air`, `vy<0` |
 | `fool/strips/fool_fall_1f_44x48.png` | 44×48 | арт-px | **×2** | Шут `air`, `vy≥0` |

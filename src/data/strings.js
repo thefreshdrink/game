@@ -136,7 +136,12 @@ export function getLang() { return lang; }
 
 /** Следующий язык по кругу: запомнить и перезапустить страницу. */
 export function cycleLang() {
-  const next = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length];
+  setLang(LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]);
+}
+
+/** Выбрать язык: запомнить и перезапустить страницу на экран 1. */
+export function setLang(next) {
+  if (next === lang || !DICTS[next]) return;
   try {
     localStorage.setItem(STORE_KEY, next);
     sessionStorage.setItem('tj.langSwitched', '1'); // короткий вход после перезапуска

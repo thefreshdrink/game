@@ -27,6 +27,8 @@ const ABOVE = (() => {
 const RISE_DELAY = 0.6;  // с, после входа на экран
 const RISE_TIME = 5;     // с, круг выходит из-за гребня целиком
 const RISE_R = 26;       // радиус круга, экранных px
+// На экране предсказания холмы ниже, чем в игре (правка 2026-10-24).
+const AFTER_DROP = 60;
 const ROSE_DELAY = 1.6;  // с — роза проступает, когда текст уже пошёл
 const ROSE_TIME = 2.2;  // медленно — растёт, а не вспыхивает
 
@@ -80,7 +82,7 @@ function ridgeScreenY(images, w, x) {
   // фон шире экрана кладётся по центру (scenery.js drawBackdrop)
   const bw = img.width * 2;
   const ix = Math.max(0, Math.min(img.width - 1, Math.floor((x - (w - bw) / 2) / 2)));
-  return BACKDROP_DROP + ridgeCache[ix] * 2;
+  return BACKDROP_DROP + AFTER_DROP + ridgeCache[ix] * 2;
 }
 
 export function createLeapAfterscene({ images }) {
@@ -103,7 +105,7 @@ export function createLeapAfterscene({ images }) {
         const sun = arrivalSunPlace(w, h, gy);
         drawArrivalSun(ctx, sun.cx, sun.cy, t, Math.min(1, t / 0.3), sun);
       } else {
-        drawBackdrop(ctx, images, w, h, 0, 0);
+        drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdrop, true, AFTER_DROP);
         if (ABOVE === 'rise') {
           // Солнце встаёт из-за гребня и останавливается НАПОЛОВИНУ — центр
           // ровно на линии холма, нижняя половина срезана передним планом
@@ -114,7 +116,7 @@ export function createLeapAfterscene({ images }) {
           const e = 1 - (1 - k) * (1 - k);
           const cy = Math.round((ridgeY + RISE_R * 1.8 - e * RISE_R * 1.8) / 2) * 2;
           drawSoftSun(ctx, sx, cy, RISE_R);
-          drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdropFront, false);
+          drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdropFront, false, AFTER_DROP);
         }
       }
 
