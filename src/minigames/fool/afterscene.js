@@ -1,28 +1,19 @@
 // Под предсказанием Шута — та же композиция, что в такте 3 падения: Шут с
-// псом на дороге у нижней кромки (правка в чате 2026-08-30: «размести сцену
+// псом на плите у нижней кромки (правка в чате 2026-08-30: «размести сцену
 // внизу экрана, предсказание проявляй поверх фона верхней части») — экраны
-// 5→6 склеиваются без скачка. «Другой мир»: солнце в верхнем углу. Ступенька
-// справа убрана 2026-10-24 — по ней пытались идти. Статична: прибытие уже
-// отыграно.
+// 5→6 склеиваются без скачка. Ступенька справа убрана 2026-10-24 — по ней
+// пытались идти.
 //
-// ПРОБА 2026-10-24 — что проступает над плитой, адрес ?above=:
-//   sun  — (по умолчанию) солнце с лучами низко над плитой, как было;
-//   rise — фон холмов как в игре, мягкое солнце медленно встаёт из-за
-//          гребня и останавливается наполовину;
-//   rose — фон холмов, на плите рядом с Шутом с задержкой вырастает белая
-//          роза (символ карты Шута в колоде Райдера–Уэйта).
-// После выбора оставить один путь.
+// «Другой мир» (решение 2026-10-25, после пробы трёх вариантов): фон холмов
+// как в игре, но ниже; мягкое солнце медленно встаёт из-за дальнего гребня
+// и замирает наполовину; на плите рядом с Шутом вырастает белая роза —
+// символ карты Шута в колоде Райдера–Уэйта.
 
 import { buildRoadStrip, ARRIVE_GROUND_FRAC, ARRIVE_MAIN_W } from './platforms.js';
-import { drawArrivalSun, arrivalSunPlace } from './arrivalScene.js';
 import { drawBackdrop, BACKDROP_DROP } from './scenery.js';
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 import { clamp01 } from '../../core/ease.js';
 import { PLAYER_W, PLAYER_H, DOG_W, DOG_H, IDLE_FPS } from './actors.js';
-
-const ABOVE = (() => {
-  try { return new URLSearchParams(location.search).get('above') || 'sun'; } catch { return 'sun'; }
-})();
 
 const RISE_DELAY = 0.6;  // с, после входа на экран
 const RISE_TIME = 5;     // с, круг выходит из-за гребня целиком
@@ -100,37 +91,25 @@ export function createLeapAfterscene({ images }) {
       const gx = Math.round(w / 2 - gw / 2 - 28);
       const fcx = gx + Math.round(gw * 0.44);
 
-      if (ABOVE === 'sun') {
-        // Солнце проступает вместе с заголовком.
-        const sun = arrivalSunPlace(w, h, gy);
-        drawArrivalSun(ctx, sun.cx, sun.cy, t, Math.min(1, t / 0.3), sun);
-      } else {
-        drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdrop, true, AFTER_DROP);
-        if (ABOVE === 'rise') {
-          // Солнце встаёт из-за гребня и останавливается НАПОЛОВИНУ — центр
-          // ровно на линии холма, нижняя половина срезана передним планом
-          // (правка 2026-10-24).
-          const sx = Math.round((w * 0.72) / 2) * 2;
-          const ridgeY = ridgeScreenY(images, w, sx);
-          const k = clamp01((t - RISE_DELAY) / RISE_TIME);
-          const e = 1 - (1 - k) * (1 - k);
-          const cy = Math.round((ridgeY + RISE_R * 1.8 - e * RISE_R * 1.8) / 2) * 2;
-          drawSoftSun(ctx, sx, cy, RISE_R);
-          drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdropFront, false, AFTER_DROP);
-        }
-      }
+      drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdrop, true, AFTER_DROP);
+      // Солнце встаёт из-за гребня и останавливается НАПОЛОВИНУ — центр
+      // ровно на линии холма, нижняя половина срезана передним планом.
+      const sx = Math.round((w * 0.72) / 2) * 2;
+      const ridgeY = ridgeScreenY(images, w, sx);
+      const k = clamp01((t - RISE_DELAY) / RISE_TIME);
+      const e = 1 - (1 - k) * (1 - k);
+      const cy = Math.round((ridgeY + RISE_R * 1.8 - e * RISE_R * 1.8) / 2) * 2;
+      drawSoftSun(ctx, sx, cy, RISE_R);
+      drawBackdrop(ctx, images, w, h, 0, 0, images.foolBackdropFront, false, AFTER_DROP);
 
-      ctx.drawImage(ground, gx, gy); // ступеньки справа нет (решение 2026-10-24)
+      ctx.drawImage(ground, gx, gy);
 
-      if (ABOVE === 'rose' && images.foolRose) {
-        // Роза растёт на той же плите, справа от Шута: проявление идёт от
-        // основания стебля вверх (правка 2026-10-24: «как растение»).
-        const r = images.foolRose;
-        const rw = r.width * 2;
-        const rh = r.height * 2;
-        const p = clamp01((t - ROSE_DELAY) / ROSE_TIME);
-        drawPixelReveal(ctx, r, fcx + 44, gy - rh, rw, rh, p, 2, 0.5, 1, 0.15);
-      }
+      // Роза растёт на той же плите, справа от Шута: проявление идёт от
+      // основания стебля вверх — «как растение».
+      const r = images.foolRose;
+      const rw = r.width * 2;
+      const rh = r.height * 2;
+      drawPixelReveal(ctx, r, fcx + 44, gy - rh, rw, rh, clamp01((t - ROSE_DELAY) / ROSE_TIME), 2, 0.5, 1, 0.15);
 
       const dogImg = images.dogSitFrames[Math.floor(t * 4) % images.dogSitFrames.length];
       ctx.drawImage(dogImg, fcx - PLAYER_W / 2 - DOG_W - 2, gy - DOG_H, DOG_W, DOG_H);
