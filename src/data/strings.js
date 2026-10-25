@@ -36,6 +36,8 @@ const EN = {
   'fool.swipe': ['SWIPE UP', 'TO JUMP'],
   'fool.hold': ['HOLD', 'TO JUMP'],
   'tower.hold': 'HOLD A BLOCK',
+  'empress.gather': 'SWIPE TO GATHER',
+  'empress.hold': ['HOLD', 'THE FRUIT'],
 
   // экран 6 (prediction.js)
   'prediction.again': 'ONE MORE QUESTION',
@@ -57,6 +59,8 @@ const RU = {
   'fool.swipe': ['СВАЙП ВВЕРХ', 'ЧТОБЫ ПРЫГНУТЬ'],
   'fool.hold': ['ДЕРЖИ', 'ЧТОБЫ ПРЫГНУТЬ'],
   'tower.hold': 'ДЕРЖИ БРУСОК',
+  'empress.gather': 'СВАЙП — СОБРАТЬ',
+  'empress.hold': ['ДЕРЖИ', 'ПЛОД'],
   'prediction.again': 'ЕЩЁ ВОПРОС',
   'prediction.share': 'ПОДЕЛИТЬСЯ',
 };
@@ -75,6 +79,8 @@ const UK = {
   'fool.swipe': ['СВАЙП УГОРУ', 'ЩОБ СТРИБНУТИ'],
   'fool.hold': ['ТРИМАЙ', 'ЩОБ СТРИБНУТИ'],
   'tower.hold': 'ТРИМАЙ БРУСОК',
+  'empress.gather': 'СВАЙП — ЗІБРАТИ',
+  'empress.hold': ['ТРИМАЙ', 'ПЛІД'],
   'prediction.again': 'ЩЕ ПИТАННЯ',
   'prediction.share': 'ПОДІЛИТИСЯ',
 };
@@ -93,6 +99,8 @@ const ES = {
   'fool.swipe': ['DESLIZA ARRIBA', 'PARA SALTAR'],
   'fool.hold': ['MANTÉN', 'PARA SALTAR'],
   'tower.hold': 'MANTÉN UN BLOQUE',
+  'empress.gather': 'DESLIZA PARA RECOGER',
+  'empress.hold': ['MANTÉN', 'EL FRUTO'],
   'prediction.again': 'OTRA PREGUNTA',
   'prediction.share': 'COMPARTIR',
 };
@@ -111,6 +119,8 @@ const PT = {
   'fool.swipe': ['DESLIZE PARA CIMA', 'PARA PULAR'],
   'fool.hold': ['SEGURE', 'PARA PULAR'],
   'tower.hold': 'SEGURE UM BLOCO',
+  'empress.gather': 'DESLIZE PARA COLHER',
+  'empress.hold': ['SEGURE', 'O FRUTO'],
   'prediction.again': 'MAIS UMA PERGUNTA',
   'prediction.share': 'COMPARTILHAR',
 };
