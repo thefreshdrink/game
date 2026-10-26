@@ -12,7 +12,8 @@
 // предсказания, секунды до него (с ожиданием интро), секунды мини-игры,
 // ошибки консоли, запросы с ошибкой, где застряла. Кнопки экранов ищет по
 // акцентным пикселям #EBA331; Шута ведёт по window.gameLeapProbe(); Башню —
-// удержаниями по сетке точек в случайном (но постоянном) порядке.
+// удержаниями по сетке точек в случайном (но постоянном) порядке; любую
+// другую сцену мини-игры (заготовку из new-minigame.mjs) — тапом в центр.
 // Предупреждение Chrome про willReadFrequently вызывает сам скрипт (читает
 // пиксели канваса) — к игре не относится и отфильтровано.
 import { tmpdir } from 'os';
@@ -126,6 +127,20 @@ async function run(browser, card, [W, H]) {
     if (pressed) await page.mouse.up();
   }
 
+  // сцены мини-игр — всё, что не экран ритуала; новая сцена из
+  // new-minigame.mjs (заготовка) уходит на предсказание по тапу
+  await page.waitForFunction(() => window.gameScenes?.().includes('prediction'), null, { timeout: 30000 }).catch(() => {});
+  const ritual = ['loading', 'question', 'deck', 'draw', 'reveal', 'prediction'];
+  const minigames = (await page.evaluate(() => window.gameScenes?.() ?? [])).filter((n) => !ritual.includes(n));
+
+  async function scaffold(name) {
+    while (Date.now() < deadline && (await scene()) === name) {
+      await tap(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      res.taps = (res.taps || 0) + 1;
+      await sleep(500);
+    }
+  }
+
   async function release() {
     const cx = rect.w / 2;
     const pts = [];
@@ -154,9 +169,9 @@ async function run(browser, card, [W, H]) {
     } else if (s === 'reveal') {
       await sleep(500);
       await tapAccent('reveal');
-    } else if (s === 'leap' || s === 'release') {
+    } else if (s === 'leap' || s === 'release' || minigames.includes(s)) {
       miniStart = Date.now();
-      if (s === 'leap') await leap(); else await release();
+      if (s === 'leap') await leap(); else if (s === 'release') await release(); else await scaffold(s);
       res.miniSecs = ((Date.now() - miniStart) / 1000).toFixed(1);
     } else if (s === 'prediction') {
       if (!res.reached) {
