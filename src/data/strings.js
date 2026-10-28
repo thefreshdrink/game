@@ -35,7 +35,8 @@ const EN = {
   'prediction.share': 'SHARE',
 };
 
-const DICTS = { en: EN };
+// словари по языкам; экспорт — для проверки сборки (tools/check-strings.mjs)
+export const DICTS = { en: EN };
 const lang = 'en';
 
 export function t(key) {
