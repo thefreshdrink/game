@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      # Сборка проверяет картинки (tools/check-asset.py) — нужен Pillow.
-      - run: python3 -m pip install --quiet pillow
+      # Сборка проверяет картинки (tools/check-asset.py) — нужен Pillow,
+      # и буквы в шрифтах (tools/check-glyphs.py) — нужен fontTools.
+      - run: python3 -m pip install --quiet pillow fonttools
       - run: npm run build
