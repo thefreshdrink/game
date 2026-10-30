@@ -1,179 +1,161 @@
-// Сад Императрицы: грядка, три куста, плоды на них, корзина. Раскладка,
-// состояния плодов и их отрисовка — без ввода и без погоды (bloom.js).
+// Сад Императрицы — раскладка и рисование (макет `flow_iso7`, 25.10):
+// шесть клеток земли в изометрии одним блоком, светлая рамка вокруг,
+// извилистая дорожка, мягкий фон-градиент, рощицы, корзинка, Императрица
+// с карты под зонтиком. Ввод и такты — в bloom.js.
 //
-// Плод проходит погоду, только пока висит: дождь делает его мокрым, луна —
-// серебряным, последним один становится золотым (docs/empress-proposal.md,
-// «Погода Императрицы»). Сорванный плод улетает в корзину, на его месте
-// завязывается новый — простой, без погоды.
+// Всё в экранных px, зерно 2 (1 арт-пиксель = 2 экранных). Клетки и рамка —
+// кодом по сетке 2:1 (`tools/empress-plots.py`, `tools/empress-ring.py`),
+// остальное — Pro Flash.
 
 import { drawPixelReveal } from '../../core/pixelReveal.js';
 
 export const GRAIN = 2;
+const U = 32 * GRAIN;   // шаг клетки: ромб 2U × U
+const NI = 3;           // клеток вдоль одной оси
+const NJ = 2;           // и вдоль другой
 const even = (v) => Math.round(v / 2) * 2;
 
-// Состояния плода по порядку погоды. Золото — «можно тронуть» (CLAUDE.md).
-export const PLAIN = 0;
-export const WET = 1;
-export const MOON = 2;
-export const GOLD = 3;
-const FRUIT_IMG = ['empressFruitPlain', 'empressFruitWet', 'empressFruitMoon', 'empressFruitGold'];
+// Мягкий градиент, как холмы Шута: тоны пустоты, переходы Байером 4×4.
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+const RAMP = ['#111111', '#161616', '#1C1C1C'];
+const PATH_TONE = '#2E2E2E';
+const PATH_EDGE = '#2A2A2A';
+const PEBBLES = ['#4A4A4A', '#4A4A4A', '#808080'];
+const PATH_W = 30;
 
-const REGROW_DELAY = 3.5;  // с — пустая ветка, потом завязь
-const GROW_TIME = 1.2;     // с — завязь проявляется до спелого плода
-export const SOAK_TIME = 3; // с под дождём / луной, чтобы плод сменил вид
+// Что вырастает на каждой клетке (по кругу задний ряд → передний):
+// высокие сзади, низкие спереди. Номер — crop_N.png.
+export const CROP_OF = [1, 2, 5, 4, 3, 3];
+export const HOLD_PLOT = 4;    // передняя средняя — на ней удержание
 
-// Кусты от центра грядки, экранных px; у каждого места для плодов —
-// смещения от основания куста. Верхний плод среднего куста — запасной:
-// к нему приходит золото, если сорвали всё (страховка из предложения).
-// Куст 112 экранных px; кроны крайних свисают за грядку, стволы — на ней.
-const BUSHES = [
-  { dx: -100, img: 'empressBush1', slots: [[-26, -50], [24, -70], [-4, -88]] },
-  { dx: 0, img: 'empressBush2', slots: [[-28, -60], [28, -50], [0, -96]] },
-  { dx: 100, img: 'empressBush1', slots: [[-24, -70], [26, -50], [4, -88]], flip: true },
-];
-const CROWN_SLOT = { bush: 1, slot: 2 };
+/** Детерминированный шум — дорожка одинаковая на каждом кадре и заходе. */
+function rand(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
 
-export function createGarden() {
-  const fruits = [];
-  let basket = 0;   // сколько собрано — рисуется горкой в корзине
-  const layout = { cx: 0, gy: 0 };
+export function createGarden(images) {
+  const L = {};            // раскладка под текущий размер экрана
+  let bgKey = '';
+  let bg = null;           // фон + рамка + дорожка, снятые в буфер
 
-  function reset() {
-    fruits.length = 0;
-    basket = 0;
-    BUSHES.forEach((b, bi) => b.slots.forEach(([sx, sy], si) => {
-      fruits.push({
-        bush: bi, slot: si, ox: b.dx + sx, oy: sy,
-        state: PLAIN, grow: 1, gone: false, regrow: 0, soak: 0, age: 0, sway: 0, kept: false,
-      });
-    }));
-  }
+  /** Угол клетки (i, j) блока: i — вправо-вниз, j — влево-вниз. */
+  const P = (i, j) => ({ x: L.sx + NJ * U + (i - j) * U, y: L.sy + (i + j) * U / 2 });
 
-  /** cx — центр грядки, gy — верх грядки (линия, на которой стоят кусты). */
   function place(w, h) {
-    layout.cx = even(w / 2);
-    layout.gy = even(h * 0.62);
-  }
-
-  const ripe = (f) => !f.gone && f.grow >= 1;
-  const pos = (f) => ({ x: layout.cx + f.ox, y: layout.gy + f.oy });
-
-  function step(dt) {
-    fruits.forEach((f) => {
-      f.sway *= Math.max(0, 1 - dt * 5);
-      if (f.gone) {
-        f.regrow -= dt;
-        if (f.regrow <= 0) { f.gone = false; f.grow = 0; f.state = PLAIN; f.soak = 0; f.age = 0; }
-        return;
+    const blockW = images.empressPlotsDry.width * GRAIN;
+    L.w = w; L.h = h;
+    L.sx = even((w - blockW) / 2);
+    L.sy = even(h * 0.52);
+    L.spots = [];
+    for (let j = 0; j < NJ; j++) {
+      for (let i = 0; i < NI; i++) {
+        const c = P(i + 0.5, j + 0.5);
+        L.spots.push({ x: even(c.x), y: even(c.y) });
       }
-      if (f.grow < 1) f.grow = Math.min(1, f.grow + dt / GROW_TIME);
-      else f.age += dt;
-    });
-  }
-
-  /** Погода вызывает каждый кадр: from — какое состояние она меняет. */
-  function weather(dt, from) {
-    const changed = [];
-    fruits.forEach((f) => {
-      if (!ripe(f) || f.state !== from) return;
-      f.soak += dt;
-      if (f.soak >= SOAK_TIME) { f.state = from + 1; f.soak = 0; changed.push(f); }
-    });
-    return changed;
-  }
-
-  /** Сорвать плод (свайп или тап по нему). Золото не срывается — качается. */
-  function pick(f) {
-    if (!ripe(f)) return false;
-    if (f.state === GOLD || f.kept) { f.sway = 1; return false; }
-    f.gone = true;
-    f.regrow = REGROW_DELAY;
-    return true;
-  }
-
-  /** Кому достаётся золото: самый «проживший» висящий плод. Если не висит
-   * ни одного, верхний плод среднего куста завязывается сразу спелым. */
-  function crownGold() {
-    let best = null;
-    fruits.forEach((f) => {
-      if (!ripe(f)) return;
-      if (!best || f.state > best.state || (f.state === best.state && f.age > best.age)) best = f;
-    });
-    if (!best) {
-      best = fruits.find((f) => f.bush === CROWN_SLOT.bush && f.slot === CROWN_SLOT.slot);
-      best.gone = false; best.grow = 1; best.state = MOON;
     }
-    best.state = GOLD;
-    return best;
+    const emp = images.empressFigure;   // портрет с карты лежит ×4 — рисуем ×2
+    L.empW = emp.width / 2; L.empH = emp.height / 2;
+    L.ex = even(w - L.empW - 18);
+    L.ey = even(L.sy - L.empH - 80);
+    const par = images.empressParasol;
+    L.px = even(L.ex - par.width * GRAIN / 2 + 6);
+    L.py = even(L.ey + L.empH - par.height * GRAIN - 6);
+    const left = P(0, NJ);
+    L.bx = even(left.x + 6); L.by = even(left.y + 34);
+    L.groveA = { x: -60, y: even(L.sy - 210) };
+    L.groveB = { x: even(w - images.empressGrove.width * GRAIN + 40), y: even(L.sy + 200) };
+    if (`${w}x${h}` !== bgKey) { bgKey = `${w}x${h}`; bg = buildBackground(w, h); }
   }
 
-  /** Плоды, которых коснулся отрезок пальца (a → b), с запасом r. */
-  function hitSegment(ax, ay, bx, by, r) {
-    const out = [];
-    fruits.forEach((f) => {
-      if (!ripe(f)) return;
-      const p = pos(f);
-      const vx = bx - ax, vy = by - ay;
-      const len2 = vx * vx + vy * vy || 1;
-      const k = Math.max(0, Math.min(1, ((p.x - ax) * vx + (p.y - ay) * vy) / len2));
-      if (Math.hypot(ax + vx * k - p.x, ay + vy * k - p.y) <= r) out.push(f);
-    });
-    return out;
+  /** Фон, рамка вокруг блока и дорожка — один раз на размер экрана. */
+  function buildBackground(w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    for (let ay = 0; ay < h / 2; ay++) {
+      for (let ax = 0; ax < w / 2; ax++) {
+        const v = 0.2 + 2.0 * (ay * 2 / h);
+        const lo = Math.min(RAMP.length - 1, Math.floor(v));
+        const k = lo + 1 < RAMP.length && (v - lo) * 16 > BAYER[ay % 4][ax % 4] + 0.5 ? lo + 1 : lo;
+        g.fillStyle = RAMP[k];
+        g.fillRect(ax * 2, ay * 2, 2, 2);
+      }
+    }
+    const ring = images.empressPlotsRing;
+    g.drawImage(ring, L.sx - 2 * U, L.sy - U, ring.width * GRAIN, ring.height * GRAIN);
+    const T = P(0, 0), B = P(NI, NJ);
+    drawPath(g, w, h, [
+      { x: 70, y: L.sy - 80 }, { x: 150, y: L.sy - 30 }, { x: T.x - 30, y: T.y + 10 }, T, B,
+      { x: B.x - 20, y: B.y + 70 }, { x: 150, y: L.sy + 350 }, { x: 210, y: h + 30 },
+    ]);
+    return c;
   }
 
-  // Корзина стоит на земле справа от грядки.
-  const basketPos = (images) => ({
-    x: layout.cx + 136,
-    y: layout.gy + 46 - images.empressBasket.height * GRAIN,
-  });
-  // Горка в корзине: плоды выглядывают над краем, до шести.
-  const PILE = [[4, -8], [18, -8], [11, -18], [-2, -16], [24, -18], [11, -28]];
-
-  function drawBed(ctx, images) {
-    const bed = images.empressBed;
-    ctx.drawImage(bed, layout.cx - bed.width, layout.gy, bed.width * GRAIN, bed.height * GRAIN);
+  function drawPath(g, w, h, pts) {
+    const P4 = [pts[0], ...pts, pts[pts.length - 1]];
+    const line = [];
+    for (let i = 1; i < P4.length - 2; i++) {
+      const [p0, p1, p2, p3] = [P4[i - 1], P4[i], P4[i + 1], P4[i + 2]];
+      for (let k = 0; k < 12; k++) {
+        const t = k / 12, t2 = t * t, t3 = t2 * t;
+        const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+        line.push({ x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y) });
+      }
+    }
+    line.push(pts[pts.length - 1]);
+    const r = rand(9);
+    const half = PATH_W / 2;
+    for (let ay = 0; ay < h / 2; ay++) {
+      for (let ax = 0; ax < w / 2; ax++) {
+        const x = ax * 2 + 1, y = ay * 2 + 1;
+        let d2 = Infinity;
+        for (const p of line) { const dx = x - p.x, dy = y - p.y; const q = dx * dx + dy * dy; if (q < d2) d2 = q; }
+        const d = Math.sqrt(d2);
+        if (d > half + 6) continue;
+        let c;
+        if (d <= half) c = r() > 0.08 ? PATH_TONE : PEBBLES[Math.floor(r() * PEBBLES.length)];
+        else if ((1 - (d - half) / 6) * 16 > BAYER[ay % 4][ax % 4] + 0.5) c = PATH_EDGE;
+        else continue;
+        g.fillStyle = c;
+        g.fillRect(ax * 2, ay * 2, 2, 2);
+      }
+    }
   }
 
-  function drawBushes(ctx, images) {
-    BUSHES.forEach((b) => {
-      const img = images[b.img];
-      const bw = img.width * GRAIN, bh = img.height * GRAIN;
-      const x = layout.cx + b.dx - bw / 2, y = layout.gy + 4 - bh;
-      if (b.flip) {
-        ctx.save(); ctx.translate(x + bw, y); ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, bw, bh); ctx.restore();
-      } else ctx.drawImage(img, x, y, bw, bh);
-    });
-  }
+  const draw = (ctx, img, x, y) => ctx.drawImage(img, even(x), even(y), img.width * GRAIN, img.height * GRAIN);
 
-  function drawFruit(ctx, images, f, t, droop = 0) {
-    if (f.gone) return;
-    const img = images[FRUIT_IMG[f.kept ? MOON : f.state]];
-    const fw = img.width * GRAIN, fh = img.height * GRAIN;
-    const p = pos(f);
-    const sx = even(Math.sin(t * 14) * f.sway * 4);
-    const x = p.x - fw / 2 + sx, y = p.y - fh / 2 + droop;
-    if (f.grow < 1) drawPixelReveal(ctx, img, x, y, fw, fh, f.grow, 2, 0.5, 0.2, 0.2);
-    else ctx.drawImage(img, x, y, fw, fh);
-  }
-
-  function drawFruits(ctx, images, t, droopOf) {
-    fruits.forEach((f) => drawFruit(ctx, images, f, t, droopOf(f)));
-  }
-
-  function drawBasket(ctx, images) {
-    const b = basketPos(images);
-    const fr = images.empressFruitPlain;
-    PILE.slice(0, Math.min(PILE.length, basket)).forEach(([dx, dy]) => {
-      ctx.drawImage(fr, b.x + dx - 6, b.y + dy, fr.width * GRAIN, fr.height * GRAIN);
-    });
-    const img = images.empressBasket;
-    ctx.drawImage(img, b.x, b.y, img.width * GRAIN, img.height * GRAIN);
+  /** Растение стоит основанием в точке (x, y). p < 1 — проявляется пикселями. */
+  function drawPlant(ctx, img, x, y, p = 1) {
+    const pw = img.width * GRAIN, ph = img.height * GRAIN;
+    const px = even(x - pw / 2), py = even(y - ph + 8);
+    if (p >= 1) ctx.drawImage(img, px, py, pw, ph);
+    else drawPixelReveal(ctx, img, px, py, pw, ph, p, 2, 0.5, 1, 0.2);
   }
 
   return {
-    fruits, layout, reset, place, step, weather, pick, crownGold, hitSegment, pos,
-    basketPos, addToBasket() { basket++; },
-    drawBed, drawBushes, drawFruits, drawFruit, drawBasket,
+    L, place,
+    drawBack(ctx, wet) {
+      ctx.drawImage(bg, 0, 0);
+      draw(ctx, images.empressGrove, L.groveA.x, L.groveA.y);
+      draw(ctx, wet ? images.empressPlotsWet : images.empressPlotsDry, L.sx, L.sy);
+    },
+    drawPlant,
+    drawFront(ctx) {
+      draw(ctx, images.empressBasket, L.bx, L.by);
+      draw(ctx, images.empressParasol, L.px, L.py);
+      ctx.drawImage(images.empressFigure, L.ex, L.ey, L.empW, L.empH);
+      const gb = images.empressGrove;
+      ctx.save();
+      ctx.translate(L.groveB.x + gb.width * GRAIN, L.groveB.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(gb, 0, 0, gb.width * GRAIN, gb.height * GRAIN);
+      ctx.restore();
+    },
+    /** Попал ли палец в Императрицу (с запасом — прощает). */
+    hitEmpress(x, y) {
+      return x > L.ex - 16 && x < L.ex + L.empW + 16 && y > L.ey - 16 && y < L.ey + L.empH + 16;
+    },
   };
 }

@@ -1,203 +1,179 @@
 // Экран 5 для карты The Empress — мини-игра «Bloom» (глагол карты, GDD §8.2).
 //
-// «Погода Императрицы» (docs/empress-proposal.md, 25.10): самая массовая
-// ферма сейчас — Grow a Garden — в другом ключе. Кусты уже плодоносят,
-// плоды собираешь свайпом в корзину, на месте сорванного завязывается
-// новый. Погода идёт сама — ясно, дождь, луна — и меняет только то, что
-// висит: дождь делает плод мокрым, луна — серебряным. Потом один плод
-// становится золотым: первое в сцене, что зовёт руку (CLAUDE.md, золото).
-//
-// Удержание — один раз (GDD §8.1a): палец на золотом плоде, кольцо
-// заполняется, мир стихает. Отпустить = не сорвать: плод остаётся на
-// ветке, а по краям грядки сам встаёт сад, которого никто не сажал.
-// Проиграть нельзя: сорвал всё — золото придёт к новому верхнему плоду.
-//
-// Такты: play (погода по кругу) → gold (ждёт удержания) → bloom (отпустил,
-// сад встаёт) → экран 6.
+// Макет `incoming/empress/td/flow_iso7.png`, решение Алисы 25.10
+// (docs/empress-proposal.md): огород в изометрии, Императрица с карты
+// сидит под зонтиком. Три шага, без счёта и таймера:
+//   1. plant — тянешь семечко по шести клеткам (пузырь у пальца, как в Hay Day);
+//   2. call  — касаешься Императрицы: земля темнеет, встают ростки;
+//   3. grow  — всё вырастает само, на передней средней клетке остаётся
+//      бутон с кольцом — единственное удержание (GDD §8.1a). Отпустил —
+//      бутон раскрывается, как есть, и через паузу — предсказание.
 
 import { defineMinigame } from '../../core/minigame.js';
-import { drawTopHint, drawHintStack } from '../../core/hints.js';
+import { drawTopHint } from '../../core/hints.js';
 import { drawHoldRing } from '../../core/gestureGlyph.js';
 import { createParticles } from '../../core/juice.js';
 import { uiScale } from '../../core/text.js';
 import { clamp01 } from '../../core/ease.js';
-import { drawPixelReveal } from '../../core/pixelReveal.js';
+import { blinkAlpha } from '../../core/textReveal.js';
 import { t as str } from '../../data/strings.js';
-import { createGarden, GRAIN, PLAIN, WET } from './garden.js';
-import { createSky, weatherAt } from './weather.js';
+import { createGarden, CROP_OF, HOLD_PLOT } from './garden.js';
 
-const PICK_R = 24;        // экранных px — зона касания шире плода (прощает)
-const FLY_TIME = 0.5;     // с, полёт плода в корзину
-const HOLD_TIME = 1.8;    // с, кольцо удержания на золотом плоде
-const HOLD_DECAY = 1.5;   // как быстро кольцо стекает, если отпустил рано
-const GOLD_GRAB_R = 34;   // зона касания золотого плода
-const BLOOM_TIME = 2.6;   // сад встаёт по краям грядки
-const BLOOM_HOLD = 1.6;   // тишина перед предсказанием
+const PLANT_R = 40;       // экранных px — клетка ловит палец с запасом
+const SPROUT_STEP = 0.12; // с между ростками, волной по клеткам
+const SPROUT_TIME = 0.5;  // росток проявляется
+const GROW_DELAY = 1.4;   // с после касания — ростки стоят, потом растут
+const GROW_TIME = 0.9;    // каждое растение проявляется
+const HOLD_TIME = 1.8;    // с, кольцо удержания
+const HOLD_DECAY = 1.5;
+const HOLD_R = 44;        // зона касания бутона
+const END_HOLD = 2.2;     // тишина перед предсказанием
 
-// Самосев на переднем крае грядки — растения, которых не сажали
-// (изобилие). Тюльпан встаёт прямо под оставленным плодом: dx: null.
-const VOLUNTEERS = [
-  { img: 'empressTulip', dx: null, delay: 0 },
-  { img: 'empressWheat', dx: -112, delay: 0.5 },
-  { img: 'empressPomegranate', dx: 116, delay: 0.9 },
-];
+const GOLD = '#EBA331';
+
+/** Угловые скобки (графический язык проекта) — «это можно тронуть». */
+function brackets(ctx, x, y, w, h, arm = 8) {
+  ctx.fillStyle = GOLD;
+  for (const [cx, cy, sx, sy] of [[x, y, 1, 1], [x + w - 2, y, -1, 1], [x, y + h - 2, 1, -1], [x + w - 2, y + h - 2, -1, -1]]) {
+    for (let k = 0; k < arm; k += 2) {
+      ctx.fillRect(cx + sx * k, cy, 2, 2);
+      ctx.fillRect(cx, cy + sy * k, 2, 2);
+    }
+  }
+}
+
+/** Пузырь с семечком у пальца: чёрное тело, золотые скобки, три зерна. */
+function seedBubble(ctx, cx, cy) {
+  const s = 36, x = Math.round((cx - s / 2) / 2) * 2, y = Math.round((cy - s / 2) / 2) * 2;
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(x, y, s, s);
+  brackets(ctx, x - 4, y - 4, s + 8, s + 8, 10);
+  ctx.fillStyle = GOLD;
+  for (const [dx, dy] of [[-4, 2], [4, 2], [0, -4]]) ctx.fillRect(x + s / 2 + dx - 2, y + s / 2 + dy - 2, 4, 4);
+  for (let k = 0; k < 3; k++) ctx.fillRect(x + s / 2, y + s + 4 + k * 4, 2, 2);
+}
 
 export function createBloomScene({ input, images, goto }) {
-  const garden = createGarden();
-  const sky = createSky();
-  const leaves = createParticles();
-  let phase = 'play';
-  let tW = 0;          // время погоды
+  const garden = createGarden(images);
+  const sparks = createParticles();
+  let phase = 'plant';
   let tPhase = 0;
   let t = 0;
-  let flying = [];
-  let last = null;     // прошлая точка пальца — свайп режет отрезком
-  let pickedEver = false;
-  let gold = null;
+  let planted = [];   // время посадки по клеткам, -1 — пусто
+  let finger = null;  // где палец — для пузыря
   let holding = false;
-  let hold = 0;        // 0..1, кольцо удержания
+  let hold = 0;
 
-  function pickAlong(ax, ay, bx, by) {
-    garden.hitSegment(ax, ay, bx, by, PICK_R).forEach((f) => {
-      const p = garden.pos(f);
-      const img = f.state === WET ? 'empressFruitWet' : f.state > WET ? 'empressFruitMoon' : 'empressFruitPlain';
-      if (!garden.pick(f)) return;
-      pickedEver = true;
-      flying.push({ x: p.x, y: p.y, k: 0, img });
-      leaves.burst(p.x, p.y, 5, { spreadX: 80, liftY: 60, life: 0.4 });
+  function plantAt(x, y) {
+    garden.L.spots.forEach((s, i) => {
+      if (planted[i] >= 0) return;
+      if (Math.hypot(x - s.x, y - s.y) <= PLANT_R) {
+        planted[i] = t;
+        sparks.burst(s.x, s.y, 4, { spreadX: 50, liftY: 40, life: 0.3 });
+      }
     });
+    if (planted.every((v) => v >= 0) && phase === 'plant') { phase = 'call'; tPhase = 0; finger = null; }
   }
 
-  const nearGold = (e) => {
-    if (!gold) return false;
-    const p = garden.pos(gold);
-    return Math.hypot(e.x - p.x, e.y - p.y) <= GOLD_GRAB_R;
-  };
+  const holdSpot = () => garden.L.spots[HOLD_PLOT];
 
   return defineMinigame({ input, goto }, {
     enter() {
-      garden.reset();
-      sky.reset();
-      leaves.clear();
-      phase = 'play';
-      tW = 0; tPhase = 0; t = 0;
-      flying = [];
-      last = null;
-      pickedEver = false;
-      gold = null;
-      holding = false;
-      hold = 0;
+      phase = 'plant'; tPhase = 0; t = 0;
+      planted = Array(6).fill(-1);
+      finger = null; holding = false; hold = 0;
+      sparks.clear();
     },
 
     input: {
       pressstart(e) {
-        if (phase === 'gold' && nearGold(e)) { holding = true; return; }
-        if (phase === 'play' || phase === 'gold') {
-          last = e;
-          pickAlong(e.x, e.y, e.x, e.y);
+        if (phase === 'plant') { finger = e; plantAt(e.x, e.y); return; }
+        if (phase === 'call' && garden.hitEmpress(e.x, e.y)) {
+          phase = 'grow'; tPhase = 0;
+          const L = garden.L;
+          sparks.burst(L.ex + L.empW / 2, L.ey + 10, 10, { spreadX: 90, liftY: 70, life: 0.6 });
+          return;
+        }
+        if (phase === 'hold') {
+          const s = holdSpot();
+          if (Math.hypot(e.x - s.x, e.y - (s.y - 10)) <= HOLD_R) holding = true;
         }
       },
       pressmove(e) {
-        if (holding || !last) return;
-        pickAlong(last.x, last.y, e.x, e.y);
-        last = e;
+        if (phase === 'plant' && finger) { finger = e; plantAt(e.x, e.y); }
       },
       pressend() {
-        last = null;
+        finger = null;
         if (!holding) return;
         holding = false;
-        // Решение: кольцо полное — отпустил, не сорвав.
-        if (hold >= 1 && phase === 'gold') {
-          gold.kept = true;
-          phase = 'bloom'; tPhase = 0;
-          leaves.burst(garden.pos(gold).x, garden.pos(gold).y, 10, { spreadX: 120, liftY: 90, life: 0.6 });
+        // Решение: кольцо полное — отпустил, и бутон раскрывается как есть.
+        if (phase === 'hold' && hold >= 1) {
+          phase = 'end'; tPhase = 0;
+          const s = holdSpot();
+          sparks.burst(s.x, s.y - 30, 12, { spreadX: 110, liftY: 90, life: 0.6 });
         }
       },
     },
 
     update(dt, w, h, finish) {
       garden.place(w, h);
-      t += dt;
-      tPhase += dt;
-      const quiet = holding && hold >= 1;
-
-      if (phase === 'play' || phase === 'gold') {
-        if (!holding) tW += dt;
-        const wx = weatherAt(tW);
-        if (wx === 'rain') garden.weather(dt, PLAIN);
-        if (wx === 'moon') garden.weather(dt, WET);
-        if (wx === 'gold' && phase === 'play') { gold = garden.crownGold(); phase = 'gold'; tPhase = 0; }
-      }
-      if (phase === 'gold') {
+      t += dt; tPhase += dt;
+      if (phase === 'grow' && tPhase > GROW_DELAY + GROW_TIME + 6 * SPROUT_STEP) { phase = 'hold'; tPhase = 0; }
+      if (phase === 'hold') {
         hold = holding ? Math.min(1, hold + dt / HOLD_TIME) : Math.max(0, hold - dt * HOLD_DECAY);
       }
-
-      garden.step(dt);
-      const wx = weatherAt(tW);
-      sky.update(dt, w, garden.layout.gy, {
-        raining: wx === 'rain' && !quiet,
-        moonUp: wx === 'moon' || wx === 'gold',
-      });
-      leaves.update(dt);
-
-      const b = garden.basketPos(images);
-      flying.forEach((f) => { f.k += dt / FLY_TIME; });
-      flying = flying.filter((f) => {
-        if (f.k < 1) return true;
-        garden.addToBasket();
-        leaves.burst(b.x + 20, b.y + 4, 3, { spreadX: 40, liftY: 30, life: 0.3 });
-        return false;
-      });
-      flying.forEach((f) => { f.tx = b.x + 20; f.ty = b.y; });
-
-      if (phase === 'bloom' && tPhase > BLOOM_TIME + BLOOM_HOLD) finish();
+      if (phase === 'end' && tPhase > END_HOLD) finish();
+      sparks.update(dt);
     },
 
     draw(ctx, w, h) {
+      const L = garden.L;
+      if (!L.spots) return;
+      const watered = phase !== 'plant' && phase !== 'call';
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
-      const { cx, gy } = garden.layout;
+      garden.drawBack(ctx, watered);
 
-      // Небо фона непрозрачное (#111111), поэтому луна — поверх него.
-      sky.drawBackdrop(ctx, images, w, h, gy);
-      sky.drawMoon(ctx, images, w, h);
-      sky.drawRain(ctx, images);
-
-      garden.drawBed(ctx, images);
-      garden.drawBushes(ctx, images);
-      // Самосев встаёт после решения, перед кустами.
-      if (phase === 'bloom') {
-        VOLUNTEERS.forEach((v) => {
-          const img = images[v.img];
-          const vw = img.width * GRAIN, vh = img.height * GRAIN;
-          const x = cx + (v.dx ?? gold.ox) - vw / 2;
-          const p = clamp01((tPhase - v.delay) / (BLOOM_TIME - v.delay));
-          drawPixelReveal(ctx, img, Math.round(x / 2) * 2, gy + 44 - vh, vw, vh, p, 2, 0.5, 1, 0.15);
-        });
-      }
-      garden.drawFruits(ctx, images, t, (f) => (f === gold && holding && hold >= 1 ? 2 : 0));
-      garden.drawBasket(ctx, images);
-
-      flying.forEach((f) => {
-        const img = images[f.img];
-        const k = clamp01(f.k);
-        const x = f.x + ((f.tx ?? f.x) - f.x) * k;
-        const y = f.y + ((f.ty ?? f.y) - f.y) * k - Math.sin(k * Math.PI) * 60;
-        const fw = img.width * GRAIN, fh = img.height * GRAIN;
-        ctx.drawImage(img, Math.round((x - fw / 2) / 2) * 2, Math.round((y - fh / 2) / 2) * 2, fw, fh);
+      // Растения — сзади наперёд (по y), чтобы передние закрывали задние.
+      L.spots.map((s, i) => ({ s, i })).sort((a, b) => a.s.y - b.s.y).forEach(({ s, i }) => {
+        if (phase === 'plant' || phase === 'call') {
+          if (planted[i] >= 0) garden.drawPlant(ctx, images.empressStage1, s.x, s.y);
+          return;
+        }
+        const sproutP = clamp01((tPhase - i * SPROUT_STEP) / SPROUT_TIME);
+        const growP = clamp01((tPhase - GROW_DELAY - i * SPROUT_STEP) / GROW_TIME);
+        if (phase === 'grow' && growP <= 0) { garden.drawPlant(ctx, images.empressStage3, s.x, s.y, sproutP); return; }
+        if (i === HOLD_PLOT && phase !== 'end') { garden.drawPlant(ctx, images.empressStage4, s.x, s.y, phase === 'grow' ? growP : 1); return; }
+        const crop = images[`empressCrop${CROP_OF[i]}`];
+        const p = i === HOLD_PLOT ? clamp01(tPhase / GROW_TIME) : (phase === 'grow' ? growP : 1);
+        garden.drawPlant(ctx, crop, s.x, s.y, p);
       });
-      leaves.draw(ctx, 0, 0);
+
+      garden.drawFront(ctx);
+
+      // Золото — только то, что можно тронуть сейчас.
+      if (phase === 'plant') {
+        ctx.globalAlpha = blinkAlpha(t);
+        L.spots.forEach((s, i) => { if (planted[i] < 0) brackets(ctx, s.x - 16, s.y - 14, 32, 24, 6); });
+        ctx.globalAlpha = 1;
+        if (finger) seedBubble(ctx, finger.x, finger.y - 56);
+      }
+      if (phase === 'call') {
+        ctx.globalAlpha = blinkAlpha(t);
+        brackets(ctx, L.ex - 8, L.ey - 8, L.empW + 16, L.empH + 16, 10);
+        ctx.globalAlpha = 1;
+      }
+
+      sparks.draw(ctx, 0, 0);
 
       const scale = uiScale(w, 1.15);
-      if (phase === 'play' && !pickedEver) {
-        drawTopHint(ctx, str('empress.gather'), { w, t, scale });
-      }
-      if (phase === 'gold') {
-        const p = garden.pos(gold);
-        drawHoldRing(ctx, p.x, p.y, hold, 1, 16);
-        if (!holding) {
-          drawHintStack(ctx, str('empress.hold'), { figX: p.x, headTop: p.y - 20, w, t: tPhase, scale });
-        }
+      if (phase === 'plant') drawTopHint(ctx, str('empress.plant'), { w, t, scale });
+      if (phase === 'call') drawTopHint(ctx, str('empress.touch'), { w, t: tPhase, scale });
+      if (phase === 'hold') {
+        const s = holdSpot();
+        drawHoldRing(ctx, s.x, s.y - 10, hold, 1, 16);
+        // Наверху, как подсказки прошлых шагов: над бутоном стоят растения.
+        if (!holding) drawTopHint(ctx, str('empress.hold'), { w, t: tPhase, scale });
       }
     },
   });

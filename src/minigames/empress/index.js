@@ -5,38 +5,26 @@ import { createBloomScene } from './bloom.js';
 export default {
   verb: 'bloom',
 
-  // Черновой арт 25.10: Pro Flash с палитрой серых (кусты, плоды, корзина,
-  // луна, грядка, растения), золотой плод — с золотом и его тенью; капли —
-  // оттуда же; фон — tools/backdrop-hills.py. Исходники — incoming/empress/.
+  // Макет flow_iso7 (25.10). Клетки земли и рамка — кодом по сетке 2:1
+  // (tools/empress-plots.py, empress-ring.py); ростки, растения, рощица, зонтик, корзинка —
+  // Pro Flash с палитрой серых; Императрица — портрет с карты (лежит ×4,
+  // в сцене рисуется ×2, как Шут). Исходники — incoming/empress/td/.
   assets: {
-    empressBackdrop: 'assets/empress/backdrop.png',
-    empressBed: 'assets/empress/bed.png',
-    empressBush1: 'assets/empress/bush_1.png',
-    empressBush2: 'assets/empress/bush_2.png',
-    empressFruitPlain: 'assets/empress/fruit_plain.png',
-    empressFruitWet: 'assets/empress/fruit_wet.png',
-    empressFruitMoon: 'assets/empress/fruit_moon.png',
-    empressFruitGold: 'assets/empress/fruit_gold.png',
+    empressPlotsDry: 'assets/empress/plots_dry.png',
+    empressPlotsWet: 'assets/empress/plots_wet.png',
+    empressPlotsRing: 'assets/empress/plots_ring.png',
+    empressStage1: 'assets/empress/stage_1.png',
+    empressStage3: 'assets/empress/stage_3.png',
+    empressStage4: 'assets/empress/stage_4.png',
+    empressCrop1: 'assets/empress/crop_1.png',
+    empressCrop2: 'assets/empress/crop_2.png',
+    empressCrop3: 'assets/empress/crop_3.png',
+    empressCrop4: 'assets/empress/crop_4.png',
+    empressCrop5: 'assets/empress/crop_5.png',
+    empressGrove: 'assets/empress/grove.png',
+    empressParasol: 'assets/empress/parasol.png',
     empressBasket: 'assets/empress/basket.png',
-    empressMoon: 'assets/empress/moon.png',
-    empressTulip: 'assets/empress/tulip.png',
-    empressWheat: 'assets/empress/wheat.png',
-    empressPomegranate: 'assets/empress/pomegranate.png',
-    empressDrop1: 'assets/empress/drop_1.png',
-    empressDrop2: 'assets/empress/drop_2.png',
-    empressDrop3: 'assets/empress/drop_3.png',
-    empressDrop4: 'assets/empress/drop_4.png',
-  },
-
-  prepare(images) {
-    // Под фоном — тон его нижнего ряда, чтобы поле не обрывалось.
-    const bd = images.empressBackdrop;
-    const c = document.createElement('canvas');
-    c.width = 1; c.height = 1;
-    const g = c.getContext('2d');
-    g.drawImage(bd, Math.floor(bd.width / 2), bd.height - 1, 1, 1, 0, 0, 1, 1);
-    const [r, gg, b] = g.getImageData(0, 0, 1, 1).data;
-    images.empressBackdropBottom = `rgb(${r}, ${gg}, ${b})`;
+    empressFigure: 'assets/card/empress_on_the_card.png',
   },
 
   createScene: createBloomScene,
