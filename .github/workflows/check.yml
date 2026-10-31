@@ -1,0 +1,24 @@
+name: Check pull request
+
+# Та же сборка, что в deploy.yml, но без публикации: в pull request видно,
+# проходят ли проверки картинок, цветов и банка до слияния в main.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      # Сборка проверяет картинки (tools/check-asset.py) — нужен Pillow,
+      # и буквы в шрифтах (tools/check-glyphs.py) — нужен fontTools.
+      - run: python3 -m pip install --quiet pillow fonttools
+      - run: npm run build

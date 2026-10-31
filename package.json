@@ -6,10 +6,14 @@
   "description": "TAROT JOURNEY — a meditative web ritual. MVP vertical slice: The Fool.",
   "scripts": {
     "dev": "vite --host",
-    "build": "python3 tools/check-asset.py --all && vite build",
+    "build": "python3 tools/check-asset.py --all && python3 tools/check-colors.py && node tools/check-bank.mjs && node tools/check-strings.mjs && python3 tools/check-glyphs.py && vite build",
     "preview": "vite preview --host",
     "new-minigame": "node tools/new-minigame.mjs",
-    "check-assets": "python3 tools/check-asset.py --all"
+    "check-assets": "python3 tools/check-asset.py --all",
+    "check-colors": "python3 tools/check-colors.py",
+    "check-bank": "node tools/check-bank.mjs",
+    "check-strings": "node tools/check-strings.mjs",
+    "check-glyphs": "python3 tools/check-glyphs.py"
   },
   "devDependencies": {
     "vite": "^5.4.0"
