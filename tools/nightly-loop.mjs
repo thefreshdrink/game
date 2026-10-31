@@ -6,6 +6,10 @@
 //
 //   npm run build && npx vite preview --port 4173 &
 //   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower,empress 390x844,1440x860
+//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool 390x844 en,ru,uk,es,pt
+//
+// Пятый аргумент — языки интерфейса через запятую (по умолчанию en): страница
+// открывается с ?lang=<код>, каждый язык — отдельный прогон.
 //
 // Пишет по строке JSON на прогон в stdout и в $LOOP_OUT/results.jsonl (по
 // умолчанию системный tmp): дошла ли до
@@ -38,9 +42,10 @@ const chromium = pw.chromium ?? pw.default?.chromium;
 const BASE = process.argv[2] || 'http://localhost:4173/game/';
 const cards = (process.argv[3] || 'fool,tower').split(',');
 const sizes = (process.argv[4] || '390x844,1440x860').split(',').map((s) => s.split('x').map(Number));
+const langs = (process.argv[5] || 'en').split(',');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function run(browser, card, [W, H]) {
+async function run(browser, card, [W, H], lang = 'en') {
   const ctx = await browser.newContext({ viewport: { width: W, height: H } });
   const page = await ctx.newPage();
   const errors = [], badReq = [], log = [];
@@ -50,11 +55,11 @@ async function run(browser, card, [W, H]) {
   page.on('response', (r) => { if (r.status() >= 400) badReq.push(`${r.status()} ${r.url()}`); });
   const t0 = Date.now();
   const snap = setInterval(async () => { try { log.push('~' + ((Date.now()-t0)/1000).toFixed(0) + 's ' + JSON.stringify(await page.evaluate(() => [window.gameCurrentScene?.(), window.gameLeapProbe?.()]))); } catch {} }, 15000);
-  await page.goto(`${BASE}?card=${card}`);
+  await page.goto(`${BASE}?card=${card}${lang === 'en' ? '' : `&lang=${lang}`}`);
   const scene = () => page.evaluate(() => window.gameCurrentScene?.());
   const rect = await page.evaluate(() => { const r = document.getElementById('game').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
   const tap = async (x, y) => { await page.mouse.move(x, y); await page.mouse.down(); await sleep(40); await page.mouse.up(); };
-  const res = { card, size: `${W}×${H}`, reached: false, secs: null, miniSecs: null, stuck: null, scroll: null };
+  const res = { card, lang, size: `${W}×${H}`, reached: false, secs: null, miniSecs: null, stuck: null, scroll: null };
   const deadline = t0 + 240000;
   let miniStart = null, lastScene = null, sceneSince = Date.now();
 
@@ -235,5 +240,5 @@ async function run(browser, card, [W, H]) {
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 const out = [];
-for (const c of cards) for (const s of sizes) { const r = await run(browser, c, s); console.log(JSON.stringify(r)); (await import('fs')).appendFileSync(join(OUT, 'results.jsonl'), JSON.stringify(r) + '\n'); out.push(r); }
+for (const c of cards) for (const s of sizes) for (const l of langs) { const r = await run(browser, c, s, l); console.log(JSON.stringify(r)); (await import('fs')).appendFileSync(join(OUT, 'results.jsonl'), JSON.stringify(r) + '\n'); out.push(r); }
 await browser.close();
