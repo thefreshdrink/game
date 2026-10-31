@@ -32,7 +32,8 @@ const ROLES = {
   // именах строка вставала в бирку впритык. Номер остался на 30: его бирка
   // вдвое уже, но и строка в ней максимум три знака.
   cardName:   { family: FONT_TITLE,   size: 26, lineHeight: 30, weight: 500, letterSpacing: -0.04 },
-  body:       { family: FONT_BODY,    size: 16, lineHeight: 26 },
+  // Текст предсказания: 16 → 18 (правка в чате 2026-10-24: «мелковат»).
+  body:       { family: FONT_BODY,    size: 18, lineHeight: 29 },
   caption:    { family: FONT_BODY,    size: 12, lineHeight: 18 },
   // Пункты меню категорий — отдельная роль от body: крупнее (22 —
   // значение из Figma), правка в чате. Была semibold, вернули обратно

@@ -96,15 +96,14 @@ function drawLayer(ctx, images, L, w, h, camX, t, toneOverride) {
 // того как камера опустила действие к середине, холмы встали за плитой).
 // Верх картинки — чистое небо #111111, как заливка сцены, поэтому над ним
 // стыка нет.
-const BACKDROP_DROP = 160;
+export const BACKDROP_DROP = 160;
 
-export function drawBackdrop(ctx, images, w, h, camX, camY) {
-  const img = images.foolBackdrop;
+export function drawBackdrop(ctx, images, w, h, camX, camY, img = images.foolBackdrop, fillBottom = true, extraDrop = 0) {
   if (!img) return;
   const bw = img.width * GRAIN;
   const bh = img.height * GRAIN;
-  const top = BACKDROP_DROP + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
-  if (images.foolBackdropBottom && top + bh < h) {
+  const top = BACKDROP_DROP + extraDrop + Math.round(Math.min(0, Math.max(-40, -camY * 0.03)) / 2) * 2;
+  if (fillBottom && images.foolBackdropBottom && top + bh < h) {
     ctx.fillStyle = images.foolBackdropBottom;
     ctx.fillRect(0, top + bh, w, h - top - bh);
   }

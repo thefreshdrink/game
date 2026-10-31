@@ -25,6 +25,10 @@ export default {
     // Фон и облака — pixflux, приведены к палитре; облака нарезаны
     // tools/cut-sprites.py в два тона (2026-09-29).
     foolBackdrop: 'assets/fool/backdrop.png',
+    // Все холмы на прозрачном (--front 0) — для восхода на экране
+    // предсказания: солнце выходит из-за дальнего гребня.
+    foolBackdropFront: 'assets/fool/backdrop_front.png',
+    foolRose: 'assets/fool/rose.png', // белая роза растёт на плите под предсказанием
     ...Object.fromEntries(CLOUD_IDS.flatMap((id) => [
       [`cloud_near_${id}`, `assets/fool/clouds/near_${id}.png`],
       [`cloud_far_${id}`, `assets/fool/clouds/far_${id}.png`],

@@ -7,10 +7,20 @@
 // трогает — иначе каждый круг снова играл бы полное интро. Перезагрузка
 // страницы = новый модуль = снова false, это ожидаемо.
 
+// Исключение: перезапуск после смены языка (strings.js, setLang) — игрок
+// уже на экране 1, полное интро ему ни к чему.
+function switchedLang() {
+  try {
+    const v = sessionStorage.getItem('tj.langSwitched');
+    sessionStorage.removeItem('tj.langSwitched');
+    return v === '1';
+  } catch { return false; }
+}
+
 export const session = {
   category: null,
   cardId: null,
-  seenIntro: false,
+  seenIntro: switchedLang(),
 };
 
 export function resetSession() {

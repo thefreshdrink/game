@@ -35,8 +35,8 @@ function plateFor(images, w, seed = 0) {
   return images[`plate_${art}_${vs[Math.abs(seed) % vs.length]}`] ?? null;
 }
 
-// Тайлсет дороги — запасной путь для ширин без своей плиты (ступень прибытия
-// 64). public/assets/road/plat_tiles.png, нарезан из
+// Тайлсет дороги — запасной путь для ширин без своей плиты (сейчас таких
+// нет: ступень прибытия убрана 2026-10-24). public/assets/road/plat_tiles.png, нарезан из
 // assets/1-bit Pixel Art Platformer Tile.png (design-system/extract-road-tiles.py).
 // Атлас 48×16 нативных: три ячейки 16×16 подряд — [cap_l | mid | cap_r].
 // Рисуется ФИКСИРОВАННЫМ ×2, без uiScale (BUILD-SPEC-03 задача 2: ни одного
@@ -160,4 +160,4 @@ export function buildRoadStrip(images, sw) {
 // дорога держится под текстом, стыка между экранами не видно. Верх дороги —
 // доля высоты экрана.
 export const ARRIVE_GROUND_FRAC = 0.82; // верх основной дороги (правка 2026-08-30: ниже)
-export const ARRIVE_MAIN_W = 256;  // плита прибытия (кратно 32); справа ступень ARRIVE_STEP_W — вместе влезают в 390
+export const ARRIVE_MAIN_W = 256;  // плита прибытия (кратно 32); ступеньки справа нет (2026-10-24)

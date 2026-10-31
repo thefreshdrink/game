@@ -21,7 +21,7 @@ import {
 } from '../core/oracle.js';
 import { drawVoidGradient } from '../core/voidGradient.js';
 import { clamp01 } from '../core/ease.js';
-import { t as str } from '../data/strings.js';
+import { t as str, getLang, setLang, LANGS } from '../data/strings.js';
 
 const LABELS = { work: str('category.work'), love: str('category.love'), mental: str('category.mental') };
 
@@ -112,6 +112,17 @@ export function createQuestionScreen({ input, images, goto }) {
   let text2Start = TEXT2_START;
   let optionsStart = OPTIONS_START;
 
+  // Выбор языка (решение 2026-10-24, вариант «строка»): под меню категорий
+  // строка всех языков «EN RU UK ES PT», текущий белым, остальные серым;
+  // тап — сразу нужный язык (strings.js, setLang).
+  let langRow = []; // {lang, zone}
+  let langHover = null; // язык под пальцем или курсором
+
+  function langAt(x, y) {
+    const it = langRow.find((r) => zoneHit(r.zone, x, y));
+    return it ? it.lang : null;
+  }
+
   function itemAt(x, y) {
     const idx = items.findIndex((it) => zoneHit(it.zone, x, y));
     return idx === -1 ? null : idx;
@@ -156,6 +167,7 @@ export function createQuestionScreen({ input, images, goto }) {
       offHandlers = [
         input.on('pressstart', (e) => {
           pressedIndex = optionsReady() ? itemAt(e.x, e.y) : null;
+          langHover = optionsReady() ? langAt(e.x, e.y) : null;
         }),
         input.on('pressmove', (e) => {
           if (pressedIndex === null && !optionsReady()) return;
@@ -163,16 +175,21 @@ export function createQuestionScreen({ input, images, goto }) {
         }),
         input.on('pressend', () => {
           pressedIndex = null;
+          langHover = null;
           hoverIndex = null; // тач: pointermove после отрыва не придёт, чистим руками
         }),
         input.on('hover', (e) => {
           hoverIndex = optionsReady() ? itemAt(e.x, e.y) : null;
+          langHover = optionsReady() ? langAt(e.x, e.y) : null;
         }),
         input.on('hoverend', () => {
           hoverIndex = null;
+          langHover = null;
         }),
         input.on('tap', (e) => {
           if (!optionsReady()) return;
+          const lang = langAt(e.x, e.y);
+          if (lang) { setLang(lang); return; }
           const idx = itemAt(e.x, e.y);
           if (idx === null) return;
           session.category = items[idx].category;
@@ -327,6 +344,24 @@ export function createQuestionScreen({ input, images, goto }) {
             ctx.fillText(it.label, it.x, it.y);
           }
         });
+
+        // Строка языков — вместе с последним пунктом меню.
+        if (t >= optionsStart + (items.length - 1) * OPTION_ITEM_STAGGER) {
+          const lh = setFont(ctx, 'menuOption', scale * 0.75);
+          const ry = optionsY + Math.round(40 * scale);
+          const gap = Math.round(18 * scale);
+          let x = marginX;
+          langRow = [];
+          LANGS.forEach((l) => {
+            const label = l.toUpperCase();
+            const lw = ctx.measureText(label).width;
+            langRow.push({ lang: l, zone: textButtonZone(x, ry, lw, lh) });
+            // текущий — белым; под пальцем — акцентом («можно тронуть»)
+            ctx.fillStyle = l === langHover ? '#EBA331' : l === getLang() ? '#FFFFFF' : '#808080';
+            ctx.fillText(label, x, ry);
+            x += lw + gap;
+          });
+        }
       }
     },
   };
