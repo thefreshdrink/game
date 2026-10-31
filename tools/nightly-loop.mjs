@@ -5,14 +5,15 @@
 // (сам находит его через `npm root -g`, ставить в проект не нужно).
 //
 //   npm run build && npx vite preview --port 4173 &
-//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower 390x844,1440x860
+//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower,empress 390x844,1440x860
 //
 // Пишет по строке JSON на прогон в stdout и в $LOOP_OUT/results.jsonl (по
 // умолчанию системный tmp): дошла ли до
 // предсказания, секунды до него (с ожиданием интро), секунды мини-игры,
 // ошибки консоли, запросы с ошибкой, где застряла. Кнопки экранов ищет по
 // акцентным пикселям #EBA331; Шута ведёт по window.gameLeapProbe(); Башню —
-// удержаниями по сетке точек в случайном (но постоянном) порядке; любую
+// удержаниями по сетке точек в случайном (но постоянном) порядке; Императрицу —
+// по золоту на канвасе (посадка, зов, удержание бутона); любую
 // другую сцену мини-игры (заготовку из new-minigame.mjs) — тапом в центр.
 // Предупреждение Chrome про willReadFrequently вызывает сам скрипт (читает
 // пиксели канваса) — к игре не относится и отфильтровано.
@@ -157,6 +158,45 @@ async function run(browser, card, [W, H]) {
     }
   }
 
+  // Императрица («Bloom»): золото на канвасе — то, что можно тронуть сейчас.
+  // Посадка — скобки у пустых клеток, зов — скобки у Императрицы: их
+  // проводим одним касанием. Удержание — кольцо у бутона серое, пока не
+  // зажато, поэтому золота нет: держим по очереди клетки, запомненные при
+  // посадке. Верхняя строка-подсказка тоже золотая — её отбрасываем. Корона
+  // Императрицы золотая всегда (портрет с карты) и на касание не меняется:
+  // золото, пережившее два касания подряд, считаем неживым и обходим.
+  async function bloom() {
+    let plots = [];
+    const hintY = 130;
+    const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 20;
+    const lasting = []; // [точка, сколько касаний пережила]
+    while (Date.now() < deadline && (await scene()) === 'bloom') {
+      const seen = [];
+      for (let k = 0; k < 3; k++) { seen.push(...(await accentSpots()).filter(([, y]) => y > hintY)); await sleep(150); }
+      const all = seen.filter((p, i) => seen.findIndex((q) => near(p, q)) === i);
+      for (const p of all) { const l = lasting.find(([q]) => near(p, q)); if (l) l[1]++; else lasting.push([p, 0]); }
+      const dead = (p) => lasting.some(([q, n]) => n >= 2 && near(p, q));
+      const spots = all.filter((p) => !dead(p)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      if (process.env.SHOTS) await page.screenshot({ path: join(OUT, `bl-${W}-${res.bloomSteps || 0}.png`) });
+      res.bloomSteps = (res.bloomSteps || 0) + 1;
+      if (spots.length) {
+        if (!plots.length) plots = spots;
+        await page.mouse.move(rect.x + spots[0][0], rect.y + spots[0][1]); await page.mouse.down();
+        for (const [x, y] of spots) { await page.mouse.move(rect.x + x, rect.y + y, { steps: 6 }); await sleep(30); }
+        await page.mouse.up();
+        await sleep(400);
+      } else {
+        for (const [x, y] of plots.filter((p) => !dead(p))) {
+          if ((await scene()) !== 'bloom') break;
+          await page.mouse.move(rect.x + x, rect.y + y - 10); await page.mouse.down(); await sleep(2200); await page.mouse.up();
+          res.holds = (res.holds || 0) + 1;
+          await sleep(300);
+        }
+        if (!plots.length) await sleep(300);
+      }
+    }
+  }
+
   while (Date.now() < deadline) {
     const s = await scene();
     if (s !== lastScene) { log.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`); lastScene = s; sceneSince = Date.now(); }
@@ -171,7 +211,7 @@ async function run(browser, card, [W, H]) {
       await tapAccent('reveal');
     } else if (s === 'leap' || s === 'release' || minigames.includes(s)) {
       miniStart = Date.now();
-      if (s === 'leap') await leap(); else if (s === 'release') await release(); else await scaffold(s);
+      if (s === 'leap') await leap(); else if (s === 'release') await release(); else if (s === 'bloom') await bloom(); else await scaffold(s);
       res.miniSecs = ((Date.now() - miniStart) / 1000).toFixed(1);
     } else if (s === 'prediction') {
       if (!res.reached) {
