@@ -18,6 +18,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      # Тесты логики без браузера (tests/*.test.mjs, node:test).
+      - run: npm test
       # Сборка проверяет картинки (tools/check-asset.py) — нужен Pillow,
       # и буквы в шрифтах (tools/check-glyphs.py) — нужен fontTools.
       - run: python3 -m pip install --quiet pillow fonttools

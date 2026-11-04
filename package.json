@@ -14,7 +14,8 @@
     "check-bank": "node tools/check-bank.mjs",
     "check-strings": "node tools/check-strings.mjs",
     "check-glyphs": "python3 tools/check-glyphs.py",
-    "check-size": "node tools/check-size.mjs"
+    "check-size": "node tools/check-size.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "vite": "^5.4.0"
