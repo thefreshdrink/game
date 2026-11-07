@@ -50,11 +50,16 @@ test('паспорта найдены: папка = id карты, verb = её m
 });
 
 test('все картинки из паспортов мини-игр лежат в public/', () => {
+  // Пустой assets допустим: так выглядит свежая заготовка из
+  // `npm run new-minigame` — она проходится тапом, картинок у неё ещё нет.
+  let total = 0;
   for (const { id, m } of passports) {
+    assert.equal(typeof (m.assets ?? {}), 'object', `src/minigames/${id}/: assets не объект`);
     const paths = Object.values(m.assets ?? {});
-    assert.ok(paths.length > 0, `src/minigames/${id}/: пустой assets`);
+    total += paths.length;
     assert.deepEqual(missing(paths), [], `src/minigames/${id}/: нет файлов`);
   }
+  assert.ok(total > 0, 'ни у одного паспорта нет картинок — пути не прочитались');
 });
 
 test('у каждой карты из CARDS есть портрет', () => {
