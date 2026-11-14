@@ -16,53 +16,25 @@
 import { defineMinigame } from '../../core/minigame.js';
 import { createFollowCamera } from '../../core/camera.js';
 import { createParticles, createFlash } from '../../core/juice.js';
-import { clamp01 } from '../../core/ease.js';
 import { PHYS, gravityFor, jumpVelocity } from './physics.js';
+import { buildPlatforms, platformAt, buildRoadStrip, START_WALK, ARRIVE_MAIN_W } from './platforms.js';
 import {
-  buildPlatforms, platformAt, drawPlatform, buildRoadStrip, START_WALK, ARRIVE_MAIN_W,
-} from './platforms.js';
-import { drawDrizzle } from './weather.js';
-import { drawBackdrop, drawCloudsTop, drawCloudsBottom } from './scenery.js';
-import {
-  PLAYER_H, createDog, placeDog, scheduleDogHop, updateDog, drawPlayer, drawDog, relaxSquash,
+  PLAYER_H, createDog, placeDog, scheduleDogHop, updateDog, relaxSquash,
 } from './actors.js';
 import {
   BRACE_DUR, ARRIVE_DUR, createFall, resetFall, startFlight, stepFlight, drawFallSequence,
 } from './fallScene.js';
 import { createGhostEdge } from './ghostEdge.js';
-import { drawLeapHints } from './leapHints.js';
+import {
+  TAP_STEP, HOLD_TOTAL, RESPAWN_DROP, CAMERA, SWIPE_LINGER, holdProgress,
+} from './leap/tuning.js';
+import { flickJump } from './leap/flick.js';
+import { drawWorld } from './leap/world.js';
 
-// Управление ходьбой — на выбор (правка в чате 2026-08-30): УДЕРЖАНИЕ
-// пальца ведёт непрерывно, а короткий ТАП делает один «шаг» — авто-ходьба
-// на TAP_STEP секунд. Оба пишут movedEver.
-const TAP_STEP = 0.34;
-
-const HOLD_T1 = 1.6; // первые 75% полоски
-const HOLD_T2 = 1.0; // последние 25% — заметно медленнее (BUILD-SPEC)
-const HOLD_TOTAL = HOLD_T1 + HOLD_T2; // «~2,6 сек»
+// Числа ходьбы, удержания, респавна и камеры — leap/tuning.js; флик вверх
+// на ходу — leap/flick.js; кадр обычной сцены — leap/world.js.
 
 const ARRIVE_W = ARRIVE_MAIN_W; // плита прибытия (правка 2026-08-30: «поменьше»)
-
-// Насколько можно провалиться ниже плиты, с которой прыгнул, прежде чем
-// это считается промахом и включается респавн — заметно больше любой
-// реальной дуги прыжка (макс. дельта дороги −128), чтобы не сработать
-// ложно на обычном спуске.
-const RESPAWN_DROP = 260;
-
-// Камера: портрет, по x с лёгким упреждением вправо (BUILD-SPEC: «камера
-// портрет»). По высоте — действие в середине экрана (правка в чате
-// 2026-10-24: при 0.45 Шут с плитой стояли на ~0.3 кадра, «высоко»):
-// 0.65 даёт фигуру и плиту около середины.
-const CAMERA = { leadX: 0.38, leadY: 0.65, rate: 6 };
-
-function holdProgress(elapsed) {
-  if (elapsed <= HOLD_T1) return (elapsed / HOLD_T1) * 0.75;
-  return 0.75 + clamp01((elapsed - HOLD_T1) / HOLD_T2) * 0.25;
-}
-
-// Подсказка свайпа не гаснет в момент прыжка, а держится ещё 2 с — правка
-// 29.09: пропадала раньше, чем успевала прочитаться.
-const SWIPE_LINGER = 2;
 
 export function createLeapScreen({ input, images, goto }) {
   let platforms = [];
@@ -242,24 +214,17 @@ export function createLeapScreen({ input, images, goto }) {
         stateT = 0;
         lean = 0; // кольцо/наклон начинают с нуля, не с недовыпрямленного значения
       },
-      // Шёл (держал > 250мс) и на ходу дёрнул вверх — это прыжок, а не дрейф
-      // пальца: input классифицирует такой жест как hold, не swipe, поэтому
-      // ловим по СКОРОСТИ вверх между двумя hold-событиями, а не по
-      // накопленному смещению (иначе сработает от медленного увода).
+      // Шёл (держал > 250мс) и на ходу дёрнул вверх — прыжок (leap/flick.js).
       holdmove(e) {
         const dtMs = e.duration - holdPrevMs;
         const prevY = holdPrevY;
         holdPrevY = e.y;
         holdPrevMs = e.duration;
         if (state !== 'walk' || !walking || dtMs < 8) return;
-        const vUp = (prevY - e.y) / dtMs; // px/мс, >0 = вверх
-        if (vUp > 0.35) {
+        const jump = flickJump(prevY, dtMs, e);
+        if (jump) {
           walking = false;
-          // Флик с уже лежащего пальца — тот же жест, что свежий свайп.
-          // Горизонталь у вертикального дёрга ≈ 0, поэтому порог снизу 0.35
-          // — читается как прыжок с разбега (BUILD-SPEC-04 задача 1).
-          const sidePow = Math.max(0.35, Math.min(1, Math.abs(e.dx) / 140));
-          beginJump(Math.max(0.2, Math.min(1.3, vUp * 1.0)), sidePow);
+          beginJump(jump.up, jump.side);
         }
       },
       holdend() {
@@ -366,53 +331,10 @@ export function createLeapScreen({ input, images, goto }) {
         return;
       }
 
-      const camX = cam.x, camY = cam.y;
-      const last = platforms[platforms.length - 1];
-      // Дождевые облака наверху + пропасть с облачками внизу (правка 2026-09-10).
-      // Дальний фон, облака сверху, облака в пропасти — от дальнего к
-      // ближнему (правка в чате 2026-09-29). Туман пропасти убран
-      // (правка 2026-10-24): холмы фона сами дают градиент.
-      drawBackdrop(ctx, images, w, h, camX, camY);
-      drawCloudsTop(ctx, images, w, h, camX, t);
-      drawCloudsBottom(ctx, images, w, h, camX, t);
-      // Морось — всю дорогу до финального прыжка (правка в чате 2026-09-10),
-      // позади плит (правка 2026-10-24: передний план без дождя).
-      if (state === 'walk' || state === 'air' || state === 'wait_leap' || state === 'charge') {
-        drawDrizzle(ctx, w, h, t, camX);
-      }
-      platforms.forEach((p) => drawPlatform(ctx, images, p, camX, camY));
-      ghost.draw(ctx, last, camX, camY);
-
-      // Наклон идёт РЕЗЧЕ К КОНЦУ, чем растёт кольцо (правка в чате
-      // 2026-08-29: «не в унисон»): lean² — Шут сперва «сопротивляется».
-      const leanV = lean * lean;
-
-      // Обычное падение мимо всех плит — низ кадра затягивает чернотой, пока
-      // не сработает респавн. Порог высокий: только НАСТОЯЩИЙ провал, иначе
-      // чернота мигала на дуге обычного прыжка (правка в чате 2026-08-30).
-      const fellBelow = deepestY - (platforms[idx] ? platforms[idx].y : 0);
-      const voidStart = RESPAWN_DROP * 0.6;
-      if (state === 'air' && player.vy > 0 && fellBelow > voidStart) {
-        const k = clamp01((fellBelow - voidStart) / (RESPAWN_DROP - voidStart));
-        const voidH = Math.round(h * (0.08 + k * 0.5));
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, h - voidH, w, voidH);
-      }
-
-      dust.draw(ctx, camX, camY);
-
-      // Пёс поверх Шута (правка в чате 2026-08-27). Плиты под ногами — для
-      // клэмпа спрайтов по краям; пёс у края может стоять на соседней плите.
-      const standPlat = platforms[idx] || null;
-      const dogPlat = platformAt(platforms, dog.x, -Infinity, Infinity) || standPlat;
-      drawPlayer(ctx, images, player, camX, camY, state, t, standPlat, leanV,
-        standPlat === platforms[platforms.length - 1]);
-      drawDog(ctx, images, dog, camX, camY, dogPlat);
-
-      drawLeapHints(ctx, w, camX, camY, {
-        state, stateT, t, movedEver, idx, lean, player, swipeLinger: t < swipeHintUntil,
+      drawWorld(ctx, w, h, {
+        images, platforms, idx, state, stateT, t, camX: cam.x, camY: cam.y, player, dog, dust, ghost,
+        lean, deepestY, movedEver, swipeHintUntil, respawnFlash,
       });
-      respawnFlash.draw(ctx, w, h);
     },
   });
 }

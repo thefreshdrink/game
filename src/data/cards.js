@@ -147,7 +147,7 @@ export const CARDS = {
     id: 'empress',
     numeral: 'III',
     name: 'The Empress',
-    minigame: 'bloom',        // глагол карты, GDD §8.2. Сцены ещё нет
+    minigame: 'bloom',        // глагол карты, GDD §8.2 — сцена minigames/empress/
 
     upright: 'abundance, care, the slow growing thing',
     shadow: 'smothering, tending until empty, the root pulled up to be looked at',
