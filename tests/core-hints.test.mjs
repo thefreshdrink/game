@@ -147,8 +147,7 @@ test('drawTopHint: одна строка по центру сверху, тем 
   drawHintStack(ctx2, ['A'], { figX: 100, headTop: 300, w: 390, t: 0, scale: 0.9 });
   assert.equal(ctx2.font, font);
   assert.equal(ctx.globalAlpha, 1);
-  // В отличие от drawHintStack, drawTopHint оставляет textAlign = 'center'
-  // (не возвращает 'left'). Сейчас после неё в сценах текста нет, так что
-  // это ни на что не влияет; тест фиксирует как есть, код не менялся.
-  assert.equal(ctx.textAlign, 'center');
+  // Как и drawHintStack, после себя возвращает textAlign = 'left'
+  // (задача 38).
+  assert.equal(ctx.textAlign, 'left');
 });
