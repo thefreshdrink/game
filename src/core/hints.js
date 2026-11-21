@@ -42,4 +42,7 @@ export function drawTopHint(ctx, text, { w, t, scale }) {
   ctx.globalAlpha = blinkAlpha(t);
   ctx.fillText(text, w / 2, Math.round(74 * scale));
   ctx.globalAlpha = 1;
+  // Как drawHintStack: возвращаем выравнивание влево, чтобы текст,
+  // нарисованный после подсказки, не уехал в центр.
+  ctx.textAlign = 'left';
 }
