@@ -2,8 +2,8 @@
 // одна картинка грузится один раз (кэш по пути), к путям приклеивается
 // версия сборки, чтобы после деплоя не показывалась старая картинка, ошибка
 // загрузки называет файл, полоса кадров режется на отдельные canvas без
-// сглаживания. Без браузера: node:test, Image и canvas — заглушки. Код не
-// трогается — тест фиксирует то, что есть. Запуск — `npm test`.
+// сглаживания, неудачная загрузка не застревает в кэше (бэклог 57). Без
+// браузера: node:test, Image и canvas — заглушки. Запуск — `npm test`.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,6 +50,16 @@ test('loadImage: один путь — одна картинка и одно о�
 
 test('loadImage: ошибка загрузки называет файл', async () => {
   await assert.rejects(loadImage('assets/broken.png'), /Sprite failed to load: assets\/broken\.png/);
+});
+
+test('loadImage: после ошибки следующий вызов грузит заново (бэклог 57)', async () => {
+  const first = loadImage('assets/flaky-broken.png');
+  await assert.rejects(first);
+  const before = made.length;
+  const second = loadImage('assets/flaky-broken.png');
+  assert.notEqual(second, first, 'неудача не осталась в кэше');
+  assert.equal(made.length - before, 1, 'создан новый Image');
+  await assert.rejects(second);
 });
 
 test('loadSprites: к путям приклеена версия сборки, имена сохранены', async () => {

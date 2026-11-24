@@ -1,5 +1,7 @@
 // Загрузка PNG и нарезка горизонтальных полос кадров на отдельные canvas.
 // Кэш по src, чтобы одна и та же карта/спрайт не грузились дважды.
+// Неудачная загрузка из кэша убирается: следующий вызов попробует снова
+// (на телефоне сеть может моргнуть один раз).
 
 const cache = new Map();
 
@@ -8,7 +10,10 @@ export function loadImage(src) {
   const promise = new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Sprite failed to load: ${src}`));
+    img.onerror = () => {
+      if (cache.get(src) === promise) cache.delete(src);
+      reject(new Error(`Sprite failed to load: ${src}`));
+    };
     img.src = src;
   });
   cache.set(src, promise);
