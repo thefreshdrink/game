@@ -130,7 +130,8 @@ const PT = {
   'prediction.share': 'COMPARTILHAR',
 };
 
-const DICTS = { en: EN, ru: RU, uk: UK, es: ES, pt: PT };
+// словари по языкам; экспорт — для проверки сборки (tools/check-strings.mjs)
+export const DICTS = { en: EN, ru: RU, uk: UK, es: ES, pt: PT };
 /** Порядок в строке языков на экране 1. Подпись — код языка заглавными. */
 export const LANGS = ['en', 'ru', 'uk', 'es', 'pt'];
 const STORE_KEY = 'tj.lang';

@@ -43,8 +43,10 @@ import { create${Verb}Scene } from './${verb}.js';
 export default {
   verb: '${verb}',
 
-  // { ключ: 'assets/${cardId}/файл.png' } — картинки сцены; ключи не должны
-  // совпадать с чужими (main.js откажет при загрузке).
+  // { ключ: путь } — картинки сцены, пути вида assets/${cardId}/<файл>.png
+  // (в кавычках сюда пишем только существующие: tests/assets.test.mjs
+  // проверяет каждую такую строку в кавычках); ключи не должны совпадать с
+  // чужими (main.js откажет при загрузке).
   assets: {},
 
   // prepare(images) { … } — нарезка лент после загрузки, если нужна.
@@ -86,7 +88,7 @@ export function create${Verb}Scene({ input, images, goto }) {
     draw(ctx, w, h) {
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, 0, w, h);
-      drawTopHint(ctx, '${verb.toUpperCase()} — TAP', { w, t, scale: uiScale(w) });
+      drawTopHint(ctx, '${verb.toUpperCase()}: TAP', { w, t, scale: uiScale(w) });
     },
   });
 }

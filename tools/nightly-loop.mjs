@@ -1,31 +1,51 @@
 // Ночной прогон петли по собранному dist/: вопрос → веер → карта → мини-игра →
 // предсказание → ONE MORE QUESTION → снова вопрос. Мышь = палец
 // (pointerdown/move/up). Инструмент агента, в игру не входит; Playwright не
-// ставится в проект (в devDependencies только Vite) — берётся глобальный.
+// ставится в проект (в devDependencies только Vite) — берётся глобальный
+// (сам находит его через `npm root -g`, ставить в проект не нужно).
 //
 //   npm run build && npx vite preview --port 4173 &
-//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower 390x844,1440x860
+//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool,tower,empress 390x844,1440x860
+//   node tools/nightly-loop.mjs http://localhost:4173/game/ fool 390x844 en,ru,uk,es,pt
+//
+// Пятый аргумент — языки интерфейса через запятую (по умолчанию en): страница
+// открывается с ?lang=<код>, каждый язык — отдельный прогон.
 //
 // Пишет по строке JSON на прогон в stdout и в $LOOP_OUT/results.jsonl (по
 // умолчанию системный tmp): дошла ли до
 // предсказания, секунды до него (с ожиданием интро), секунды мини-игры,
 // ошибки консоли, запросы с ошибкой, где застряла. Кнопки экранов ищет по
 // акцентным пикселям #EBA331; Шута ведёт по window.gameLeapProbe(); Башню —
-// удержаниями по сетке точек в случайном (но постоянном) порядке.
+// удержаниями по сетке точек в случайном (но постоянном) порядке; Императрицу —
+// по золоту на канвасе (посадка, зов, удержание бутона); любую
+// другую сцену мини-игры (заготовку из new-minigame.mjs) — тапом в центр.
 // Предупреждение Chrome про willReadFrequently вызывает сам скрипт (читает
 // пиксели канваса) — к игре не относится и отфильтровано.
 import { tmpdir } from 'os';
 import { join } from 'path';
 const OUT = process.env.LOOP_OUT || tmpdir(); // results.jsonl и снимки — не в репозиторий
 const PW = process.env.PLAYWRIGHT_MODULE || 'playwright';
-const { chromium } = await import(PW);
+// ESM не видит глобальные пакеты (NODE_PATH не работает для import) — если
+// 'playwright' рядом не нашёлся, берём его из `npm root -g`. Playwright —
+// CommonJS: chromium может лежать в default.
+async function loadPlaywright() {
+  try { return await import(PW); } catch (e) {
+    if (PW !== 'playwright' || e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+    const { execSync } = await import('child_process');
+    const root = execSync('npm root -g', { encoding: 'utf8' }).trim();
+    return import(join(root, 'playwright', 'index.js'));
+  }
+}
+const pw = await loadPlaywright();
+const chromium = pw.chromium ?? pw.default?.chromium;
 
 const BASE = process.argv[2] || 'http://localhost:4173/game/';
 const cards = (process.argv[3] || 'fool,tower').split(',');
 const sizes = (process.argv[4] || '390x844,1440x860').split(',').map((s) => s.split('x').map(Number));
+const langs = (process.argv[5] || 'en').split(',');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function run(browser, card, [W, H]) {
+async function run(browser, card, [W, H], lang = 'en') {
   const ctx = await browser.newContext({ viewport: { width: W, height: H } });
   const page = await ctx.newPage();
   const errors = [], badReq = [], log = [];
@@ -35,11 +55,11 @@ async function run(browser, card, [W, H]) {
   page.on('response', (r) => { if (r.status() >= 400) badReq.push(`${r.status()} ${r.url()}`); });
   const t0 = Date.now();
   const snap = setInterval(async () => { try { log.push('~' + ((Date.now()-t0)/1000).toFixed(0) + 's ' + JSON.stringify(await page.evaluate(() => [window.gameCurrentScene?.(), window.gameLeapProbe?.()]))); } catch {} }, 15000);
-  await page.goto(`${BASE}?card=${card}`);
+  await page.goto(`${BASE}?card=${card}${lang === 'en' ? '' : `&lang=${lang}`}`);
   const scene = () => page.evaluate(() => window.gameCurrentScene?.());
   const rect = await page.evaluate(() => { const r = document.getElementById('game').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
   const tap = async (x, y) => { await page.mouse.move(x, y); await page.mouse.down(); await sleep(40); await page.mouse.up(); };
-  const res = { card, size: `${W}×${H}`, reached: false, secs: null, miniSecs: null, stuck: null, scroll: null };
+  const res = { card, lang, size: `${W}×${H}`, reached: false, secs: null, miniSecs: null, stuck: null, scroll: null };
   const deadline = t0 + 240000;
   let miniStart = null, lastScene = null, sceneSince = Date.now();
 
@@ -113,6 +133,20 @@ async function run(browser, card, [W, H]) {
     if (pressed) await page.mouse.up();
   }
 
+  // сцены мини-игр — всё, что не экран ритуала; новая сцена из
+  // new-minigame.mjs (заготовка) уходит на предсказание по тапу
+  await page.waitForFunction(() => window.gameScenes?.().includes('prediction'), null, { timeout: 30000 }).catch(() => {});
+  const ritual = ['loading', 'question', 'deck', 'draw', 'reveal', 'prediction'];
+  const minigames = (await page.evaluate(() => window.gameScenes?.() ?? [])).filter((n) => !ritual.includes(n));
+
+  async function scaffold(name) {
+    while (Date.now() < deadline && (await scene()) === name) {
+      await tap(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      res.taps = (res.taps || 0) + 1;
+      await sleep(500);
+    }
+  }
+
   async function release() {
     const cx = rect.w / 2;
     const pts = [];
@@ -129,6 +163,45 @@ async function run(browser, card, [W, H]) {
     }
   }
 
+  // Императрица («Bloom»): золото на канвасе — то, что можно тронуть сейчас.
+  // Посадка — скобки у пустых клеток, зов — скобки у Императрицы: их
+  // проводим одним касанием. Удержание — кольцо у бутона серое, пока не
+  // зажато, поэтому золота нет: держим по очереди клетки, запомненные при
+  // посадке. Верхняя строка-подсказка тоже золотая — её отбрасываем. Корона
+  // Императрицы золотая всегда (портрет с карты) и на касание не меняется:
+  // золото, пережившее два касания подряд, считаем неживым и обходим.
+  async function bloom() {
+    let plots = [];
+    const hintY = 130;
+    const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 20;
+    const lasting = []; // [точка, сколько касаний пережила]
+    while (Date.now() < deadline && (await scene()) === 'bloom') {
+      const seen = [];
+      for (let k = 0; k < 3; k++) { seen.push(...(await accentSpots()).filter(([, y]) => y > hintY)); await sleep(150); }
+      const all = seen.filter((p, i) => seen.findIndex((q) => near(p, q)) === i);
+      for (const p of all) { const l = lasting.find(([q]) => near(p, q)); if (l) l[1]++; else lasting.push([p, 0]); }
+      const dead = (p) => lasting.some(([q, n]) => n >= 2 && near(p, q));
+      const spots = all.filter((p) => !dead(p)).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      if (process.env.SHOTS) await page.screenshot({ path: join(OUT, `bl-${W}-${res.bloomSteps || 0}.png`) });
+      res.bloomSteps = (res.bloomSteps || 0) + 1;
+      if (spots.length) {
+        if (!plots.length) plots = spots;
+        await page.mouse.move(rect.x + spots[0][0], rect.y + spots[0][1]); await page.mouse.down();
+        for (const [x, y] of spots) { await page.mouse.move(rect.x + x, rect.y + y, { steps: 6 }); await sleep(30); }
+        await page.mouse.up();
+        await sleep(400);
+      } else {
+        for (const [x, y] of plots.filter((p) => !dead(p))) {
+          if ((await scene()) !== 'bloom') break;
+          await page.mouse.move(rect.x + x, rect.y + y - 10); await page.mouse.down(); await sleep(2200); await page.mouse.up();
+          res.holds = (res.holds || 0) + 1;
+          await sleep(300);
+        }
+        if (!plots.length) await sleep(300);
+      }
+    }
+  }
+
   while (Date.now() < deadline) {
     const s = await scene();
     if (s !== lastScene) { log.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`); lastScene = s; sceneSince = Date.now(); }
@@ -141,9 +214,9 @@ async function run(browser, card, [W, H]) {
     } else if (s === 'reveal') {
       await sleep(500);
       await tapAccent('reveal');
-    } else if (s === 'leap' || s === 'release') {
+    } else if (s === 'leap' || s === 'release' || minigames.includes(s)) {
       miniStart = Date.now();
-      if (s === 'leap') await leap(); else await release();
+      if (s === 'leap') await leap(); else if (s === 'release') await release(); else if (s === 'bloom') await bloom(); else await scaffold(s);
       res.miniSecs = ((Date.now() - miniStart) / 1000).toFixed(1);
     } else if (s === 'prediction') {
       if (!res.reached) {
@@ -167,5 +240,5 @@ async function run(browser, card, [W, H]) {
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 const out = [];
-for (const c of cards) for (const s of sizes) { const r = await run(browser, c, s); console.log(JSON.stringify(r)); (await import('fs')).appendFileSync(join(OUT, 'results.jsonl'), JSON.stringify(r) + '\n'); out.push(r); }
+for (const c of cards) for (const s of sizes) for (const l of langs) { const r = await run(browser, c, s, l); console.log(JSON.stringify(r)); (await import('fs')).appendFileSync(join(OUT, 'results.jsonl'), JSON.stringify(r) + '\n'); out.push(r); }
 await browser.close();
